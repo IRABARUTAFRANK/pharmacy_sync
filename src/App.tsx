@@ -1,15 +1,10 @@
-import { useState, useMemo, useEffect } from 'react'
-import { NAV_ITEMS, alertsData, branches, PAGE_LABELS, type Role } from './data'
-import OverviewPage     from './pages/OverviewPage'
-import InventoryPage    from './pages/InventoryPage'
-import BarcodePage      from './pages/BarcodePage'
-import SalesPage        from './pages/SalesPage'
-import AnalyticsPage    from './pages/AnalyticsPage'
-import AlertsPage       from './pages/AlertsPage'
-import CompliancePage   from './pages/CompliancePage'
-import InsurancePage    from './pages/InsurancePage'
-import BranchPage       from './pages/BranchPage'
-import HelpPage         from './pages/HelpPage'
+import { useState, useEffect } from 'react'
+import { NAV_ITEMS, alertsData, PAGE_LABELS, type Role } from './data'
+import LiveInventoryPage from './pages/LiveInventoryPage'
+import StockReceivingPage from './pages/StockReceivingPage'
+import DatabaseBackedPage from './pages/DatabaseBackedPage'
+import BranchAccessPage from './pages/BranchAccessPage'
+import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 
 // ─── Role Config ──────────────────────────────────────────────────────────────
 
@@ -18,12 +13,6 @@ const ROLES: { id: Role; label: string; abbr: string; color: string }[] = [
   { id: 'manager',    label: 'Manager',    abbr: 'MG', color: '#0284c7' },
   { id: 'pharmacist', label: 'Pharmacist', abbr: 'PH', color: '#7c3aed' },
 ]
-
-const ROLE_USERS: Record<Role, string> = {
-  owner:      'Jean Marie',
-  manager:    'Alice Kayitesi',
-  pharmacist: 'Bob Mugisha',
-}
 
 // ─── Export Modal (inline here, used from any page) ───────────────────────────
 
@@ -114,7 +103,7 @@ function NotifDropdown({ onClose }: { onClose: () => void }) {
 
 // ─── User Menu ────────────────────────────────────────────────────────────────
 
-function UserMenu({ role, onRoleChange, onClose }: { role: Role; onRoleChange: (r: Role) => void; onClose: () => void }) {
+function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: BranchAccess; role: Role; onRoleChange: (r: Role) => void; onSignOut: () => void; onClose: () => void }) {
   return (
     <div style={{
       position: 'absolute', right: 0, top: '110%', width: 220, zIndex: 100,
@@ -122,10 +111,10 @@ function UserMenu({ role, onRoleChange, onClose }: { role: Role; onRoleChange: (
       boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
     }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{ROLE_USERS[role]}</div>
-        <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>Kigali HQ · {ROLES.find(r => r.id === role)?.label}</div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{access.fullName}</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{access.branchName} · {ROLES.find(r => r.id === role)?.label}</div>
       </div>
-      <div style={{ padding: '8px 14px' }}>
+      <div style={{ display: 'none' }} aria-hidden="true">
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Switch Role (Demo)</div>
         {ROLES.map(r => (
           <button key={r.id} onClick={() => { onRoleChange(r.id); onClose() }} style={{
@@ -146,7 +135,7 @@ function UserMenu({ role, onRoleChange, onClose }: { role: Role; onRoleChange: (
         ))}
       </div>
       <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)' }}>
-        <button style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
+        <button onClick={onSignOut} style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
       </div>
     </div>
   )
@@ -156,15 +145,14 @@ function UserMenu({ role, onRoleChange, onClose }: { role: Role; onRoleChange: (
 
 export default function App() {
   const [page, setPage]             = useState('overview')
-  const [role, setRole]             = useState<Role>('owner')
-  const [branch, setBranch]         = useState('All Branches')
+  const [access, setAccess]         = useState<BranchAccess | null>(null)
+  const [accessLoading, setAccessLoading] = useState(true)
   const [search, setSearch]         = useState('')
   const [dateRange, setDateRange]   = useState('This Month')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showNotif, setShowNotif]   = useState(false)
   const [showUser, setShowUser]     = useState(false)
   const [showExport, setShowExport] = useState(false)
-  const [showBuilder, setShowBuilder] = useState(false)
 
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingSync, setPendingSync] = useState(0)
@@ -177,6 +165,29 @@ export default function App() {
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
   }, [])
 
+  useEffect(() => {
+    void restoreBranchAccess().then(setAccess).finally(() => setAccessLoading(false))
+  }, [])
+
+  const role: Role = access?.role === 'owner' || access?.role === 'manager' || access?.role === 'pharmacist'
+    ? access.role
+    : 'pharmacist'
+
+  async function handleSignOut() {
+    await signOutFromBranch()
+    setAccess(null)
+    setPage('overview')
+    setShowUser(false)
+  }
+
+  if (accessLoading) {
+    return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'Inter, sans-serif' }}>Loading workspace…</main>
+  }
+
+  if (!access) {
+    return <BranchAccessPage onAccess={branchAccess => { setAccess(branchAccess); setPage('overview') }} />
+  }
+
   const currentRole = ROLES.find(r => r.id === role)!
   const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(role))
   const alertCount = alertsData.filter(a => !a.dismissed).length
@@ -185,17 +196,18 @@ export default function App() {
 
   function renderPage() {
     switch (page) {
-      case 'overview':      return <OverviewPage role={role} onExport={() => setShowExport(true)} showBuilder={showBuilder} onToggleBuilder={() => setShowBuilder(b => !b)} />
-      case 'inventory':     return <InventoryPage />
-      case 'barcode':       return <BarcodePage />
-      case 'sales':         return <SalesPage />
-      case 'analytics':     return <AnalyticsPage />
-      case 'alerts':        return <AlertsPage />
-      case 'transactions':  return <SalesPage />
-      case 'compliance':    return <CompliancePage />
-      case 'insurance':     return <InsurancePage />
-      case 'branch':        return <BranchPage />
-      case 'help':          return <HelpPage />
+      case 'overview':      return <DatabaseBackedPage title="Dashboard" tables="sales · sale_items · stock_batches · notifications" />
+      case 'inventory':     return <LiveInventoryPage />
+      case 'receiving':     return <StockReceivingPage />
+      case 'barcode':       return <DatabaseBackedPage title="Barcode Manager" tables="barcodes · stock_batches" />
+      case 'sales':         return <DatabaseBackedPage title="Sales & POS" tables="sales · sale_items · receipts" />
+      case 'analytics':     return <DatabaseBackedPage title="Analytics" tables="sales · sale_items · sales_forecasts" />
+      case 'alerts':        return <DatabaseBackedPage title="Alerts" tables="notifications · batch_recalls · stock_adjustments" />
+      case 'transactions':  return <DatabaseBackedPage title="Transactions" tables="sales · sale_items · receipts" />
+      case 'compliance':    return <DatabaseBackedPage title="Compliance" tables="sales · tax_rates" />
+      case 'insurance':     return <DatabaseBackedPage title="Insurance" tables="insurance_claims · insurance_providers" />
+      case 'branch':        return <DatabaseBackedPage title="Branch Management" tables="branches · users · branch_settings" />
+      case 'help':          return <DatabaseBackedPage title="Support" tables="support_tickets" />
       default:              return null
     }
   }
@@ -238,7 +250,7 @@ export default function App() {
               </div>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: currentRole.color }}>{currentRole.label}</div>
-                <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>Kigali HQ</div>
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{access.branchName}</div>
               </div>
             </div>
           </div>
@@ -304,7 +316,7 @@ export default function App() {
             }}>{currentRole.abbr}</div>
             {sidebarOpen && (
               <div style={{ overflow: 'hidden', textAlign: 'left' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ROLE_USERS[role]}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
                 <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{currentRole.label}</div>
               </div>
             )}
@@ -363,14 +375,13 @@ export default function App() {
             {['Today', 'This Week', 'This Month', 'Last Month', 'Q3 2026', 'Custom Range'].map(d => <option key={d}>{d}</option>)}
           </select>
 
-          {/* Branch filter */}
-          <select value={branch} onChange={e => setBranch(e.target.value)} style={{
+          <div title="This dashboard is limited to your assigned branch" style={{
             padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
             fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
-            cursor: 'pointer', outline: 'none', flexShrink: 0,
+            fontWeight: 600, flexShrink: 0,
           }}>
-            {branches.map(b => <option key={b}>{b}</option>)}
-          </select>
+            {access.branchName}
+          </div>
 
           {/* Offline indicator */}
           <div style={{
@@ -412,7 +423,7 @@ export default function App() {
               fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', flexShrink: 0,
               boxShadow: showUser ? `0 0 0 3px ${currentRole.color}30` : 'none', transition: 'box-shadow 0.15s',
             }}>{currentRole.abbr}</button>
-            {showUser && <UserMenu role={role} onRoleChange={r => { setRole(r); setPage('overview') }} onClose={() => setShowUser(false)} />}
+            {showUser && <UserMenu access={access} role={role} onRoleChange={() => undefined} onSignOut={() => { void handleSignOut() }} onClose={() => setShowUser(false)} />}
           </div>
         </header>
 

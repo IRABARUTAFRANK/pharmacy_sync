@@ -209,6 +209,7 @@ export const NAV_ITEMS: NavItem[] = [
   // ── All roles ────────────────────────────────────────────────
   { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'inventory',   label: 'Inventory Dashboard',  icon: '📦', badge: 3, roles: ['owner', 'manager', 'pharmacist'] },
+  { id: 'receiving',   label: 'Receive Stock',        icon: '📥', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'barcode',     label: 'Barcode Manager',      icon: '▦',  roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'analytics',   label: 'Analytics',            icon: '📊', roles: ['owner', 'manager'] },
@@ -431,6 +432,7 @@ export const alertColors = (t: AlertSeverity) => {
 export const PAGE_LABELS: Record<string, string> = {
   overview:     'Dashboard Overview',
   inventory:    'Inventory Dashboard',
+  receiving:    'Receive Stock Delivery',
   barcode:      'Barcode Manager',
   sales:        'Sales & POS',
   analytics:    'Analytics & Forecasting',
