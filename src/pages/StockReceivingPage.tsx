@@ -1,62 +1,551 @@
-import { useMemo, useState, type CSSProperties } from "react"
-import { dbProductCategories, dbProductVariants, dbProducts, dbSuppliers } from "../data"
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { Btn, Card, SearchSelect, type ComboOption } from "../components"
+import { fmtRWF } from "../data"
+import {
+  loadReceivingReference,
+  receiveStockDelivery,
+  type DeliveryLine,
+  type DeliveryReceipt,
+  type ProductType,
+  type ReceivingReference,
+} from "../lib/receiving"
 
 type Packaging = "simple" | "cartons"
+type ProductMode = "known" | "new"
+
+interface LineForm {
+  key: string
+  mode: ProductMode
+  productId: string
+  variantId: string
+  productName: string
+  productType: ProductType
+  genericName: string
+  dosage: string
+  form: string
+  unit: string
+  categoryName: string
+  manufacturer: string
+  batchNumber: string
+  expiryDate: string
+  costPrice: string
+  sellingPrice: string
+  packaging: Packaging
+  cartons: string
+  packs: string
+  piecesPerPack: string
+}
+
+let lineSequence = 0
+const blankLine = (): LineForm => ({
+  key: `line-${(lineSequence += 1)}`,
+  mode: "known", productId: "", variantId: "",
+  productName: "", productType: "medicine", genericName: "", dosage: "", form: "", unit: "",
+  categoryName: "", manufacturer: "", batchNumber: "", expiryDate: "",
+  costPrice: "", sellingPrice: "", packaging: "simple", cartons: "1", packs: "1", piecesPerPack: "1",
+})
+
+const toInt = (value: string, fallback = 0) => {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+const toMoney = (value: string) => {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
+// Mirrors the RPC's own arithmetic: cartons × packs × pieces, or packs × pieces.
+// quantity_received is never sent from the client — the server derives it.
+const piecesFor = (line: LineForm) => {
+  const packs = Math.max(toInt(line.packs), 0)
+  const pieces = Math.max(toInt(line.piecesPerPack), 0)
+  const cartons = Math.max(toInt(line.cartons), 0)
+  return line.packaging === "cartons" ? cartons * packs * pieces : packs * pieces
+}
+const boxBarcodesFor = (line: LineForm) => (line.packaging === "cartons" ? Math.max(toInt(line.cartons), 0) : 0)
+const packBarcodesFor = (line: LineForm) => {
+  const packs = Math.max(toInt(line.packs), 0)
+  return line.packaging === "cartons" ? Math.max(toInt(line.cartons), 0) * packs : packs
+}
+
+const variantLabel = (variant: { dosage: string | null; form: string | null; unit: string | null }) =>
+  [variant.dosage, variant.form, variant.unit].filter(Boolean).join(" · ") || "Standard (no dosage or form recorded)"
+
+const inputStyle: CSSProperties = {
+  width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7,
+  font: "inherit", boxSizing: "border-box", background: "#fff", color: "var(--ink)",
+}
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
+  return <div>
+    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", marginBottom: 4 }}>{label}</div>
+    {children}
+    {hint && <div style={{ marginTop: 3, fontSize: 10, color: "var(--ink-muted)" }}>{hint}</div>}
+  </div>
+}
+
+function Toggle<T extends string>({ value, options, onChange }: { value: T; options: Array<{ id: T; label: string }>; onChange: (next: T) => void }) {
+  return <div style={{ display: "inline-flex", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 3, gap: 3 }}>
+    {options.map(option => <button
+      key={option.id}
+      type="button"
+      onClick={() => onChange(option.id)}
+      style={{
+        padding: "6px 13px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: "inherit",
+        fontSize: 12, fontWeight: value === option.id ? 700 : 500,
+        background: value === option.id ? "#fff" : "transparent",
+        color: value === option.id ? "var(--primary)" : "var(--ink-muted)",
+        boxShadow: value === option.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+        transition: "all 0.15s",
+      }}
+    >{option.label}</button>)}
+  </div>
+}
 
 export default function StockReceivingPage() {
-  const [supplierId, setSupplierId] = useState(dbSuppliers[0]?.id ?? "")
-  const [category, setCategory] = useState(dbProductCategories[0]?.name ?? "")
-  const [newCategory, setNewCategory] = useState("")
-  const [manufacturer, setManufacturer] = useState("")
-  const [costPrice, setCostPrice] = useState("")
-  const [sellingPrice, setSellingPrice] = useState("")
-  const [variantId, setVariantId] = useState(dbProductVariants[0]?.id ?? "")
-  const [batch, setBatch] = useState("")
-  const [expiry, setExpiry] = useState("")
-  const [packaging, setPackaging] = useState<Packaging>("cartons")
-  const [cartons, setCartons] = useState(2)
-  const [packs, setPacks] = useState(10)
-  const [pieces, setPieces] = useState(10)
-  const [saved, setSaved] = useState(false)
-  const variant = dbProductVariants.find(item => item.id === variantId)
-  const product = dbProducts.find(item => item.id === variant?.product_id)
-  const totalPieces = packaging === "cartons" ? cartons * packs * pieces : packs * pieces
-  const preview = useMemo(() => {
-    const prefix = "PENDING"
-    return packaging === "cartons"
-      ? Array.from({ length: cartons }, (_, carton) => ({ carton: `PS-${prefix}-C${String(carton + 1).padStart(2, "0")}`, packs: Array.from({ length: packs }, (_, pack) => `PS-${prefix}-C${String(carton + 1).padStart(2, "0")}-P${String(pack + 1).padStart(2, "0")}`) }))
-      : [{ carton: "", packs: Array.from({ length: packs }, (_, pack) => `PS-${prefix}-P${String(pack + 1).padStart(3, "0")}`) }]
-  }, [cartons, packaging, packs])
-  const input: CSSProperties = { width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, font: "inherit", boxSizing: "border-box" }
+  const [reference, setReference] = useState<ReceivingReference>({ products: [], variants: [], categories: [], suppliers: [] })
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null)
 
-  return <div style={{ maxWidth: 1060, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 16 }}>
-    <section style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 20 }}>
-      <h1 style={{ margin: 0, fontSize: 18 }}>Receive delivery</h1><p style={{ color: "var(--ink-muted)", margin: "5px 0 18px", fontSize: 12 }}>One delivery code groups all supplier items; every product/batch becomes its own stock batch.</p>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <label>Supplier<select value={supplierId} onChange={e => setSupplierId(e.target.value)} style={input}>{dbSuppliers.map(s => <option key={s.id} value={s.id}>{s.supplier_name}</option>)}</select></label>
-        <div style={{ padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, background: "var(--bg)", fontSize: 12 }}><strong>Delivery code</strong><div style={{ color: "var(--primary)", fontFamily: "monospace", marginTop: 3 }}>Generated when received</div></div>
-        <label>Branch category<select value={category} onChange={e => setCategory(e.target.value)} style={input}>{dbProductCategories.map(c => <option key={c.id}>{c.name}</option>)}{newCategory && <option>{newCategory}</option>}</select></label>
-        <label>New private category<input value={newCategory} onChange={e => { setNewCategory(e.target.value); if (e.target.value) setCategory(e.target.value) }} placeholder="Add only for this branch" style={input} /></label>
-        <label>Product / variant<select value={variantId} onChange={e => setVariantId(e.target.value)} style={input}>{dbProductVariants.map(v => { const p = dbProducts.find(x => x.id === v.product_id); return <option key={v.id} value={v.id}>{p?.name} {v.dosage} — {v.form}</option> })}</select></label>
-        <label>Supplier batch number<input value={batch} onChange={e => setBatch(e.target.value)} placeholder="e.g. PARA-24K" style={input} /></label>
-        <label>Expiry date<input type="date" value={expiry} onChange={e => setExpiry(e.target.value)} style={input} /></label>
-        <label>Barcode setup<select value={packaging} onChange={e => setPackaging(e.target.value as Packaging)} style={input}><option value="simple">Simple packs only</option><option value="cartons">Cartons with inner packs</option></select></label>
-        <label>Manufacturer<input value={manufacturer} onChange={e => setManufacturer(e.target.value)} placeholder="For batch recalls" style={input} /></label>
-        <label>Cost price / piece<input type="number" min="0" value={costPrice} onChange={e => setCostPrice(e.target.value)} style={input} /></label>
-        <label>Selling price / piece<input type="number" min="0" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} style={input} /></label>
+  const [supplier, setSupplier] = useState("")
+  const [notes, setNotes] = useState("")
+  const [lines, setLines] = useState<LineForm[]>([blankLine()])
+  const [index, setIndex] = useState(0)
+  const [motion, setMotion] = useState("slide-in-right")
+  const timer = useRef<number | null>(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      setReference(await loadReceivingReference())
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : "Unable to load the product catalogue from the database.")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current) }, [])
+
+  const safeIndex = Math.min(index, lines.length - 1)
+  const line = lines[safeIndex]
+
+  const variantsFor = useCallback(
+    (productId: string) => reference.variants.filter(variant => variant.product_id === productId),
+    [reference.variants],
+  )
+
+  const problemsFor = useCallback((candidate: LineForm) => {
+    const problems: string[] = []
+    if (candidate.mode === "known") {
+      if (!candidate.productId) problems.push("a product")
+      else if (variantsFor(candidate.productId).length > 0 && !candidate.variantId) problems.push("a variant")
+    } else if (!candidate.productName.trim()) {
+      problems.push("a new product name")
+    }
+    if (!candidate.batchNumber.trim()) problems.push("a batch number")
+    if (!candidate.expiryDate) problems.push("an expiry date")
+    if (!(toMoney(candidate.costPrice) >= 0)) problems.push("a cost price")
+    if (!(toMoney(candidate.sellingPrice) >= 0)) problems.push("a selling price")
+    if (toInt(candidate.packs) < 1) problems.push("at least 1 pack")
+    if (toInt(candidate.piecesPerPack) < 1) problems.push("at least 1 piece per pack")
+    if (candidate.packaging === "cartons" && toInt(candidate.cartons) < 1) problems.push("at least 1 carton")
+    return problems
+  }, [variantsFor])
+
+  const buildLine = useCallback((candidate: LineForm): DeliveryLine => {
+    const packs = Math.max(toInt(candidate.packs, 1), 1)
+    const payload: DeliveryLine = {
+      batch_number: candidate.batchNumber.trim(),
+      expiry_date: candidate.expiryDate,
+      cost_price: toMoney(candidate.costPrice),
+      selling_price: toMoney(candidate.sellingPrice),
+      pieces_per_pack: Math.max(toInt(candidate.piecesPerPack, 1), 1),
+      manufacturer_name: candidate.manufacturer.trim() || undefined,
+      category_name: candidate.categoryName.trim() || undefined,
+    }
+    if (candidate.packaging === "cartons") {
+      payload.cartons = Math.max(toInt(candidate.cartons, 1), 1)
+      payload.packs_per_carton = packs
+    } else {
+      payload.packs = packs
+    }
+
+    const product = reference.products.find(item => item.id === candidate.productId)
+    if (candidate.mode === "known" && candidate.variantId) {
+      payload.product_variant_id = candidate.variantId
+    } else if (candidate.mode === "known" && product) {
+      // The catalogue product exists but has no variant rows yet. Sending it down the
+      // product_name path lets the RPC match the existing product by name and create
+      // its first variant — it never creates a duplicate product row.
+      payload.product_name = product.name
+      payload.product_type = product.product_type
+      payload.generic_name = product.generic_name ?? undefined
+    } else {
+      payload.product_name = candidate.productName.trim()
+      payload.product_type = candidate.productType
+      payload.generic_name = candidate.genericName.trim() || undefined
+      payload.dosage = candidate.dosage.trim() || undefined
+      payload.form = candidate.form.trim() || undefined
+      payload.unit = candidate.unit.trim() || undefined
+    }
+    return payload
+  }, [reference.products])
+
+  const updateLine = (patch: Partial<LineForm>) =>
+    setLines(current => current.map((item, position) => (position === safeIndex ? { ...item, ...patch } : item)))
+
+  function transition(direction: "next" | "prev", apply: () => void) {
+    if (timer.current) window.clearTimeout(timer.current)
+    setMotion(direction === "next" ? "slide-out-left" : "slide-out-right")
+    timer.current = window.setTimeout(() => {
+      apply()
+      setMotion(direction === "next" ? "slide-in-right" : "slide-in-left")
+    }, 150)
+  }
+
+  function goTo(target: number) {
+    if (target === safeIndex || target < 0 || target >= lines.length) return
+    transition(target > safeIndex ? "next" : "prev", () => setIndex(target))
+  }
+
+  function addLine() {
+    const nextIndex = lines.length
+    transition("next", () => { setLines(current => [...current, blankLine()]); setIndex(nextIndex) })
+  }
+
+  function removeLine() {
+    if (lines.length === 1) {
+      setLines([blankLine()])
+      setIndex(0)
+      return
+    }
+    const removed = safeIndex
+    const nextIndex = Math.max(0, Math.min(removed, lines.length - 2))
+    transition("prev", () => { setLines(current => current.filter((_, position) => position !== removed)); setIndex(nextIndex) })
+  }
+
+  function startNewDelivery() {
+    setReceipt(null)
+    setSubmitError(null)
+    setSupplier("")
+    setNotes("")
+    setLines([blankLine()])
+    setIndex(0)
+    setMotion("slide-in-right")
+  }
+
+  const productOptions = useMemo<ComboOption[]>(() => reference.products.map(product => ({
+    value: product.id,
+    label: product.name,
+    hint: [product.generic_name, product.product_type].filter(Boolean).join(" · "),
+  })), [reference.products])
+  const categoryOptions = useMemo<ComboOption[]>(
+    () => reference.categories.map(category => ({ value: category.name, label: category.name })),
+    [reference.categories],
+  )
+  const supplierOptions = useMemo<ComboOption[]>(
+    () => reference.suppliers.map(item => ({ value: item.supplier_name, label: item.supplier_name })),
+    [reference.suppliers],
+  )
+  const lineVariants = variantsFor(line.productId)
+  const variantOptions = useMemo<ComboOption[]>(
+    () => lineVariants.map(variant => ({ value: variant.id, label: variantLabel(variant) })),
+    [lineVariants],
+  )
+
+  const totals = useMemo(() => lines.reduce((sum, item) => ({
+    pieces: sum.pieces + piecesFor(item),
+    boxes: sum.boxes + boxBarcodesFor(item),
+    packs: sum.packs + packBarcodesFor(item),
+    cost: sum.cost + (Number.isFinite(toMoney(item.costPrice)) ? toMoney(item.costPrice) * piecesFor(item) : 0),
+  }), { pieces: 0, boxes: 0, packs: 0, cost: 0 }), [lines])
+
+  const lineProblems = lines.map(problemsFor)
+  const firstIncomplete = lineProblems.findIndex(problems => problems.length > 0)
+  const disabledReason = submitting
+    ? "Saving the delivery…"
+    : !supplier.trim()
+      ? "Enter the supplier for this delivery"
+      : firstIncomplete >= 0
+        ? `Product ${firstIncomplete + 1} still needs ${lineProblems[firstIncomplete].join(", ")}`
+        : null
+
+  async function submit() {
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const saved = await receiveStockDelivery(supplier.trim(), notes.trim(), lines.map(buildLine))
+      setReceipt(saved)
+      // Newly created products, variants, categories and the supplier should show up
+      // in the selectors straight away for the next delivery.
+      void loadReceivingReference().then(setReference).catch(() => undefined)
+    } catch (reason) {
+      // receive_stock_delivery() raises human-readable exceptions (role, branch status,
+      // missing fields). Surface them verbatim instead of a generic message.
+      setSubmitError(reason instanceof Error ? reason.message : String(reason))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (receipt) {
+    return <div style={{ maxWidth: 620, margin: "40px auto" }}>
+      <Card style={{ textAlign: "center", padding: "34px 30px" }}>
+        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#dcfce7", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, margin: "0 auto 14px" }}>✓</div>
+        <h1 style={{ margin: 0, fontSize: 19, color: "var(--ink)" }}>Delivery received and barcodes generated</h1>
+        <p style={{ color: "var(--ink-muted)", fontSize: 12, margin: "8px 0 18px" }}>
+          The server created the delivery code below, one stock batch per product line, and the carton/pack barcode tree for each batch.
+        </p>
+        <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ink-muted)", fontWeight: 700 }}>Delivery code</div>
+          <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 18, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>{receipt.delivery_code}</div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 20 }}>
+          <Btn onClick={startNewDelivery}>Start a new delivery</Btn>
+        </div>
+      </Card>
+    </div>
+  }
+
+  return <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+    {loadError && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>
+      Could not load the product catalogue: {loadError}. Sign in with a provisioned pharmacy account and confirm its branch permissions, then try again.
+    </div>}
+    {submitError && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>
+      <strong>The delivery was not saved.</strong> {submitError}
+    </div>}
+
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 17 }}>Receive delivery</h1>
+          <p style={{ color: "var(--ink-muted)", margin: "4px 0 0", fontSize: 11 }}>
+            One supplier per delivery. Each product below becomes its own stock batch with its own barcode tree. Live data from Supabase — no demo records.
+          </p>
+        </div>
+        <Btn variant="secondary" small onClick={() => void refresh()}>{loading ? "Loading…" : "Refresh catalogue"}</Btn>
       </div>
-      <div style={{ marginTop: 16, padding: 14, borderRadius: 8, background: "var(--bg)" }}>
-        {packaging === "cartons" && <label style={{ display: "inline-block", width: "31%" }}>Cartons<input min="1" type="number" value={cartons} onChange={e => setCartons(+e.target.value)} style={input} /></label>}
-        <label style={{ display: "inline-block", width: packaging === "cartons" ? "31%" : "48%", marginLeft: packaging === "cartons" ? "3%" : 0 }}>Packs {packaging === "cartons" ? "per carton" : "received"}<input min="1" type="number" value={packs} onChange={e => setPacks(+e.target.value)} style={input} /></label>
-        <label style={{ display: "inline-block", width: packaging === "cartons" ? "31%" : "48%", marginLeft: "3%" }}>Pieces per pack<input min="1" type="number" value={pieces} onChange={e => setPieces(+e.target.value)} style={input} /></label>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 12 }}>
+        <Field label="Supplier" hint="Type a new name to register it for this branch — the server creates it on save.">
+          <SearchSelect
+            options={supplierOptions}
+            value={supplier}
+            onSelect={setSupplier}
+            allowFreeText
+            createLabel="New supplier"
+            placeholder="Search or type a supplier name…"
+            invalid={!supplier.trim()}
+            emptyMessage="No suppliers saved yet — type the name to create one."
+          />
+        </Field>
+        <Field label="Delivery notes (optional)">
+          <input value={notes} onChange={event => setNotes(event.target.value)} placeholder="Waybill reference, condition on arrival…" style={inputStyle} />
+        </Field>
       </div>
-      <button onClick={() => setSaved(true)} disabled={!batch || !expiry || !costPrice || !sellingPrice} style={{ marginTop: 18, padding: "10px 15px", border: 0, borderRadius: 8, color: "#fff", background: "var(--primary)", fontWeight: 700, cursor: "pointer" }}>Receive delivery & generate barcodes</button>
-      {saved && <p style={{ color: "#15803d", fontSize: 12 }}>Ready: {product?.name} will be filed under {category}; the server creates one delivery code for all lines and linked barcode records.</p>}
-    </section>
-    <aside style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 18 }}>
-      <h2 style={{ margin: 0, fontSize: 15 }}>Packaging & barcode plan</h2><p style={{ color: "var(--ink-muted)", fontSize: 12 }}>{totalPieces.toLocaleString()} individual pieces received. Pieces do not receive barcodes.</p>
-      {preview.map(item => <div key={item.carton || item.packs[0]} style={{ borderLeft: "3px solid var(--primary)", paddingLeft: 10, margin: "12px 0" }}>{item.carton && <div style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700 }}>Carton: {item.carton}</div>}<div style={{ fontFamily: "monospace", fontSize: 10, color: "var(--ink-muted)", marginTop: 4 }}>{item.packs.slice(0, 3).join(" · ")}{item.packs.length > 3 ? ` · +${item.packs.length - 3} packs` : ""}</div></div>)}
-      <div style={{ paddingTop: 12, borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--ink-muted)" }}>Parent carton barcode → child pack barcodes → unbarcoded pieces. A simple product skips the parent level.</div>
-    </aside>
+    </Card>
+
+    {/* Live summary — visible for the whole wizard, not just at the end. */}
+    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+      {[
+        { label: "Product lines", value: lines.length.toLocaleString() },
+        { label: "Total pieces", value: totals.pieces.toLocaleString() },
+        { label: "Carton barcodes", value: totals.boxes.toLocaleString() },
+        { label: "Pack barcodes", value: totals.packs.toLocaleString() },
+        { label: "Cost value", value: fmtRWF(totals.cost) },
+      ].map(stat => <div key={stat.label}>
+        <div style={{ fontSize: 17, fontWeight: 800, color: "var(--primary)" }}>{stat.value}</div>
+        <div style={{ fontSize: 10, color: "var(--ink-muted)", fontWeight: 600 }}>{stat.label}</div>
+      </div>)}
+      <div style={{ flex: 1, minWidth: 12 }} />
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        {lines.map((item, position) => {
+          const complete = lineProblems[position].length === 0
+          const active = position === safeIndex
+          return <button
+            key={item.key}
+            type="button"
+            onClick={() => goTo(position)}
+            title={complete ? "Complete" : `Needs ${lineProblems[position].join(", ")}`}
+            style={{
+              width: 28, height: 28, borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+              fontSize: 11, fontWeight: 700, transition: "all 0.15s",
+              border: `1.5px solid ${active ? "var(--primary)" : complete ? "#86efac" : "#fcd34d"}`,
+              background: active ? "var(--primary)" : complete ? "#f0fdf4" : "#fffbeb",
+              color: active ? "#fff" : complete ? "#16a34a" : "#d97706",
+            }}
+          >{position + 1}</button>
+        })}
+      </div>
+    </div>
+
+    {/* Slides — one product line at a time. overflow-x clip (not hidden) keeps the
+        translateX animation from causing a horizontal scrollbar while still letting
+        the combobox dropdowns overflow the card vertically. */}
+    <div style={{ overflowX: "clip" }}>
+      <div style={{ animation: `${motion} ${motion.startsWith("slide-out") ? 150 : 220}ms ease both` }}>
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 14 }}>Product {safeIndex + 1} of {lines.length}</h2>
+              <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>
+                {piecesFor(line).toLocaleString()} pieces · {boxBarcodesFor(line)} carton barcode{boxBarcodesFor(line) === 1 ? "" : "s"} · {packBarcodesFor(line)} pack barcode{packBarcodesFor(line) === 1 ? "" : "s"}. Individual pieces never get a barcode.
+              </p>
+            </div>
+            <Toggle
+              value={line.mode}
+              onChange={mode => updateLine({ mode })}
+              options={[{ id: "known" as ProductMode, label: "Known product" }, { id: "new" as ProductMode, label: "New product" }]}
+            />
+          </div>
+
+          {line.mode === "known" ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <Field label="Product" hint={loading ? "Loading the catalogue…" : `${reference.products.length} products in the shared catalogue`}>
+              <SearchSelect
+                options={productOptions}
+                value={line.productId}
+                onSelect={productId => updateLine({ productId, variantId: "" })}
+                placeholder="Search by product or generic name…"
+                invalid={!line.productId}
+                emptyMessage="No product matches — switch to “New product” to add it."
+              />
+            </Field>
+            <Field
+              label="Variant"
+              hint={!line.productId
+                ? "Choose a product first."
+                : lineVariants.length === 0
+                  ? "None recorded — the server creates this product's first variant on save."
+                  : `${lineVariants.length} variant${lineVariants.length === 1 ? "" : "s"} for this product`}
+            >
+              <SearchSelect
+                options={variantOptions}
+                value={line.variantId}
+                onSelect={variantId => updateLine({ variantId })}
+                disabled={!line.productId || lineVariants.length === 0}
+                placeholder={!line.productId ? "Select a product first" : lineVariants.length === 0 ? "None" : "Search dosage, form or unit…"}
+                invalid={!!line.productId && lineVariants.length > 0 && !line.variantId}
+                emptyMessage="No variant matches that search."
+              />
+            </Field>
+          </div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            <Field label="Product name">
+              <input value={line.productName} onChange={event => updateLine({ productName: event.target.value })} placeholder="e.g. Amoxicillin" style={{ ...inputStyle, borderColor: line.productName.trim() ? "var(--border)" : "#fca5a5" }} />
+            </Field>
+            <Field label="Product type">
+              <select value={line.productType} onChange={event => updateLine({ productType: event.target.value as ProductType })} style={inputStyle}>
+                <option value="medicine">Medicine</option>
+                <option value="supply">Supply</option>
+                <option value="other">Other</option>
+              </select>
+            </Field>
+            <Field label="Generic name (optional)">
+              <input value={line.genericName} onChange={event => updateLine({ genericName: event.target.value })} style={inputStyle} />
+            </Field>
+            <Field label="Dosage (optional)">
+              <input value={line.dosage} onChange={event => updateLine({ dosage: event.target.value })} placeholder="e.g. 500mg" style={inputStyle} />
+            </Field>
+            <Field label="Form (optional)">
+              <input value={line.form} onChange={event => updateLine({ form: event.target.value })} placeholder="e.g. Tablet" style={inputStyle} />
+            </Field>
+            <Field label="Unit (optional)">
+              <input value={line.unit} onChange={event => updateLine({ unit: event.target.value })} placeholder="e.g. Blister" style={inputStyle} />
+            </Field>
+          </div>}
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
+            <Field label="Branch category (optional)" hint="Private to this branch. Type a new name to create it.">
+              <SearchSelect
+                options={categoryOptions}
+                value={line.categoryName}
+                onSelect={categoryName => updateLine({ categoryName })}
+                allowFreeText
+                createLabel="New category"
+                placeholder="Search or type a category…"
+                emptyMessage="No categories yet — type a name to create the first one."
+              />
+            </Field>
+            <Field label="Manufacturer (optional)" hint="Used to trace batch recalls.">
+              <input value={line.manufacturer} onChange={event => updateLine({ manufacturer: event.target.value })} style={inputStyle} />
+            </Field>
+            <Field label="Manufacturer batch number">
+              <input value={line.batchNumber} onChange={event => updateLine({ batchNumber: event.target.value })} placeholder="e.g. PARA-24K" style={{ ...inputStyle, borderColor: line.batchNumber.trim() ? "var(--border)" : "#fca5a5" }} />
+            </Field>
+            <Field label="Expiry date">
+              <input type="date" value={line.expiryDate} onChange={event => updateLine({ expiryDate: event.target.value })} style={{ ...inputStyle, borderColor: line.expiryDate ? "var(--border)" : "#fca5a5" }} />
+            </Field>
+            <Field label="Cost price / piece">
+              <input type="number" min="0" step="0.01" value={line.costPrice} onChange={event => updateLine({ costPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.costPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
+            </Field>
+            <Field label="Selling price / piece">
+              <input type="number" min="0" step="0.01" value={line.sellingPrice} onChange={event => updateLine({ sellingPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.sellingPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
+            </Field>
+          </div>
+
+          <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>Packaging</div>
+                <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>Quantity received is calculated by the server from these numbers.</div>
+              </div>
+              <Toggle
+                value={line.packaging}
+                onChange={packaging => updateLine({ packaging })}
+                options={[{ id: "simple" as Packaging, label: "Simple packs" }, { id: "cartons" as Packaging, label: "Cartons with inner packs" }]}
+              />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: line.packaging === "cartons" ? "repeat(3, 1fr)" : "repeat(2, 1fr)", gap: 12 }}>
+              {line.packaging === "cartons" && <Field label="Cartons received">
+                <input type="number" min="1" value={line.cartons} onChange={event => updateLine({ cartons: event.target.value })} style={inputStyle} />
+              </Field>}
+              <Field label={line.packaging === "cartons" ? "Packs per carton" : "Packs received"}>
+                <input type="number" min="1" value={line.packs} onChange={event => updateLine({ packs: event.target.value })} style={inputStyle} />
+              </Field>
+              <Field label="Pieces per pack">
+                <input type="number" min="1" value={line.piecesPerPack} onChange={event => updateLine({ piecesPerPack: event.target.value })} style={inputStyle} />
+              </Field>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 11, color: "var(--ink-mid)" }}>
+              This line totals <strong style={{ color: "var(--primary)" }}>{piecesFor(line).toLocaleString()} pieces</strong>
+              {line.packaging === "cartons"
+                ? ` — one box barcode per carton, each holding ${Math.max(toInt(line.packs), 0)} child pack barcodes.`
+                : " — pack barcodes only, no parent carton level."}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+            <Btn variant="ghost" small onClick={() => goTo(safeIndex - 1)} style={{ opacity: safeIndex === 0 ? 0.45 : 1 }}>← Previous</Btn>
+            <Btn variant="ghost" small onClick={() => goTo(safeIndex + 1)} style={{ opacity: safeIndex >= lines.length - 1 ? 0.45 : 1 }}>Next →</Btn>
+            <Btn variant="secondary" small onClick={addLine}>+ Add another product</Btn>
+            <div style={{ flex: 1 }} />
+            <Btn variant="danger" small onClick={removeLine}>{lines.length === 1 ? "Clear this product" : "Remove this product"}</Btn>
+          </div>
+        </Card>
+      </div>
+    </div>
+
+    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 220, fontSize: 11, color: disabledReason ? "#b45309" : "var(--ink-muted)" }}>
+        {disabledReason ?? `Ready to submit ${lines.length} product line${lines.length === 1 ? "" : "s"} for ${supplier.trim()} as one delivery. The server generates the delivery code and every carton/pack barcode.`}
+      </div>
+      <button
+        type="button"
+        onClick={() => void submit()}
+        disabled={!!disabledReason}
+        style={{
+          padding: "13px 26px", borderRadius: 10, border: "none", fontFamily: "inherit",
+          fontSize: 14, fontWeight: 800, letterSpacing: "0.01em",
+          color: "#fff", background: disabledReason ? "#9ca3af" : "#16a34a",
+          cursor: disabledReason ? "not-allowed" : "pointer",
+          boxShadow: disabledReason ? "none" : "0 6px 18px rgba(22,163,74,0.32)",
+          transition: "all 0.15s",
+        }}
+      >{submitting ? "Generating…" : "▮▯▮ Generate Barcodes"}</button>
+    </div>
   </div>
 }

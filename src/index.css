@@ -52,3 +52,33 @@ input:focus, select:focus { box-shadow: 0 0 0 3px var(--primary-light); }
 /* Remove outline for mouse users, keep for keyboard */
 button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 button:focus:not(:focus-visible) { outline: none; }
+
+/* Wizard slide transitions (stock receiving). No animation library is used
+   anywhere in this app — plain CSS keyframes only. */
+@keyframes slide-out-left  { from { opacity: 1; transform: none; }                 to { opacity: 0; transform: translateX(-30px); } }
+@keyframes slide-out-right { from { opacity: 1; transform: none; }                 to { opacity: 0; transform: translateX(30px); } }
+@keyframes slide-in-right  { from { opacity: 0; transform: translateX(30px); }      to { opacity: 1; transform: none; } }
+@keyframes slide-in-left   { from { opacity: 0; transform: translateX(-30px); }     to { opacity: 1; transform: none; } }
+
+/* Public landing page + branch sign-in (BranchAccessPage). Same rule applies:
+   plain CSS keyframes only, no animation library. */
+@keyframes psync-rise  { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes psync-fade  { from { opacity: 0; }                              to { opacity: 1; } }
+@keyframes psync-float { 0%, 100% { transform: translateY(0); }            50% { transform: translateY(-9px); } }
+@keyframes psync-pulse { 0%, 100% { opacity: 1; transform: scale(1); }     50% { opacity: .35; transform: scale(.72); } }
+@keyframes psync-grow  { from { transform: scaleX(0); }                    to { transform: scaleX(1); } }
+@keyframes psync-shake { 10%, 90% { transform: translateX(-2px); } 30%, 70% { transform: translateX(4px); } 50% { transform: translateX(-4px); } }
+@keyframes psync-spin  { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes slide-out-left  { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes slide-out-right { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes slide-in-right  { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes slide-in-left   { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes psync-rise      { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes psync-float     { from { transform: none; } to { transform: none; } }
+  @keyframes psync-pulse     { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes psync-grow      { from { transform: none; } to { transform: none; } }
+  @keyframes psync-shake     { from { transform: none; } to { transform: none; } }
+  @keyframes psync-spin      { from { transform: none; } to { transform: none; } }
+}

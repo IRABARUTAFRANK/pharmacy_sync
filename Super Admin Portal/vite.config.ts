@@ -32,13 +32,16 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
+      // Falls back to 8444, not 8443: the main pharmacy_sync app already
+      // defaults to 8443, and both apps need to run at once (this portal
+      // is linked to from the main app's home page).
+      port: parseInt(process.env.PORT || '8444'),
       strictPort: true,
       watch: { ignored: ['**/.figma/**'] },
     },
     preview: {
       host: '0.0.0.0',
-      port: parseInt(process.env.PORT || '8443'),
+      port: parseInt(process.env.PORT || '8444'),
     },
   }
 })

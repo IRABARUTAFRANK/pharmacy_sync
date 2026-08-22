@@ -82,13 +82,57 @@ insert into public.stock_batches (id, product_variant_id, branch_id, supplier_id
   ('80000000-0000-4000-8000-000000000005', '50000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000003', 'SafeGuard', 'DEV-DEL-003', (select id from public.users where email = 'dev.owner@pharmsync.local'), 'MSK-DEV-005', current_date + 365, 120, 180, 500, now() - interval '1 day')
 on conflict (id) do update set expiry_date = excluded.expiry_date, cost_price = excluded.cost_price, selling_price = excluded.selling_price, quantity_received = excluded.quantity_received, received_at = excluded.received_at;
 
+-- Box (parent carton) rows. quantity_available on a box is always 1 -- it
+-- means "this carton exists", not a stock count; the real stock count comes
+-- from the pack (child) rows below. Metformin's child_count was corrected
+-- from 4 to 5 so quantity_received (35) divides evenly into whole packs.
 insert into public.barcodes (id, stock_batch_id, parent_barcode_id, barcode_type, code, code_source, child_count, pieces_per_pack, quantity_available, status) values
-  ('90000000-0000-4000-8000-000000000001', '80000000-0000-4000-8000-000000000001', null, 'box', 'DEV-AMX-001-BOX', 'generated', 12, null, 96, 'active'),
-  ('90000000-0000-4000-8000-000000000002', '80000000-0000-4000-8000-000000000002', null, 'box', 'DEV-PAR-002-BOX', 'generated', 20, null, 200, 'active'),
-  ('90000000-0000-4000-8000-000000000003', '80000000-0000-4000-8000-000000000003', null, 'box', 'DEV-MET-003-BOX', 'generated', 4, null, 35, 'active'),
-  ('90000000-0000-4000-8000-000000000004', '80000000-0000-4000-8000-000000000004', null, 'box', 'DEV-VIT-004-BOX', 'generated', 6, null, 0, 'sold_out'),
-  ('90000000-0000-4000-8000-000000000005', '80000000-0000-4000-8000-000000000005', null, 'box', 'DEV-MSK-005-BOX', 'generated', 10, null, 500, 'active')
-on conflict (id) do update set quantity_available = excluded.quantity_available, status = excluded.status;
+  ('90000000-0000-4000-8000-000000000001', '80000000-0000-4000-8000-000000000001', null, 'box', 'DEV-AMX-001-BOX', 'generated', 12, null, 1, 'active'),
+  ('90000000-0000-4000-8000-000000000002', '80000000-0000-4000-8000-000000000002', null, 'box', 'DEV-PAR-002-BOX', 'generated', 20, null, 1, 'active'),
+  ('90000000-0000-4000-8000-000000000003', '80000000-0000-4000-8000-000000000003', null, 'box', 'DEV-MET-003-BOX', 'generated', 5, null, 1, 'active'),
+  ('90000000-0000-4000-8000-000000000004', '80000000-0000-4000-8000-000000000004', null, 'box', 'DEV-VIT-004-BOX', 'generated', 6, null, 1, 'sold_out'),
+  ('90000000-0000-4000-8000-000000000005', '80000000-0000-4000-8000-000000000005', null, 'box', 'DEV-MSK-005-BOX', 'generated', 10, null, 1, 'active')
+on conflict (id) do update set child_count = excluded.child_count, quantity_available = excluded.quantity_available, status = excluded.status;
+
+-- Pack (child) rows: one barcode per physical pack, each linked back to its
+-- box, matching what receive_stock_delivery() actually generates. Rebuilt on
+-- every run (delete-then-insert) since these seed pack IDs aren't referenced
+-- anywhere else -- a fresh gen_random_uuid() each run is fine.
+delete from public.barcodes where parent_barcode_id in (
+  '90000000-0000-4000-8000-000000000001',
+  '90000000-0000-4000-8000-000000000002',
+  '90000000-0000-4000-8000-000000000003',
+  '90000000-0000-4000-8000-000000000004',
+  '90000000-0000-4000-8000-000000000005'
+);
+
+do $$
+declare
+  box record;
+  n integer;
+begin
+  for box in
+    select * from (values
+      ('90000000-0000-4000-8000-000000000001'::uuid, '80000000-0000-4000-8000-000000000001'::uuid, 'DEV-AMX-001', 12, 10, 10),
+      ('90000000-0000-4000-8000-000000000002'::uuid, '80000000-0000-4000-8000-000000000002'::uuid, 'DEV-PAR-002', 20, 10, 20),
+      ('90000000-0000-4000-8000-000000000003'::uuid, '80000000-0000-4000-8000-000000000003'::uuid, 'DEV-MET-003',  5,  7,  5),
+      ('90000000-0000-4000-8000-000000000004'::uuid, '80000000-0000-4000-8000-000000000004'::uuid, 'DEV-VIT-004',  6, 10,  0),
+      ('90000000-0000-4000-8000-000000000005'::uuid, '80000000-0000-4000-8000-000000000005'::uuid, 'DEV-MSK-005', 10, 50, 10)
+    ) as t(box_id, batch_id, code_prefix, pack_count, pieces_each, packs_remaining)
+  loop
+    for n in 1..box.pack_count loop
+      insert into public.barcodes
+        (id, stock_batch_id, parent_barcode_id, barcode_type, code, code_source, pieces_per_pack, quantity_available, status)
+      values (
+        gen_random_uuid(), box.batch_id, box.box_id, 'pack',
+        format('%s-P%s', box.code_prefix, lpad(n::text, 2, '0')), 'generated',
+        box.pieces_each,
+        case when n <= box.packs_remaining then 1 else 0 end,
+        case when n <= box.packs_remaining then 'active' else 'sold_out' end
+      );
+    end loop;
+  end loop;
+end $$;
 
 insert into public.discounts (id, name, discount_type, value, valid_from, valid_to) values
   ('a0000000-0000-4000-8000-000000000001', 'Development welcome discount', 'percentage', 5, current_date - 30, current_date + 180)

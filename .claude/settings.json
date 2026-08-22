@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill //IM msedge.exe //F)",
+      "Bash(curl -sf -o /dev/null -w \"dev server status=%{http_code}\\\\n\" http://localhost:8443)",
+      "Bash(node verify9.mjs)",
+      "Bash(taskkill //PID 30824 //T //F)",
+      "Bash(curl -so /dev/null -w \"%{http_code}\\\\n\" https://mcp.supabase.com/mcp)",
+      "WebFetch(domain:supabase.com)",
+      "Bash(node verify11.mjs)",
+      "WebFetch(domain:resend.com)",
+      "WebSearch"
+    ]
+  }
+}

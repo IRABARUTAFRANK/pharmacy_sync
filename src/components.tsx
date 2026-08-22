@@ -265,6 +265,137 @@ export function Btn({
   return <button onClick={onClick} style={{ ...base, ...variants[variant] }}>{children}</button>
 }
 
+// ─── Search Select (type-ahead combobox) ──────────────────────────────────────
+// A native <select> cannot do substring type-ahead, so every searchable selector
+// in the app uses this instead: a text input plus a client-side filtered list.
+//
+// Two modes:
+//  * allowFreeText = false — `value` is an option id. Typing only filters; only a
+//    click/Enter on an option commits.
+//  * allowFreeText = true  — `value` IS the text. Typing commits as you type, so a
+//    name that is not in the list (a brand new supplier or category) is kept.
+
+export interface ComboOption { value: string; label: string; hint?: string }
+
+export function SearchSelect({
+  options, value, onSelect, placeholder, allowFreeText = false, disabled = false,
+  emptyMessage = 'No matches', createLabel = 'Use new', maxVisible = 60, invalid = false,
+}: {
+  options: ComboOption[]
+  value: string
+  onSelect: (value: string) => void
+  placeholder?: string
+  allowFreeText?: boolean
+  disabled?: boolean
+  emptyMessage?: string
+  createLabel?: string
+  maxVisible?: number
+  invalid?: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const selected = options.find(o => o.value === value)
+  const display = open ? query : (selected?.label ?? (allowFreeText ? value : ''))
+  const needle = query.trim().toLowerCase()
+  const matched = needle ? options.filter(o => `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(needle)) : options
+  const filtered = matched.slice(0, maxVisible)
+  const showCreate = allowFreeText && needle.length > 0 && !options.some(o => o.label.trim().toLowerCase() === needle)
+
+  const commit = (next: string) => { onSelect(next); setQuery(''); setOpen(false) }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        value={display}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoComplete="off"
+        onFocus={() => { if (!disabled) { setQuery(''); setOpen(true) } }}
+        onBlur={() => setOpen(false)}
+        onChange={e => { setQuery(e.target.value); setOpen(true); if (allowFreeText) onSelect(e.target.value) }}
+        onKeyDown={e => {
+          if (e.key === 'Escape') { setOpen(false); e.currentTarget.blur(); return }
+          if (e.key === 'Enter' && open) {
+            e.preventDefault()
+            if (showCreate && filtered.length === 0) commit(query.trim())
+            else if (filtered[0]) commit(filtered[0].value)
+            else if (showCreate) commit(query.trim())
+          }
+        }}
+        style={{
+          width: '100%', padding: '9px 26px 9px 10px', borderRadius: 7, font: 'inherit',
+          boxSizing: 'border-box', background: disabled ? 'var(--bg)' : '#fff',
+          color: disabled ? 'var(--ink-muted)' : 'var(--ink)',
+          border: `1px solid ${invalid ? '#fca5a5' : open ? 'var(--primary)' : 'var(--border)'}`,
+          transition: 'border-color 0.15s',
+        }}
+      />
+      {!!value && !disabled && (
+        <button
+          type="button"
+          onMouseDown={e => e.preventDefault()}
+          onClick={() => commit('')}
+          title="Clear"
+          style={{
+            position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)',
+            border: 'none', background: 'none', cursor: 'pointer', color: 'var(--ink-faint)',
+            fontSize: 15, lineHeight: 1, padding: '0 3px', fontFamily: 'inherit',
+          }}
+        >×</button>
+      )}
+      {open && !disabled && (
+        <div
+          onMouseDown={e => e.preventDefault()}
+          style={{
+            position: 'absolute', left: 0, right: 0, top: 'calc(100% + 4px)', zIndex: 40,
+            background: '#fff', border: '1px solid var(--border)', borderRadius: 9,
+            boxShadow: '0 10px 30px rgba(0,0,0,0.10)', maxHeight: 240, overflowY: 'auto', padding: 4,
+          }}
+        >
+          {showCreate && (
+            <button
+              type="button"
+              onClick={() => commit(query.trim())}
+              style={{
+                width: '100%', textAlign: 'left', padding: '8px 9px', borderRadius: 6, border: 'none',
+                background: 'var(--primary-light)', color: 'var(--primary)', fontWeight: 700,
+                fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 3,
+              }}
+            >+ {createLabel}: “{query.trim()}”</button>
+          )}
+          {filtered.map(o => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => commit(o.value)}
+              style={{
+                width: '100%', textAlign: 'left', padding: '7px 9px', borderRadius: 6, border: 'none',
+                background: o.value === value ? 'var(--bg)' : 'transparent', cursor: 'pointer',
+                fontFamily: 'inherit', fontSize: 12, color: 'var(--ink)', display: 'block',
+                transition: 'background 0.12s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = o.value === value ? 'var(--bg)' : 'transparent' }}
+            >
+              <span style={{ fontWeight: 600 }}>{o.label}</span>
+              {o.hint && <span style={{ display: 'block', fontSize: 10, color: 'var(--ink-muted)', marginTop: 1 }}>{o.hint}</span>}
+            </button>
+          ))}
+          {filtered.length === 0 && !showCreate && (
+            <div style={{ padding: '10px 9px', fontSize: 11, color: 'var(--ink-muted)' }}>{emptyMessage}</div>
+          )}
+          {matched.length > filtered.length && (
+            <div style={{ padding: '6px 9px', fontSize: 10, color: 'var(--ink-faint)' }}>
+              +{matched.length - filtered.length} more — keep typing to narrow the list
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Column Picker ────────────────────────────────────────────────────────────
 // Renders a "Columns" toggle button + popover checklist.
 // Usage: maintain a Set<string> of visible column keys in the parent.

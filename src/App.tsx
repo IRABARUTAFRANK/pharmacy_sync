@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { NAV_ITEMS, alertsData, PAGE_LABELS, type Role } from './data'
 import LiveInventoryPage from './pages/LiveInventoryPage'
 import StockReceivingPage from './pages/StockReceivingPage'
+import BarcodeManagerPage from './pages/BarcodeManagerPage'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
@@ -199,7 +200,7 @@ export default function App() {
       case 'overview':      return <DatabaseBackedPage title="Dashboard" tables="sales · sale_items · stock_batches · notifications" />
       case 'inventory':     return <LiveInventoryPage />
       case 'receiving':     return <StockReceivingPage />
-      case 'barcode':       return <DatabaseBackedPage title="Barcode Manager" tables="barcodes · stock_batches" />
+      case 'barcode':       return <BarcodeManagerPage />
       case 'sales':         return <DatabaseBackedPage title="Sales & POS" tables="sales · sale_items · receipts" />
       case 'analytics':     return <DatabaseBackedPage title="Analytics" tables="sales · sale_items · sales_forecasts" />
       case 'alerts':        return <DatabaseBackedPage title="Alerts" tables="notifications · batch_recalls · stock_adjustments" />
@@ -381,6 +382,7 @@ export default function App() {
             fontWeight: 600, flexShrink: 0,
           }}>
             {access.branchName}
+            {access.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'monospace', fontSize: 11 }}>{access.branchCode}</span>}
           </div>
 
           {/* Offline indicator */}

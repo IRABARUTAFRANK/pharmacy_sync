@@ -57,7 +57,12 @@ export async function loadInventoryDataset(): Promise<InventoryDataset> {
     const category = categories.find(item => item.id === categoryLink?.category_id)
     const taxRate = taxRates.find(item => item.id === product?.tax_rate_id)
     const batchBarcodes = barcodes.filter(item => item.stock_batch_id === batch.id)
-    const quantityAvailable = batchBarcodes.reduce((total, item) => total + asNumber(item.quantity_available), 0)
+    // Stock is counted from leaf "pack" barcodes only (quantity_available * pieces_per_pack).
+    // A "box" row's quantity_available just means "this carton exists" (always 1) and must
+    // not be added on top, or every carton inflates the count by one extra unit.
+    const quantityAvailable = batchBarcodes
+      .filter(item => item.barcode_type === "pack")
+      .reduce((total, item) => total + asNumber(item.quantity_available) * asNumber(item.pieces_per_pack), 0)
     const barcodeStatus = batchBarcodes.find(item => item.barcode_type === "box")?.status ?? batchBarcodes[0]?.status ?? "active"
     const daysToExpiry = Math.ceil((new Date(batch.expiry_date).getTime() - today.getTime()) / 86_400_000)
     const minQuantity = asNumber(reorder?.min_quantity)
