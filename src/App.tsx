@@ -5,7 +5,41 @@ import StockReceivingPage from './pages/StockReceivingPage'
 import BarcodeManagerPage from './pages/BarcodeManagerPage'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
+import AdminPortal from './pages/AdminPortal'
+import BranchPortal from './pages/BranchPortal'
+import ResetPassword from './pages/ResetPassword'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
+
+// ─── Top-level hash router ──────────────────────────────────────────────────────
+// #admin and #branch are the super-admin console and pharmacy registration —
+// both used to live in a separately deployed app; they're now plain in-app
+// views reached by URL fragment, with no page reload and no second server.
+
+type HashRoute = 'home' | 'admin' | 'branch' | 'reset'
+
+function hashToRoute(hash: string): HashRoute {
+  // A "forgot password" email link lands back here with Supabase's own
+  // recovery tokens appended to the hash (#access_token=…&type=recovery&…),
+  // not one of our own routes — checked first since it never starts with
+  // "#admin"/"#branch" but must still take priority over falling through
+  // to "home".
+  if (hash.includes('type=recovery')) return 'reset'
+  // startsWith, not ===, so the emailed activation link (#branch?email=...)
+  // still routes to the branch portal instead of falling through to home.
+  if (hash === '#admin' || hash.startsWith('#admin?')) return 'admin'
+  if (hash === '#branch' || hash.startsWith('#branch?')) return 'branch'
+  return 'home'
+}
+
+function useHashRoute(): HashRoute {
+  const [route, setRoute] = useState<HashRoute>(() => hashToRoute(window.location.hash))
+  useEffect(() => {
+    const handler = () => setRoute(hashToRoute(window.location.hash))
+    window.addEventListener('hashchange', handler)
+    return () => window.removeEventListener('hashchange', handler)
+  }, [])
+  return route
+}
 
 // ─── Role Config ──────────────────────────────────────────────────────────────
 
@@ -145,6 +179,7 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const hashRoute = useHashRoute()
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
   const [accessLoading, setAccessLoading] = useState(true)
@@ -180,6 +215,10 @@ export default function App() {
     setPage('overview')
     setShowUser(false)
   }
+
+  if (hashRoute === 'admin') return <AdminPortal />
+  if (hashRoute === 'branch') return <BranchPortal />
+  if (hashRoute === 'reset') return <ResetPassword />
 
   if (accessLoading) {
     return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'Inter, sans-serif' }}>Loading workspace…</main>

@@ -69,6 +69,16 @@ export async function getPharmacyApplication(applicationId: string): Promise<Bra
   return row ? asRecord(row) : null
 }
 
+// Used by the emailed activation link (.../#branch?email=...), which has to
+// resolve an application from any device/browser — sessionStorage only
+// remembers the application id on the browser that submitted the form.
+export async function getPharmacyApplicationByEmail(email: string): Promise<BranchRecord | null> {
+  const { data, error } = await supabase.rpc("get_pharmacy_application_by_email", { p_email: email })
+  if (error) raise(error)
+  const row = (Array.isArray(data) ? data[0] : data) as ApplicationRow | undefined
+  return row ? asRecord(row) : null
+}
+
 export async function listPharmacyApplications(): Promise<BranchRecord[]> {
   const { data, error } = await supabase.rpc("admin_list_pharmacy_applications")
   if (error) raise(error)
@@ -88,14 +98,46 @@ export async function denyPharmacyApplication(applicationId: string, reason: str
   if (error) raise(error)
 }
 
+// Sends the activation email (link + 6-digit code) itself, right here, from
+// the admin's own already-authenticated browser — the applicant is not
+// expected to be online at approval time (they were told to close the tab
+// and wait), so nothing on their side can be relied on to trigger the send.
+// signInWithOtp only *requests* an OTP for the given address; it never
+// touches the admin's own session, which stays signed in throughout.
 export async function approvePharmacyApplication(applicationId: string): Promise<void> {
-  const { error } = await supabase.rpc("admin_approve_pharmacy_application", { p_application_id: applicationId })
+  const { data, error } = await supabase.rpc("admin_approve_pharmacy_application", { p_application_id: applicationId })
   if (error) raise(error)
+  const approved = Array.isArray(data) ? data[0] : data
+  if (approved?.email) await requestPharmacyOtp(approved.email)
 }
 
 export async function setBranchLock(branchId: string, locked: boolean): Promise<void> {
   const { error } = await supabase.rpc("admin_set_branch_lock", { p_branch_id: branchId, p_locked: locked })
   if (error) raise(error)
+}
+
+// Destructive — wipes the branch and everything it owns. The UI requires a
+// step-up re-verification (re-enter email, enter a fresh emailed OTP) right
+// before calling this; see the AdminPortal.tsx delete-branch modal.
+export async function deleteBranch(branchId: string): Promise<void> {
+  const { error } = await supabase.rpc("admin_delete_branch", { p_branch_id: branchId })
+  if (error) raise(error)
+}
+
+export interface PlatformStats { activeBranches: number; trackedSkus: number; cities: number }
+
+// Real counts for the marketing home page's trust-stat strip — see
+// public_platform_stats() in the schema. Aggregate numbers only, readable
+// before sign-in.
+export async function getPlatformStats(): Promise<PlatformStats> {
+  const { data, error } = await supabase.rpc("public_platform_stats")
+  if (error) raise(error)
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    activeBranches: row?.active_branches ?? 0,
+    trackedSkus: row?.tracked_skus ?? 0,
+    cities: row?.cities ?? 0,
+  }
 }
 
 export async function canRequestPharmacyOtp(email: string): Promise<boolean> {

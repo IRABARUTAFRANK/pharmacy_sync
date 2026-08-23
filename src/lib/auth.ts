@@ -18,60 +18,37 @@ export async function listBranchDirectory(): Promise<BranchDirectoryEntry[]> {
   return (data ?? []).map(branch => ({ id: branch.branch_id, name: branch.display_name }))
 }
 
-// Returning-branch-user sign-in (email + emailed OTP). The branch itself is
-// never picked in the UI: it is derived from the signed-in user's own
-// public.users.branch_id row, since a user belongs to exactly one branch.
-// shouldCreateUser is false here on purpose — an account must already exist
-// (created by activate_pharmacy_account() during the one-time onboarding
-// flow in Super Admin Portal); this path never creates a new auth user.
-export async function canRequestBranchOtp(email: string): Promise<boolean> {
-  const { data, error } = await supabase.rpc("can_request_pharmacy_otp", { p_email: email })
-  if (error) throw error
-  return Boolean(data)
-}
-
-export async function requestBranchOtp(email: string): Promise<void> {
-  const allowed = await canRequestBranchOtp(email)
-  if (!allowed) throw new Error("No active account was found for this email, or it has been locked. Contact the super admin.")
-  const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: false } })
-  if (error) throw error
-}
-
-export async function verifyBranchOtp(email: string, token: string): Promise<BranchAccess> {
-  const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" })
-  if (error) throw error
-  const access = await restoreBranchAccess()
-  if (!access) throw new Error("Signed in, but no branch profile is linked to this account yet.")
-  return access
-}
-
-export async function signInToBranch(email: string, password: string, selectedBranchId: string): Promise<BranchAccess> {
+// Returning-branch-user sign-in is email + password, not a per-login emailed
+// OTP: OTP only happens once, during the one-time account-activation flow in
+// pages/BranchPortal.tsx (see setBranchPassword() in lib/onboarding.ts, which
+// sets the password at the end of that flow while the OTP-verified session
+// is still live). The branch itself is never picked in the UI here either:
+// it is derived from the signed-in user's own public.users.branch_id row,
+// since a user belongs to exactly one branch.
+export async function signInToBranch(email: string, password: string): Promise<BranchAccess> {
   const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
   if (signInError) throw signInError
 
-  const { data: userData, error: userError } = await supabase.auth.getUser()
-  if (userError || !userData.user) {
-    await supabase.auth.signOut()
-    throw userError ?? new Error("Your sign-in session could not be verified.")
-  }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("users")
-    .select("id, branch_id, full_name, role, branches(name, branch_code)")
-    .eq("id", userData.user.id)
-    .single()
-
-  if (profileError || !profile) {
+  const access = await restoreBranchAccess()
+  if (!access) {
     await supabase.auth.signOut()
     throw new Error("This account has no active pharmacy profile. Ask an administrator to assign a branch.")
   }
-  if (profile.branch_id !== selectedBranchId) {
-    await supabase.auth.signOut()
-    throw new Error("This account is not assigned to the branch you selected.")
-  }
+  return access
+}
 
-  const branch = Array.isArray(profile.branches) ? profile.branches[0] : profile.branches
-  return { userId: profile.id, branchId: profile.branch_id, branchName: branch?.name ?? "Your branch", branchCode: branch?.branch_code ?? undefined, fullName: profile.full_name, role: profile.role as AppRole }
+export async function sendBranchPasswordReset(email: string, redirectTo: string): Promise<void> {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  if (error) throw error
+}
+
+// Shared by BranchPortal.tsx (setting a password for the first time, right
+// after OTP activation) and LoginView's "forgot password" completion step
+// (after the reset-email link lands back with a recovery session). Either
+// way, it just sets a password on whatever session is currently live.
+export async function updatePassword(password: string): Promise<void> {
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) throw error
 }
 
 export async function restoreBranchAccess(): Promise<BranchAccess | null> {

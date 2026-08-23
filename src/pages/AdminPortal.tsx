@@ -3,22 +3,29 @@ import {
   LayoutDashboard, CheckSquare, Building2, ShieldAlert, Ticket,
   Phone, Mail, MapPin, Clock, AlertTriangle, CheckCircle2, XCircle,
   Lock, Unlock, RefreshCw, ChevronRight, Eye, Send, Bell, Activity,
-  Users, TrendingUp, X, Check
+  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound,
 } from "lucide-react";
 import { getTickets, saveTickets, type BranchRecord, type BranchStatus, type TicketRecord } from "../lib/store";
 import {
   approvePharmacyApplication,
+  deleteBranch,
   denyPharmacyApplication,
   isSuperAdminSession,
   listPharmacyApplications,
   markPharmacyCalled,
   requestAdminOtp,
+  requestPharmacyOtp,
   setBranchLock,
   signOutAdmin,
   verifyAdminOtp,
 } from "../lib/onboarding";
 
 type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets";
+
+/** Clears the #admin hash, handing control back to App's router (the PharmSync home/dashboard). */
+function backToHome() {
+  window.location.hash = "";
+}
 
 // ── Small reusable pieces ─────────────────────────────────────────────────────
 
@@ -374,15 +381,39 @@ function Approvals({
 
 // ── Branches directory ────────────────────────────────────────────────────────
 
-function BranchDirectory({ branches }: { branches: BranchRecord[] }) {
+function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchRecord[]; adminEmail: string; onChange: () => void }) {
   const [filter, setFilter] = useState<BranchStatus | "all">("all");
   const [detail, setDetail] = useState<BranchRecord | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BranchRecord | null>(null);
 
   const shown = filter === "all" ? branches : branches.filter((b) => b.status === filter);
   const opts: (BranchStatus | "all")[] = ["all","pending","otp_sent","active","locked","denied"];
 
+  // A full in-page view, not a popup — the eye icon drills into it the same
+  // way clicking a row in any modern admin table does, with a plain CSS
+  // entrance animation (index.css's .animate-fade-up, shared with the
+  // marketing site) instead of a modal overlay.
+  if (detail) {
+    return (
+      <BranchDetailView
+        branch={detail}
+        onBack={() => setDetail(null)}
+        onDelete={() => { setDeleteTarget(detail); setDetail(null); }}
+      >
+        {deleteTarget && (
+          <DeleteBranchModal
+            branch={deleteTarget}
+            adminEmail={adminEmail}
+            onClose={() => setDeleteTarget(null)}
+            onDeleted={() => { setDeleteTarget(null); onChange(); }}
+          />
+        )}
+      </BranchDetailView>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-up">
       <div>
         <h2 className="text-xl font-bold text-slate-800">Branch Directory</h2>
         <p className="text-xs text-slate-400 mt-0.5">{branches.length} branches registered</p>
@@ -413,7 +444,7 @@ function BranchDirectory({ branches }: { branches: BranchRecord[] }) {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {shown.map((b) => (
-                <tr key={b.id} className="hover:bg-green-50/30 transition-colors">
+                <tr key={b.id} onClick={() => setDetail(b)} className="hover:bg-green-50/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3 font-mono text-slate-400">{b.applicationCode ?? b.id.slice(0, 8)}</td>
                   <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{b.pharmacyName}</td>
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{b.location.split(",")[0]}</td>
@@ -426,9 +457,9 @@ function BranchDirectory({ branches }: { branches: BranchRecord[] }) {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button onClick={() => setDetail(b)} className="text-green-600 hover:text-green-800 transition-colors">
+                    <span className="text-green-600">
                       <Eye className="w-3.5 h-3.5" />
-                    </button>
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -439,38 +470,231 @@ function BranchDirectory({ branches }: { branches: BranchRecord[] }) {
           )}
         </div>
       </div>
-
-      {detail && (
-        <Modal title={detail.pharmacyName} onClose={() => setDetail(null)}>
-          <div className="space-y-3 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: "Application ID", value: detail.applicationCode ?? detail.id, mono: true },
-                { label: "Status", value: <Badge status={detail.status} /> },
-                { label: "Phone", value: detail.phone, mono: true },
-                { label: "Email", value: detail.email, mono: true },
-                { label: "Location", value: detail.location },
-                { label: "Branch Code", value: detail.branchCode ?? "—", mono: true },
-                { label: "Activation Code", value: detail.activationCode ?? "—", mono: true },
-                { label: "Failed Logins", value: detail.failedLogins },
-              ].map((row, i) => (
-                <div key={i} className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-[10px] text-slate-400 font-mono uppercase tracking-wide mb-0.5">{row.label}</p>
-                  {typeof row.value === "string" || typeof row.value === "number"
-                    ? <p className={`text-slate-700 text-xs font-semibold ${row.mono ? "font-mono" : ""} break-all`}>{row.value}</p>
-                    : row.value}
-                </div>
-              ))}
-            </div>
-            {detail.status === "otp_sent" && (
-              <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
-                <p className="text-xs text-violet-700">A sign-in code was emailed directly to the applicant by Supabase Auth. It is never visible here.</p>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
     </div>
+  );
+}
+
+// Full-page branch detail — replaces the directory table in place (same nav
+// tab, same scroll container) with a smooth fade/slide-up entrance, instead
+// of interrupting the page with a popup.
+function BranchDetailView({
+  branch, onBack, onDelete, children,
+}: {
+  branch: BranchRecord; onBack: () => void; onDelete: () => void; children: React.ReactNode;
+}) {
+  const [resending, setResending] = useState(false);
+  const [resendResult, setResendResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function resend() {
+    setResending(true);
+    setResendResult(null);
+    try {
+      await requestPharmacyOtp(branch.email);
+      setResendResult({ ok: true, message: `Sent to ${branch.email}.` });
+    } catch (reason) {
+      setResendResult({ ok: false, message: reason instanceof Error ? reason.message : "Could not send the email." });
+    } finally {
+      setResending(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-up">
+      <button onClick={onBack}
+        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-700 transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back to branches
+      </button>
+
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-2xl font-bold text-slate-800">{branch.pharmacyName}</h2>
+            <Badge status={branch.status} />
+          </div>
+          <p className="text-xs text-slate-400 mt-1 font-mono">{branch.applicationCode ?? branch.id}</p>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: "Phone", value: branch.phone, mono: true, icon: <Phone className="w-3.5 h-3.5" /> },
+          { label: "Email", value: branch.email, mono: true, icon: <Mail className="w-3.5 h-3.5" /> },
+          { label: "Location", value: branch.location, icon: <MapPin className="w-3.5 h-3.5" /> },
+          { label: "Failed Logins", value: branch.failedLogins, icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+          { label: "Branch Code", value: branch.branchCode ?? "—", mono: true, icon: <Building2 className="w-3.5 h-3.5" /> },
+          { label: "Activation Code", value: branch.activationCode ?? "—", mono: true, icon: <KeyRound className="w-3.5 h-3.5" /> },
+        ].map((row, i) => (
+          <div key={i} className="bg-white rounded-xl border border-green-100 shadow-sm p-4"
+            style={{ animation: `fadeUp 0.4s cubic-bezier(.22,.68,0,1.2) both`, animationDelay: `${i * 0.04}s` }}>
+            <div className="flex items-center gap-1.5 text-slate-400 mb-2">
+              {row.icon}
+              <p className="text-[10px] font-mono uppercase tracking-wide">{row.label}</p>
+            </div>
+            <p className={`text-slate-700 text-sm font-semibold ${row.mono ? "font-mono" : ""} break-all`}>{row.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {branch.status === "otp_sent" && (
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
+          <p className="text-xs text-violet-700 mb-3">An activation link and 6-digit code were emailed directly to the applicant by Supabase Auth. Neither is ever visible here.</p>
+          <button onClick={() => void resend()} disabled={resending}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-violet-300 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-60">
+            {resending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+            {resending ? "Resending…" : "Resend activation email"}
+          </button>
+          {resendResult && (
+            <p className={`text-xs mt-2 ${resendResult.ok ? "text-violet-700" : "text-red-600 font-semibold"}`}>
+              {resendResult.ok ? "✓ " : "✕ "}{resendResult.message}
+            </p>
+          )}
+        </div>
+      )}
+      {branch.deniedReason && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <p className="text-xs font-semibold text-red-700 mb-0.5">Denial reason</p>
+          <p className="text-xs text-red-600">{branch.deniedReason}</p>
+        </div>
+      )}
+
+      {branch.branchId && (
+        <div className="bg-white rounded-xl border border-red-100 shadow-sm p-5">
+          <p className="text-sm font-bold text-slate-800">Danger zone</p>
+          <p className="text-xs text-slate-500 mt-1 mb-4">
+            Permanently deletes this branch and everything it owns. This cannot be undone.
+          </p>
+          <button
+            onClick={onDelete}
+            className="flex items-center justify-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 font-semibold py-2.5 px-5 rounded-lg text-xs transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" /> Delete this branch
+          </button>
+        </div>
+      )}
+
+      {children}
+    </div>
+  );
+}
+
+// Destructive step-up flow: deleting a branch wipes every row it owns
+// (admin_delete_branch in the schema), so it isn't gated by the admin's
+// existing session alone — they have to re-enter their email and a fresh
+// emailed OTP right here, immediately before the delete fires. The RPC
+// itself still re-checks assert_super_admin() regardless; this is a human
+// confirmation gate on top of that, not a substitute for it.
+function DeleteBranchModal({
+  branch, adminEmail, onClose, onDeleted,
+}: {
+  branch: BranchRecord; adminEmail: string; onClose: () => void; onDeleted: () => void;
+}) {
+  const [step, setStep] = useState<"warn" | "email" | "otp">("warn");
+  const [email, setEmail] = useState(adminEmail);
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function sendCode() {
+    if (!email.trim()) { setError("Enter your admin email."); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await requestAdminOtp(email.trim());
+      setStep("otp");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not send the code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmDelete() {
+    const token = otp.join("");
+    if (token.length < 6) { setError("Enter the complete 6-digit code."); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await verifyAdminOtp(email.trim(), token);
+      await deleteBranch(branch.branchId!);
+      onDeleted();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not delete this branch.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function setDigit(i: number, v: string) {
+    if (!/^[0-9]?$/.test(v)) return;
+    const next = [...otp]; next[i] = v; setOtp(next); setError("");
+    if (v && i < 5) document.getElementById(`del-otp-${i + 1}`)?.focus();
+  }
+
+  return (
+    <Modal title="Delete branch" onClose={onClose}>
+      {step === "warn" && (
+        <div className="space-y-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700">
+              This permanently deletes <span className="font-bold">{branch.pharmacyName}</span> and every row it
+              owns — stock, batches, barcodes, sales, staff accounts, tickets, everything. This cannot be undone.
+            </p>
+          </div>
+          <p className="text-xs text-slate-500">
+            To continue, you'll re-enter your admin email and a fresh emailed code — this isn't covered by just
+            being signed in.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+              Cancel
+            </button>
+            <button onClick={() => setStep("email")} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors">
+              <Trash2 className="w-3.5 h-3.5" /> Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === "email" && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">Re-enter your admin email to receive a verification code.</p>
+          <input
+            type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
+            placeholder="you@pharmsync.rw"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-red-400 focus:ring-1 focus:ring-red-200 transition-colors"
+          />
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button onClick={() => void sendCode()} disabled={busy}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
+            {busy ? "Sending…" : "Send verification code"}
+          </button>
+        </div>
+      )}
+
+      {step === "otp" && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">Enter the 6-digit code emailed to <strong>{email}</strong> to permanently delete this branch.</p>
+          <div className="flex gap-2 justify-between">
+            {otp.map((digit, i) => (
+              <input
+                key={i} id={`del-otp-${i}`} value={digit} maxLength={1} inputMode="numeric"
+                onChange={(e) => setDigit(i, e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Backspace" && !otp[i] && i > 0) document.getElementById(`del-otp-${i - 1}`)?.focus(); }}
+                className="w-10 h-12 text-center text-lg font-bold border border-slate-200 rounded-lg focus:border-red-400 focus:ring-1 focus:ring-red-200 transition-colors"
+              />
+            ))}
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          <button onClick={() => void confirmDelete()} disabled={busy}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {busy ? "Deleting…" : "Verify & permanently delete"}
+          </button>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -772,7 +996,12 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-emerald-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-green-100 shadow-sm p-7">
+      <div className="w-full max-w-sm">
+        <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors mb-4">
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to PharmSync
+        </a>
+      <div className="w-full bg-white rounded-2xl border border-green-100 shadow-sm p-7">
         <div className="w-11 h-11 bg-green-600 rounded-xl flex items-center justify-center mb-5 shadow-sm shadow-green-200">
           <ShieldAlert className="w-5 h-5 text-white" />
         </div>
@@ -816,6 +1045,7 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
               className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors">Use a different email</button>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -872,7 +1102,7 @@ export default function AdminPortal() {
   }
 
   if (!authChecked) {
-    return <div className="min-h-screen flex items-center justify-center bg-[var(--background)]"><RefreshCw className="w-5 h-5 text-green-500 animate-spin" /></div>;
+    return <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]"><RefreshCw className="w-5 h-5 text-green-500 animate-spin" /></div>;
   }
   if (!authed) {
     return <AdminAuthGate onAuthed={(email) => { setAuthed(true); setAdminEmail(email); }} />;
@@ -884,7 +1114,7 @@ export default function AdminPortal() {
   const badges: Partial<Record<NavId, number>> = { approvals: pending, security: locked, tickets: openTix };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[var(--background)]">
+    <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
       {sidebarOpen && (
         <div className="fixed inset-0 z-20 bg-black/30 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
@@ -955,6 +1185,9 @@ export default function AdminPortal() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors">
+              <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Back to PharmSync</span>
+            </a>
             <span className="font-mono text-[10px] text-slate-400 hidden sm:block">MVP v1.0</span>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -966,7 +1199,7 @@ export default function AdminPortal() {
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
           {nav === "approvals" && <Approvals branches={branches} onChange={refresh} />}
-          {nav === "branches"  && <BranchDirectory branches={branches} />}
+          {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
           {nav === "security"  && <Security branches={branches} onChange={refresh} />}
           {nav === "tickets"   && <TicketsView tickets={tickets} onChange={refresh} />}
         </main>

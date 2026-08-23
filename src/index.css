@@ -1,5 +1,133 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700;9..40,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Source+Sans+3:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
 @import 'tailwindcss';
+
+/* Public marketing home page (src/pages/MarketingHome.tsx) — fonts, keyframes
+   and utility classes carried over from the Figma "Home page design" export. */
+:root {
+  --font-display: 'Outfit', sans-serif;
+  --font-body:    'Source Sans 3', sans-serif;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-8px); }
+}
+@keyframes pulseRing {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+@keyframes countUp {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes gradientShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes dashDraw {
+  from { stroke-dashoffset: 300; }
+  to   { stroke-dashoffset: 0; }
+}
+
+.animate-fade-up     { animation: fadeUp 0.65s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-fade-in     { animation: fadeIn 0.55s ease both; }
+.animate-slide-left  { animation: slideLeft  0.65s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-slide-right { animation: slideRight 0.65s cubic-bezier(.22,.68,0,1.2) both; }
+.animate-float       { animation: float 4s ease-in-out infinite; }
+.animate-count-up    { animation: countUp 0.5s cubic-bezier(.22,.68,0,1.2) both; }
+
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-400 { animation-delay: 0.4s; }
+.delay-500 { animation-delay: 0.5s; }
+.delay-600 { animation-delay: 0.6s; }
+.delay-700 { animation-delay: 0.7s; }
+
+/* Reveal (scroll-triggered, toggled via JS in MarketingHome's useReveal hook) */
+.reveal, .reveal-left, .reveal-right {
+  opacity: 0;
+  transition: opacity 0.65s cubic-bezier(.22,.68,0,1.2), transform 0.65s cubic-bezier(.22,.68,0,1.2);
+}
+.reveal       { transform: translateY(28px); }
+.reveal-left  { transform: translateX(-32px); }
+.reveal-right { transform: translateX(32px); }
+.reveal.visible, .reveal-left.visible, .reveal-right.visible { opacity: 1; transform: none; }
+
+.feature-card {
+  transition: transform 0.3s cubic-bezier(.22,.68,0,1.2), box-shadow 0.3s ease;
+}
+.feature-card:hover {
+  transform: translateY(-6px) scale(1.01);
+  box-shadow: 0 24px 60px rgba(13,148,136,0.15), 0 8px 24px rgba(0,0,0,0.08);
+}
+
+.btn-cta {
+  background: linear-gradient(135deg, #1e5fa8, #1a4f8f, #0d6b7a, #1e5fa8);
+  background-size: 300% 300%;
+  animation: gradientShift 4s ease infinite;
+  transition: opacity 0.2s, transform 0.2s;
+}
+.btn-cta:hover { opacity: 0.93; transform: translateY(-1px); }
+
+.live-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+}
+.live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid #22c55e;
+  animation: pulseRing 1.4s ease-out infinite;
+}
+
+.img-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 30%, rgba(10,15,30,0.85) 100%);
+}
+.img-overlay-hero {
+  position: absolute; inset: 0;
+  background: linear-gradient(120deg, rgba(13,148,136,0.18) 0%, rgba(30,95,168,0.12) 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #0d9488, #1e5fa8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.chart-line {
+  stroke-dasharray: 300;
+  stroke-dashoffset: 300;
+  animation: dashDraw 2s ease forwards;
+  animation-delay: 0.8s;
+}
+
+.stat-glow { text-shadow: 0 0 30px rgba(13,148,136,0.4); }
 
 :root {
   --bg:            #f2faf3;

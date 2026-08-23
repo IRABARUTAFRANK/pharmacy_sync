@@ -1,7 +1,11 @@
 {
+  "title": "PharmSync",
   "description": "This modern Business Intelligence dashboard empowers users with interactive data visualizations, customizable metrics, and role-based insights for informed decision-making.",
   "robots": {
     "index": false
+  },
+  "icons": {
+    "icon": "/favicon.png"
   },
   "accessibility": {
     "addBypassLinks": false,
