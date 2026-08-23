@@ -70,6 +70,16 @@ button:focus:not(:focus-visible) { outline: none; }
 @keyframes psync-shake { 10%, 90% { transform: translateX(-2px); } 30%, 70% { transform: translateX(4px); } 50% { transform: translateX(-4px); } }
 @keyframes psync-spin  { to { transform: rotate(360deg); } }
 
+/* Printing a page (e.g. a barcode sheet) should show only that page's own
+   content, not the app shell around it, and must not be clipped to one
+   viewport-height screen the way the on-screen layout is. */
+@media print {
+  .app-chrome { display: none !important; }
+  .app-shell { display: block !important; height: auto !important; overflow: visible !important; }
+  .app-main { overflow: visible !important; padding: 0 !important; }
+  .no-print { display: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   @keyframes slide-out-left  { from { opacity: 1; } to { opacity: 1; } }
   @keyframes slide-out-right { from { opacity: 1; } to { opacity: 1; } }

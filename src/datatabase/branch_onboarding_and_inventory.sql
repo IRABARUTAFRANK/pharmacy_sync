@@ -378,14 +378,10 @@ begin
   select u.email into v_email from auth.users u where u.id = v_user;
   if v_email is null then raise exception 'Auth user email was not found'; end if;
 
-  select * into v_app
-  from public.branch_applications a
-  where lower(a.email) = lower(v_email)
-    and a.status = 'otp_sent'
-  order by a.submitted_at desc
-  limit 1;
-
-  if v_app.id is null then
+  -- Checked FIRST so this function is idempotent. verifyOtp() runs before this
+  -- RPC on the client, so any failure here leaves a live auth session with no
+  -- public.users row; re-running must heal that state rather than fail again.
+  if exists (select 1 from public.users u where u.id = v_user) then
     return query
       select b.id, b.branch_code::text, b.activation_code::text, b.name::text
       from public.users u
@@ -394,34 +390,93 @@ begin
     return;
   end if;
 
+  select * into v_app
+  from public.branch_applications a
+  where lower(a.email) = lower(v_email)
+    and a.status = 'otp_sent'
+  order by a.submitted_at desc
+  limit 1;
+
+  if v_app.id is null then
+    raise exception 'No approved application is awaiting activation for %. Ask the super admin to approve the pharmacy first.', v_email;
+  end if;
+
+  if v_app.branch_id is null then
+    raise exception 'This application has no branch record yet. Ask the super admin to approve it again.';
+  end if;
+
   if exists (select 1 from public.users u where u.branch_id = v_app.branch_id) then
     raise exception 'This pharmacy already has an operator account';
   end if;
 
-  v_loc := upper(regexp_replace(split_part(v_app.location, ',', 1), '[^A-Za-z]', '', 'g'));
-  if length(v_loc) < 3 then v_loc := rpad(v_loc, 3, 'X'); else v_loc := left(v_loc, 3); end if;
-
-  select coalesce(max(substring(b.branch_code from '[0-9]+$')::integer), 0) + 1
-  into v_seq
+  -- Reuse identifiers from an earlier partial run instead of burning a new
+  -- sequence number and silently changing a code the branch may already hold.
+  select b.branch_code, b.activation_code
+  into v_code, v_act
   from public.branches b
-  where b.branch_code ~ '^PSYNC-[A-Z]{3}-[0-9]{4}$';
+  where b.id = v_app.branch_id;
 
-  v_code := format('PSYNC-%s-%s', v_loc, lpad(v_seq::text, 4, '0'));
-  v_act := 'ACT-';
-  for i in 1..6 loop
-    v_act := v_act || substr(v_chars, 1 + floor(random() * length(v_chars))::integer, 1);
-  end loop;
+  if v_code is null then
+    v_loc := upper(regexp_replace(split_part(v_app.location, ',', 1), '[^A-Za-z]', '', 'g'));
+    if length(coalesce(v_loc, '')) < 3 then v_loc := rpad(coalesce(v_loc, ''), 3, 'X'); else v_loc := left(v_loc, 3); end if;
+
+    select coalesce(max(substring(b.branch_code from '[0-9]+$')::integer), 0) + 1
+    into v_seq
+    from public.branches b
+    where b.branch_code ~ '^PSYNC-[A-Z]{3}-[0-9]{4}$';
+
+    v_code := format('PSYNC-%s-%s', v_loc, lpad(v_seq::text, 4, '0'));
+  end if;
+
+  if v_act is null then
+    v_act := 'ACT-';
+    for i in 1..6 loop
+      v_act := v_act || substr(v_chars, 1 + floor(random() * length(v_chars))::integer, 1);
+    end loop;
+  end if;
 
   update public.branches
   set status = 'active', branch_code = v_code, activation_code = v_act
   where id = v_app.branch_id;
 
   insert into public.users (id, branch_id, full_name, email, role, is_active)
-  values (v_user, v_app.branch_id, v_app.pharmacy_name, lower(v_app.email), 'owner', true);
+  values (v_user, v_app.branch_id, v_app.pharmacy_name, lower(v_email), 'owner', true);
 
+  -- Starter category set, seeded once at true first activation only (never
+  -- on the early-return path above for an already-active account) -- a
+  -- branch that later deletes one of these deliberately should not have it
+  -- silently reappear on a later sign-in. Same reasoning as branch_directory
+  -- just below: targeted by constraint name, not by column list, since
+  -- `branch_id` is this function's own RETURNS TABLE output parameter too.
+  insert into public.product_categories (branch_id, name, description) values
+    (v_app.branch_id, 'Allergy & Antihistamines', 'Allergy relief medicines'),
+    (v_app.branch_id, 'Antibiotics', 'Prescription antibacterial medicines'),
+    (v_app.branch_id, 'Antimalarials', 'Malaria prevention and treatment'),
+    (v_app.branch_id, 'Cardiovascular', 'Heart and blood pressure medicines'),
+    (v_app.branch_id, 'Contraceptives & Family Planning', 'Reproductive health products'),
+    (v_app.branch_id, 'Cough, Cold & Flu', 'Respiratory and cold symptom relief'),
+    (v_app.branch_id, 'Diabetes Care', 'Blood sugar management'),
+    (v_app.branch_id, 'Digestive Health', 'Antacids and gastrointestinal medicines'),
+    (v_app.branch_id, 'Eye & Ear Care', 'Ophthalmic and ENT products'),
+    (v_app.branch_id, 'First Aid & Wound Care', 'Bandages, antiseptics, and wound supplies'),
+    (v_app.branch_id, 'Herbal & Traditional Medicine', 'Non-conventional remedies'),
+    (v_app.branch_id, 'Maternal & Child Health', 'Products for mothers and infants'),
+    (v_app.branch_id, 'Medical Supplies', 'PPE, gloves, syringes, and general supplies'),
+    (v_app.branch_id, 'Pain Relief & Fever', 'Analgesics and antipyretics'),
+    (v_app.branch_id, 'Personal Care & Hygiene', 'General hygiene and personal care items'),
+    (v_app.branch_id, 'Skin Care & Dermatology', 'Topical and skin treatment products'),
+    (v_app.branch_id, 'Vitamins & Supplements', 'Nutritional support products')
+  on conflict on constraint product_categories_branch_id_name_key do nothing;
+
+  -- Targeted by constraint name, NOT by column list. `on conflict (branch_id)`
+  -- cannot be resolved here: the inference clause only accepts bare column
+  -- names, and `branch_id` is also this function's RETURNS TABLE output
+  -- parameter, so Postgres raises "column reference branch_id is ambiguous"
+  -- at runtime. Naming the constraint removes the inference step entirely.
   insert into public.branch_directory (branch_id, display_name)
   values (v_app.branch_id, v_app.pharmacy_name)
-  on conflict (branch_id) do update set display_name = excluded.display_name;
+  on conflict on constraint branch_directory_pkey
+  do update set display_name = excluded.display_name;
 
   update public.branch_applications set status = 'active' where id = v_app.id;
 
@@ -602,6 +657,28 @@ alter table public.barcodes add constraint barcodes_packing_shape check (
   (barcode_type = 'pack' and child_count is null and pieces_per_pack is not null and pieces_per_pack > 0)
 );
 
+-- A printed barcode is only ever this short opaque id -- never a description
+-- of the batch, delivery, or position. 8 characters over a 32-symbol alphabet
+-- (no 0/O/1/I, matching activate_pharmacy_account()'s activation codes) is
+-- ~1.1 trillion combinations, far beyond collision risk at pharmacy scale, so
+-- this deliberately doesn't retry on the (effectively never occurring) unique
+-- violation -- keeping it simple, per the request that prompted it.
+create or replace function public.generate_short_barcode_code()
+returns text
+language plpgsql
+as $$
+declare
+  v_chars text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  v_result text := '';
+  i integer;
+begin
+  for i in 1..8 loop
+    v_result := v_result || substr(v_chars, 1 + floor(random() * length(v_chars))::integer, 1);
+  end loop;
+  return v_result;
+end;
+$$;
+
 create or replace function public.receive_stock_delivery(p_supplier_name text, p_notes text, p_lines jsonb)
 returns table(delivery_id uuid, delivery_code text)
 language plpgsql
@@ -618,6 +695,8 @@ declare
   v_batch uuid;
   v_parent uuid;
   v_category uuid;
+  v_existing_category uuid;
+  v_existing_category_name text;
   v_product uuid;
   v_variant uuid;
   v_tax uuid;
@@ -718,9 +797,24 @@ begin
       on conflict (branch_id, name) do update set name = excluded.name
       returning id into v_category;
 
-      insert into public.branch_product_categorization (branch_id, product_id, category_id)
-      values (v_branch, v_product, v_category)
-      on conflict (branch_id, product_id) do update set category_id = excluded.category_id;
+      -- A product's category is a fact about the product at this branch, not
+      -- about this one delivery -- it is set once and locked, not silently
+      -- moved every time it happens to be received under a different name.
+      select bpc.category_id into v_existing_category
+      from public.branch_product_categorization bpc
+      where bpc.branch_id = v_branch and bpc.product_id = v_product;
+
+      if v_existing_category is null then
+        insert into public.branch_product_categorization (branch_id, product_id, category_id)
+        values (v_branch, v_product, v_category);
+      elsif v_existing_category <> v_category then
+        select pc.name into v_existing_category_name
+        from public.product_categories pc
+        where pc.id = v_existing_category;
+        raise exception 'This product does not belong to the category you chose. It belongs to "%" for this branch -- choose "%", or ask an admin to recategorize it first.',
+          v_existing_category_name, v_existing_category_name;
+      end if;
+      -- else: already filed under this same category, nothing to change.
     end if;
 
     insert into public.stock_batches (
@@ -737,29 +831,17 @@ begin
     if v_cartons > 0 then
       for i in 1..v_cartons loop
         insert into public.barcodes (stock_batch_id, barcode_type, code, code_source, child_count, quantity_available)
-        values (
-          v_batch, 'box',
-          format('%s-%s-C%s', v_code, substr(replace(v_batch::text,'-',''),1,6), lpad(i::text,2,'0')),
-          'generated', v_packs, 1
-        )
+        values (v_batch, 'box', public.generate_short_barcode_code(), 'generated', v_packs, 1)
         returning id into v_parent;
         for j in 1..v_packs loop
           insert into public.barcodes (stock_batch_id, parent_barcode_id, barcode_type, code, code_source, pieces_per_pack, quantity_available)
-          values (
-            v_batch, v_parent, 'pack',
-            format('%s-%s-C%s-P%s', v_code, substr(replace(v_batch::text,'-',''),1,6), lpad(i::text,2,'0'), lpad(j::text,2,'0')),
-            'generated', v_pieces, 1
-          );
+          values (v_batch, v_parent, 'pack', public.generate_short_barcode_code(), 'generated', v_pieces, 1);
         end loop;
       end loop;
     else
       for j in 1..v_packs loop
         insert into public.barcodes (stock_batch_id, barcode_type, code, code_source, pieces_per_pack, quantity_available)
-        values (
-          v_batch, 'pack',
-          format('%s-%s-P%s', v_code, substr(replace(v_batch::text,'-',''),1,6), lpad(j::text,3,'0')),
-          'generated', v_pieces, 1
-        );
+        values (v_batch, 'pack', public.generate_short_barcode_code(), 'generated', v_pieces, 1);
       end loop;
     end if;
   end loop;

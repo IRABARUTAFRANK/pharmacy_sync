@@ -58,6 +58,74 @@ export async function loadReceivingReference(): Promise<ReceivingReference> {
   }
 }
 
+export interface ProductDefaults {
+  categoryName: string | null
+  manufacturer: string | null
+  costPrice: number | null
+  sellingPrice: number | null
+  packaging: "simple" | "cartons"
+  cartons: number | null
+  packsPerCarton: number | null
+  piecesPerPack: number | null
+}
+
+const emptyDefaults: ProductDefaults = {
+  categoryName: null, manufacturer: null, costPrice: null, sellingPrice: null,
+  packaging: "simple", cartons: null, packsPerCarton: null, piecesPerPack: null,
+}
+
+// Convenience prefill for a known product the branch has received before —
+// never for supplier: a product isn't tied to one supplier, so that field is
+// deliberately left alone here. Category comes from branch_product_categorization
+// (the one locked category for this product at this branch, if it has been
+// filed already); everything else comes from the most recent stock_batches row
+// for this product (narrowed to variantId when one is already chosen, otherwise
+// any variant of the product) and the barcode shape that batch generated.
+export async function loadProductDefaults(productId: string, variantId: string): Promise<ProductDefaults> {
+  const result = { ...emptyDefaults }
+
+  const categorization = await supabase.from("branch_product_categorization").select("category_id").eq("product_id", productId).maybeSingle()
+  if (categorization.error) throw categorization.error
+  if (categorization.data?.category_id) {
+    const category = await supabase.from("product_categories").select("name").eq("id", categorization.data.category_id).maybeSingle()
+    if (category.error) throw category.error
+    result.categoryName = category.data?.name ?? null
+  }
+
+  let variantIds = variantId ? [variantId] : []
+  if (variantIds.length === 0) {
+    const variants = await supabase.from("product_variants").select("id").eq("product_id", productId)
+    if (variants.error) throw variants.error
+    variantIds = (variants.data ?? []).map(row => row.id)
+  }
+  if (variantIds.length === 0) return result
+
+  const batch = await supabase
+    .from("stock_batches")
+    .select("id, manufacturer_name, cost_price, selling_price")
+    .in("product_variant_id", variantIds)
+    .order("received_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (batch.error) throw batch.error
+  if (!batch.data) return result
+
+  result.manufacturer = batch.data.manufacturer_name
+  result.costPrice = batch.data.cost_price == null ? null : Number(batch.data.cost_price)
+  result.sellingPrice = batch.data.selling_price == null ? null : Number(batch.data.selling_price)
+
+  const barcodes = await supabase.from("barcodes").select("barcode_type, pieces_per_pack, child_count").eq("stock_batch_id", batch.data.id)
+  if (barcodes.error) throw barcodes.error
+  const boxes = (barcodes.data ?? []).filter(row => row.barcode_type === "box")
+  const packs = (barcodes.data ?? []).filter(row => row.barcode_type === "pack")
+
+  result.packaging = boxes.length > 0 ? "cartons" : "simple"
+  result.cartons = boxes.length > 0 ? boxes.length : null
+  result.packsPerCarton = boxes[0]?.child_count ?? null
+  result.piecesPerPack = packs[0]?.pieces_per_pack ?? null
+  return result
+}
+
 // One entry of the RPC's p_lines array. Field names mirror the jsonb keys that
 // receive_stock_delivery() reads — do not rename them.
 //

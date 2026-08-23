@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { requestBranchOtp, verifyBranchOtp, type BranchAccess } from "../lib/auth"
+import { errorMessage as errorText } from "../lib/supabase"
 
 // Pharmacy registration and the super-admin console live in a separately
 // deployed app (the "Super Admin Portal" project in this repo), so these are
@@ -18,8 +19,6 @@ const RESEND_SECONDS = 30
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && typeof window.matchMedia === "function"
   && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-
-const errorText = (reason: unknown, fallback: string) => (reason instanceof Error ? reason.message : fallback)
 
 // ─── Small shared pieces ──────────────────────────────────────────────────────
 

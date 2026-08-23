@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fmtRWF, alertColors, type AlertSeverity } from './data'
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
@@ -455,6 +455,59 @@ export function ColumnPicker<T extends string>({
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// ─── Center Alert (auto-dismissing popup) ──────────────────────────────────────
+// For things the user must actually notice right away (e.g. a rejected action),
+// as opposed to AlertRow's persistent list. Fades in, holds, fades out on its
+// own -- render it with `key={message}` so a new message restarts the timer
+// instead of the old instance just updating its text mid-animation. Does not
+// clear whatever state made it appear; that is the caller's concern, so a
+// slower-to-notice reader can still find the message after the popup is gone.
+export function CenterAlert({ message, tone = 'error', durationMs = 4000 }: {
+  message: string; tone?: 'error' | 'success'; durationMs?: number
+}) {
+  const [visible, setVisible] = useState(false)
+  const [mounted, setMounted] = useState(true)
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setVisible(true))
+    const hideTimer = window.setTimeout(() => setVisible(false), Math.max(durationMs - 250, 250))
+    const unmountTimer = window.setTimeout(() => setMounted(false), durationMs)
+    return () => { cancelAnimationFrame(raf); window.clearTimeout(hideTimer); window.clearTimeout(unmountTimer) }
+  }, [durationMs])
+
+  if (!mounted) return null
+
+  const palette = tone === 'error'
+    ? { bg: '#fef2f2', border: '#fca5a5', text: '#b91c1c', icon: '⚠' }
+    : { bg: '#f0fdf4', border: '#86efac', text: '#166534', icon: '✓' }
+
+  return (
+    <div
+      className="no-print"
+      onClick={() => setMounted(false)}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 20, background: visible ? 'rgba(13,31,18,0.28)' : 'rgba(13,31,18,0)',
+        transition: 'background 0.25s ease', pointerEvents: visible ? 'auto' : 'none', cursor: 'pointer',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: palette.bg, border: `1.5px solid ${palette.border}`, color: palette.text,
+          borderRadius: 14, padding: '20px 26px', maxWidth: 440, boxShadow: '0 20px 60px rgba(0,0,0,0.18)',
+          display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', cursor: 'default',
+          opacity: visible ? 1 : 0, transform: visible ? 'translateY(0) scale(1)' : 'translateY(-10px) scale(0.96)',
+          transition: 'opacity 0.25s ease, transform 0.25s ease',
+        }}
+      >
+        <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1 }}>{palette.icon}</span>
+        <div style={{ fontSize: 13, lineHeight: 1.5, fontWeight: 500 }}>{message}</div>
+      </div>
     </div>
   )
 }

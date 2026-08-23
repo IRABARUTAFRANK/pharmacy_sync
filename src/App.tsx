@@ -216,10 +216,10 @@ export default function App() {
   const sidebarW = sidebarOpen ? 240 : 60
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', fontFamily: 'Inter, sans-serif', fontSize: 13 }}>
+    <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', fontFamily: 'Inter, sans-serif', fontSize: 13 }}>
 
       {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
-      <aside style={{
+      <aside className="app-chrome" style={{
         width: sidebarW, minWidth: sidebarW, background: '#fff',
         borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         transition: 'width 0.22s, min-width 0.22s', overflow: 'hidden', flexShrink: 0, zIndex: 10,
@@ -329,7 +329,7 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Top Bar */}
-        <header style={{
+        <header className="app-chrome" style={{
           height: 60, background: '#fff', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0,
         }}>
@@ -431,6 +431,7 @@ export default function App() {
 
         {/* Page content */}
         <main
+          className="app-main"
           style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}
           onClick={closeMenus}
         >

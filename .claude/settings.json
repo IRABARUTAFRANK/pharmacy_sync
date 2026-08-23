@@ -9,7 +9,9 @@
       "WebFetch(domain:supabase.com)",
       "Bash(node verify11.mjs)",
       "WebFetch(domain:resend.com)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }

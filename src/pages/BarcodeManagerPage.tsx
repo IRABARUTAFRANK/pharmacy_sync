@@ -11,6 +11,7 @@ import {
   type BarcodeStatus,
   type BarcodeType,
 } from "../lib/barcodes"
+import { errorMessage } from "../lib/supabase"
 
 const statusMeta: Record<BarcodeStatus, { label: string; color: string; background: string }> = {
   active: { label: "Active", color: "#16a34a", background: "#d1fae5" },
@@ -48,7 +49,7 @@ export default function BarcodeManagerPage() {
     try {
       setDataset(await loadBarcodeDataset())
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to load barcode history from the database.")
+      setError(errorMessage(reason, "Unable to load barcode history from the database."))
     } finally {
       setLoading(false)
     }

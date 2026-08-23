@@ -77,6 +77,62 @@ export const emptyBarcodeDataset = (): BarcodeDataset => ({
   totalPieces: 0,
 })
 
+export interface DeliveryBarcodeLabel {
+  id: string
+  code: string
+  barcode_type: BarcodeType
+  pieces_per_pack: number | null
+  child_count: number | null
+  product_name: string
+  variant_label: string
+  batch_number: string
+  expiry_date: string
+}
+
+// Focused loader for the "print/download this delivery's barcodes" sheet right
+// after receiving stock -- deliberately not loadBarcodeDataset(), which fetches
+// every barcode the branch has ever generated and does grouping this view
+// doesn't need.
+export async function loadDeliveryBarcodes(deliveryId: string): Promise<DeliveryBarcodeLabel[]> {
+  const { data: batches, error: batchError } = await supabase
+    .from("stock_batches")
+    .select("id, batch_number, expiry_date, product_variant_id")
+    .eq("delivery_id", deliveryId)
+  if (batchError) throw batchError
+  const batchIds = (batches ?? []).map(batch => batch.id)
+  if (batchIds.length === 0) return []
+
+  const [barcodesResult, variantsResult, productsResult] = await Promise.all([
+    supabase.from("barcodes").select("id, code, barcode_type, pieces_per_pack, child_count, stock_batch_id").in("stock_batch_id", batchIds).order("code"),
+    supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
+    supabase.from("products").select("id, name"),
+  ])
+  if (barcodesResult.error) throw barcodesResult.error
+  if (variantsResult.error) throw variantsResult.error
+  if (productsResult.error) throw productsResult.error
+
+  const batchById = new Map((batches ?? []).map(batch => [batch.id, batch]))
+  const variantById = new Map((variantsResult.data ?? []).map(variant => [variant.id, variant]))
+  const productById = new Map((productsResult.data ?? []).map(product => [product.id, product]))
+
+  return (barcodesResult.data ?? []).map(barcode => {
+    const batch = batchById.get(barcode.stock_batch_id)
+    const variant = batch ? variantById.get(batch.product_variant_id) : undefined
+    const product = variant ? productById.get(variant.product_id) : undefined
+    return {
+      id: barcode.id,
+      code: barcode.code,
+      barcode_type: barcode.barcode_type as BarcodeType,
+      pieces_per_pack: barcode.pieces_per_pack,
+      child_count: barcode.child_count,
+      product_name: product?.name ?? "Unknown product",
+      variant_label: [variant?.dosage, variant?.form, variant?.unit].filter(Boolean).join(" · "),
+      batch_number: batch?.batch_number ?? "—",
+      expiry_date: batch?.expiry_date ?? "—",
+    }
+  })
+}
+
 export async function loadBarcodeDataset(): Promise<BarcodeDataset> {
   const results = await Promise.all([
     supabase.from("barcodes").select("*").order("code"),

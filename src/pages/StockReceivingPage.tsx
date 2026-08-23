@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import { Btn, Card, SearchSelect, type ComboOption } from "../components"
+import Barcode from "react-barcode"
+import { Btn, Card, CenterAlert, SearchSelect, type ComboOption } from "../components"
 import { fmtRWF } from "../data"
 import {
+  loadProductDefaults,
   loadReceivingReference,
   receiveStockDelivery,
   type DeliveryLine,
@@ -9,6 +11,8 @@ import {
   type ProductType,
   type ReceivingReference,
 } from "../lib/receiving"
+import { loadDeliveryBarcodes, type DeliveryBarcodeLabel } from "../lib/barcodes"
+import { errorMessage } from "../lib/supabase"
 
 type Packaging = "simple" | "cartons"
 type ProductMode = "known" | "new"
@@ -102,6 +106,59 @@ function Toggle<T extends string>({ value, options, onChange }: { value: T; opti
   </div>
 }
 
+// Fixed 4-per-row layout, not CSS Grid's auto-fill: percentage widths on a
+// flex-wrap container lay out the same way in every browser's print engine,
+// where Grid's page-break handling is inconsistent. The horizontal + bottom
+// margin on every cell (not a parent `gap`) is what actually keeps adjacent
+// barcodes from touching once a row breaks across a printed page boundary --
+// gap alone can collapse right at that boundary in some engines.
+const COLUMNS = 4
+const CELL_MARGIN_PCT = 1
+const CELL_WIDTH_PCT = 100 / COLUMNS - CELL_MARGIN_PCT * 2
+
+// One printable label per barcode: box (carton) labels are visually distinct
+// from pack labels since they represent different physical things (an outer
+// carton vs. the individual small box you actually stick a code onto).
+function BarcodeLabel({ label }: { label: DeliveryBarcodeLabel }) {
+  const isBox = label.barcode_type === "box"
+  return <div style={{
+    width: `${CELL_WIDTH_PCT}%`, margin: `0 ${CELL_MARGIN_PCT}% 20px ${CELL_MARGIN_PCT}%`,
+    boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+    breakInside: "avoid", pageBreakInside: "avoid",
+  }}>
+    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--ink)", textAlign: "center", lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label.product_name}</div>
+    {label.variant_label && <div style={{ fontSize: 8, color: "var(--ink-muted)" }}>{label.variant_label}</div>}
+    <Barcode value={label.code} width={1.2} height={36} fontSize={9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
+    <div style={{ fontSize: 7, color: isBox ? "var(--primary)" : "var(--ink-muted)", textAlign: "center", fontWeight: isBox ? 700 : 400 }}>
+      {isBox ? `Carton · ${label.child_count ?? 0} packs` : `Pack · ${label.pieces_per_pack ?? 0} pcs`}
+    </div>
+  </div>
+}
+
+function BarcodeSheet({ deliveryCode, labels, loading, error }: { deliveryCode: string; labels: DeliveryBarcodeLabel[]; loading: boolean; error: string | null }) {
+  if (loading) return <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", marginTop: 16 }}>Loading barcode labels…</p>
+  if (error) return <p style={{ fontSize: 12, color: "#b91c1c", textAlign: "center", marginTop: 16 }}>Could not load the barcode labels: {error}</p>
+  if (labels.length === 0) return null
+
+  return <div style={{ marginTop: 20 }}>
+    <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+      <p style={{ fontSize: 11, color: "var(--ink-muted)", margin: 0 }}>
+        {labels.length} barcode{labels.length === 1 ? "" : "s"} on one sheet, ready to print and cut apart.
+      </p>
+      <Btn variant="primary" small onClick={() => window.print()}>🖨 Print / Save as PDF</Btn>
+    </div>
+    <div className="no-print" style={{ fontSize: 10, color: "var(--ink-faint, #9ab8a0)", marginBottom: 10 }}>
+      "Print" opens your browser's print dialog — choose "Save as PDF" there to download the sheet instead of printing it.
+    </div>
+    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 14px 0" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink)", marginBottom: 14 }}>Delivery {deliveryCode}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-start" }}>
+        {labels.map(label => <BarcodeLabel key={label.id} label={label} />)}
+      </div>
+    </div>
+  </div>
+}
+
 export default function StockReceivingPage() {
   const [reference, setReference] = useState<ReceivingReference>({ products: [], variants: [], categories: [], suppliers: [] })
   const [loading, setLoading] = useState(true)
@@ -109,6 +166,9 @@ export default function StockReceivingPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [receipt, setReceipt] = useState<DeliveryReceipt | null>(null)
+  const [barcodeLabels, setBarcodeLabels] = useState<DeliveryBarcodeLabel[]>([])
+  const [labelsLoading, setLabelsLoading] = useState(false)
+  const [labelsError, setLabelsError] = useState<string | null>(null)
 
   const [supplier, setSupplier] = useState("")
   const [notes, setNotes] = useState("")
@@ -116,6 +176,12 @@ export default function StockReceivingPage() {
   const [index, setIndex] = useState(0)
   const [motion, setMotion] = useState("slide-in-right")
   const timer = useRef<number | null>(null)
+  const [addingCategory, setAddingCategory] = useState(false)
+  const [newCategoryDraft, setNewCategoryDraft] = useState("")
+
+  // Closing this mini-form when the visible line changes avoids it lingering
+  // open (mid-draft, for a different product) after switching slides.
+  useEffect(() => { setAddingCategory(false); setNewCategoryDraft("") }, [index])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -123,7 +189,7 @@ export default function StockReceivingPage() {
     try {
       setReference(await loadReceivingReference())
     } catch (reason) {
-      setLoadError(reason instanceof Error ? reason.message : "Unable to load the product catalogue from the database.")
+      setLoadError(errorMessage(reason, "Unable to load the product catalogue from the database."))
     } finally {
       setLoading(false)
     }
@@ -148,6 +214,7 @@ export default function StockReceivingPage() {
     } else if (!candidate.productName.trim()) {
       problems.push("a new product name")
     }
+    if (!candidate.categoryName.trim()) problems.push("a product category")
     if (!candidate.batchNumber.trim()) problems.push("a batch number")
     if (!candidate.expiryDate) problems.push("an expiry date")
     if (!(toMoney(candidate.costPrice) >= 0)) problems.push("a cost price")
@@ -200,6 +267,46 @@ export default function StockReceivingPage() {
   const updateLine = (patch: Partial<LineForm>) =>
     setLines(current => current.map((item, position) => (position === safeIndex ? { ...item, ...patch } : item)))
 
+  // A category made here goes through the exact same category_name field the
+  // search box's own "+ New category" option already uses -- receive_stock_delivery()
+  // only ever creates it scoped to this branch, so there is nothing else to wire
+  // for it to stay private; this is purely a more discoverable entry point to the
+  // same mechanism, not a second one.
+  function confirmNewCategory() {
+    const name = newCategoryDraft.trim()
+    if (!name) return
+    updateLine({ categoryName: name })
+    setAddingCategory(false)
+    setNewCategoryDraft("")
+  }
+
+  // Convenience prefill once a known product (and, if it has one, its variant)
+  // is picked — manufacturer, prices, packaging, and the product's one locked
+  // category, all from how this product was last received. Never touches
+  // supplier: a product isn't tied to one supplier, so that stays whatever the
+  // pharmacist already has for this delivery. Best-effort: a failed lookup just
+  // leaves the fields blank for manual entry, same as before this existed.
+  async function applyProductDefaults(productId: string, variantId: string) {
+    if (!productId) return
+    try {
+      const defaults = await loadProductDefaults(productId, variantId)
+      updateLine({
+        ...(defaults.categoryName ? { categoryName: defaults.categoryName } : {}),
+        ...(defaults.manufacturer ? { manufacturer: defaults.manufacturer } : {}),
+        ...(defaults.costPrice != null ? { costPrice: String(defaults.costPrice) } : {}),
+        ...(defaults.sellingPrice != null ? { sellingPrice: String(defaults.sellingPrice) } : {}),
+        ...(defaults.piecesPerPack != null ? { packaging: defaults.packaging, piecesPerPack: String(defaults.piecesPerPack) } : {}),
+        ...(defaults.cartons != null ? { cartons: String(defaults.cartons) } : {}),
+        ...(defaults.packsPerCarton != null ? { packs: String(defaults.packsPerCarton) } : {}),
+      })
+    } catch (reason) {
+      // Convenience only -- the pharmacist can still fill everything by hand.
+      // But silently swallowing this made a real failure indistinguishable
+      // from "nothing to prefill", so at minimum this must be visible.
+      console.error("Could not prefill from this product's history:", errorMessage(reason))
+    }
+  }
+
   function transition(direction: "next" | "prev", apply: () => void) {
     if (timer.current) window.clearTimeout(timer.current)
     setMotion(direction === "next" ? "slide-out-left" : "slide-out-right")
@@ -238,6 +345,8 @@ export default function StockReceivingPage() {
     setLines([blankLine()])
     setIndex(0)
     setMotion("slide-in-right")
+    setBarcodeLabels([])
+    setLabelsError(null)
   }
 
   const productOptions = useMemo<ComboOption[]>(() => reference.products.map(product => ({
@@ -285,19 +394,25 @@ export default function StockReceivingPage() {
       // Newly created products, variants, categories and the supplier should show up
       // in the selectors straight away for the next delivery.
       void loadReceivingReference().then(setReference).catch(() => undefined)
+      setLabelsLoading(true)
+      setLabelsError(null)
+      loadDeliveryBarcodes(saved.delivery_id)
+        .then(setBarcodeLabels)
+        .catch(reason => setLabelsError(errorMessage(reason)))
+        .finally(() => setLabelsLoading(false))
     } catch (reason) {
       // receive_stock_delivery() raises human-readable exceptions (role, branch status,
       // missing fields). Surface them verbatim instead of a generic message.
-      setSubmitError(reason instanceof Error ? reason.message : String(reason))
+      setSubmitError(errorMessage(reason))
     } finally {
       setSubmitting(false)
     }
   }
 
   if (receipt) {
-    return <div style={{ maxWidth: 620, margin: "40px auto" }}>
+    return <div style={{ maxWidth: 900, margin: "40px auto" }}>
       <Card style={{ textAlign: "center", padding: "34px 30px" }}>
-        <div style={{ width: 52, height: 52, borderRadius: "50%", background: "#dcfce7", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, margin: "0 auto 14px" }}>✓</div>
+        <div className="no-print" style={{ width: 52, height: 52, borderRadius: "50%", background: "#dcfce7", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, margin: "0 auto 14px" }}>✓</div>
         <h1 style={{ margin: 0, fontSize: 19, color: "var(--ink)" }}>Delivery received and barcodes generated</h1>
         <p style={{ color: "var(--ink-muted)", fontSize: 12, margin: "8px 0 18px" }}>
           The server created the delivery code below, one stock batch per product line, and the carton/pack barcode tree for each batch.
@@ -306,9 +421,10 @@ export default function StockReceivingPage() {
           <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ink-muted)", fontWeight: 700 }}>Delivery code</div>
           <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 18, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>{receipt.delivery_code}</div>
         </div>
-        <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 20 }}>
+        <div className="no-print" style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 20 }}>
           <Btn onClick={startNewDelivery}>Start a new delivery</Btn>
         </div>
+        <BarcodeSheet deliveryCode={receipt.delivery_code} labels={barcodeLabels} loading={labelsLoading} error={labelsError} />
       </Card>
     </div>
   }
@@ -320,6 +436,7 @@ export default function StockReceivingPage() {
     {submitError && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>
       <strong>The delivery was not saved.</strong> {submitError}
     </div>}
+    {submitError && <CenterAlert key={submitError} message={submitError} />}
 
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
@@ -409,7 +526,7 @@ export default function StockReceivingPage() {
               <SearchSelect
                 options={productOptions}
                 value={line.productId}
-                onSelect={productId => updateLine({ productId, variantId: "" })}
+                onSelect={productId => { updateLine({ productId, variantId: "" }); void applyProductDefaults(productId, "") }}
                 placeholder="Search by product or generic name…"
                 invalid={!line.productId}
                 emptyMessage="No product matches — switch to “New product” to add it."
@@ -426,7 +543,7 @@ export default function StockReceivingPage() {
               <SearchSelect
                 options={variantOptions}
                 value={line.variantId}
-                onSelect={variantId => updateLine({ variantId })}
+                onSelect={variantId => { updateLine({ variantId }); void applyProductDefaults(line.productId, variantId) }}
                 disabled={!line.productId || lineVariants.length === 0}
                 placeholder={!line.productId ? "Select a product first" : lineVariants.length === 0 ? "None" : "Search dosage, form or unit…"}
                 invalid={!!line.productId && lineVariants.length > 0 && !line.variantId}
@@ -459,7 +576,7 @@ export default function StockReceivingPage() {
           </div>}
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-            <Field label="Branch category (optional)" hint="Private to this branch. Type a new name to create it.">
+            <Field label="Product category" hint="Private to this branch — never visible to any other branch.">
               <SearchSelect
                 options={categoryOptions}
                 value={line.categoryName}
@@ -468,7 +585,31 @@ export default function StockReceivingPage() {
                 createLabel="New category"
                 placeholder="Search or type a category…"
                 emptyMessage="No categories yet — type a name to create the first one."
+                invalid={!line.categoryName.trim()}
               />
+              {addingCategory ? (
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <input
+                    autoFocus
+                    value={newCategoryDraft}
+                    onChange={event => setNewCategoryDraft(event.target.value)}
+                    onKeyDown={event => {
+                      if (event.key === "Enter") { event.preventDefault(); confirmNewCategory() }
+                      if (event.key === "Escape") { setAddingCategory(false); setNewCategoryDraft("") }
+                    }}
+                    placeholder="New category name"
+                    style={{ ...inputStyle, flex: 1 }}
+                  />
+                  <Btn small onClick={confirmNewCategory}>Add</Btn>
+                  <Btn small variant="ghost" onClick={() => { setAddingCategory(false); setNewCategoryDraft("") }}>Cancel</Btn>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setAddingCategory(true)}
+                  style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "var(--primary)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                >+ New category (only for this branch)</button>
+              )}
             </Field>
             <Field label="Manufacturer (optional)" hint="Used to trace batch recalls.">
               <input value={line.manufacturer} onChange={event => updateLine({ manufacturer: event.target.value })} style={inputStyle} />
