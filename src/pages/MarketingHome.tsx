@@ -1,18 +1,21 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import logoImg from "../assets/logo.png";
 import heroImg from "../assets/stock.jpg";
 import stockImg from "../assets/stock2.jpg";
 import productsImg from "../assets/products.jpg";
 import operationsImg from "../assets/all-in-one-pharmacy-operations.jpg";
 import { getPlatformStats, type PlatformStats } from "../lib/onboarding";
+import { useTranslation, LanguageSwitcher } from "../lib/i18n";
+import type { TranslationKey } from "../lib/i18n/en";
 
 // Ported from the Figma "new home page" export (src/App.tsx there) as-is —
-// same markup, classes, images and copy — with three kinds of change:
-// "Log in" / "Register Your Pharmacy" wired to real in-app navigation
-// instead of placeholder hrefs, the component turned into one that takes an
-// onLogin callback instead of being the app's own root, and the trust-stat
-// strip pulling this project's real counts instead of the design's
-// hardcoded "12+ / 50k+ / 3" template numbers (see useReveal below).
+// same markup, classes, images and copy — with these changes: "Log in" /
+// "Register Your Pharmacy" wired to real in-app navigation instead of
+// placeholder hrefs, the component turned into one that takes an onLogin
+// callback instead of being the app's own root, the trust-stat strip
+// pulling this project's real counts instead of the design's hardcoded
+// "12+ / 50k+ / 3" template numbers, and every string routed through
+// useTranslation() (English / Kinyarwanda / French — see ../lib/i18n).
 
 const REGISTER_URL = "#branch";
 
@@ -155,6 +158,7 @@ function Sparkline({ color = "#0d9488" }: { color?: string }) {
 
 // ─── Main Landing Page ───────────────────────────────────────────────────────
 export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
+  const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeFeature, setActiveFeature] = useState(0);
   const [stats, setStats] = useState<PlatformStats>({ activeBranches: 0, trackedSkus: 0, cities: 0 });
@@ -164,75 +168,70 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
     getPlatformStats().then(setStats).catch(() => {});
   }, []);
 
-  const features = [
+  const features: {
+    key: string; icon: ReactNode; color: string; bg: string;
+    titleKey: TranslationKey; taglineKey: TranslationKey; bodyKey: TranslationKey;
+    image: string; alt: string; bulletKeys: TranslationKey[]; statValue: string; statLabelKey: TranslationKey;
+  }[] = [
     {
-      key: "stock",
-      icon: icons.stock,
-      color: "#0d9488",
-      bg: "rgba(13,148,136,0.1)",
-      title: "Stock Management",
-      tagline: "Full visibility. Zero guesswork.",
-      description: "Track every medicine from carton to individual pack across all branches. Automatic low-stock alerts, batch expiry monitoring, and real-time count reconciliation — so you always know what's on the shelf.",
-      image: stockImg,
-      alt: "Dense pharmacy medicine shelves with organized stock",
-      bullets: ["Live inventory counts per branch", "Expiry-date alerts 30/60/90 days out", "Physical count vs. system reconciliation", "Batch-level traceability for every item"],
-      stat: { value: "1,284", label: "SKUs tracked live" },
+      key: "stock", icon: icons.stock, color: "#0d9488", bg: "rgba(13,148,136,0.1)",
+      titleKey: "home.featureStockTitle", taglineKey: "home.featureStockTagline", bodyKey: "home.featureStockBody",
+      image: stockImg, alt: "Dense pharmacy medicine shelves with organized stock",
+      bulletKeys: ["home.featureStockBullet1", "home.featureStockBullet2", "home.featureStockBullet3", "home.featureStockBullet4"],
+      statValue: "1,284", statLabelKey: "home.featureStockStatLabel",
     },
     {
-      key: "barcode",
-      icon: icons.barcode,
-      color: "#1e5fa8",
-      bg: "rgba(30,95,168,0.1)",
-      title: "Barcode Manager",
-      tagline: "Scan to receive. Scan to sell.",
-      description: "Assign carton and pack-level barcodes at the point of receipt. Every sale, transfer, and return is linked to a batch number automatically — no manual entry, no transcription errors.",
-      image: productsImg,
-      alt: "Pharmacist scanning medicine barcode with tablet device",
-      bullets: ["GS1-compatible barcode generation", "Scan-to-receive reduces receiving errors by 95%", "Duplicate barcode detection across branches", "PDF barcode sheets for shelf labelling"],
-      stat: { value: "99.8%", label: "Scan accuracy" },
+      key: "barcode", icon: icons.barcode, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)",
+      titleKey: "home.featureBarcodeTitle", taglineKey: "home.featureBarcodeTagline", bodyKey: "home.featureBarcodeBody",
+      image: productsImg, alt: "Pharmacist scanning medicine barcode with tablet device",
+      bulletKeys: ["home.featureBarcodeBullet1", "home.featureBarcodeBullet2", "home.featureBarcodeBullet3", "home.featureBarcodeBullet4"],
+      statValue: "99.8%", statLabelKey: "home.featureBarcodeStatLabel",
     },
     {
-      key: "sales",
-      icon: icons.chart,
-      color: "#0891b2",
-      bg: "rgba(8,145,178,0.1)",
-      title: "Sales & Revenue",
-      tagline: "Every transaction, perfectly recorded.",
-      description: "Fast checkout with barcode scan or item search, tax applied per item class automatically, and insurance claims (RAMA, MMI) generated at point of sale. Daily, weekly, and monthly revenue reports built in.",
-      image: heroImg,
-      alt: "Modern well-lit pharmacy interior with organized product displays",
-      bullets: ["Sub-3-second checkout per transaction", "RAMA & MMI insurance claim generation", "Per-item tax handling (VAT, exempt)", "Revenue breakdown by branch, category, staff"],
-      stat: { value: "RWF 2.4M", label: "Avg. monthly revenue tracked" },
+      key: "sales", icon: icons.chart, color: "#0891b2", bg: "rgba(8,145,178,0.1)",
+      titleKey: "home.featureSalesTitle", taglineKey: "home.featureSalesTagline", bodyKey: "home.featureSalesBody",
+      image: heroImg, alt: "Modern well-lit pharmacy interior with organized product displays",
+      bulletKeys: ["home.featureSalesBullet1", "home.featureSalesBullet2", "home.featureSalesBullet3", "home.featureSalesBullet4"],
+      statValue: "RWF 2.4M", statLabelKey: "home.featureSalesStatLabel",
     },
     {
-      key: "ai",
-      icon: icons.ai,
-      color: "#7c3aed",
-      bg: "rgba(124,58,237,0.1)",
-      title: "AI Forecasting & Analysis",
-      tagline: "Know what you'll need before you run out.",
-      description: "Machine-learning models trained on your own sales history predict demand by item, season, and branch. Suggested reorder quantities are generated weekly so you buy what you need — nothing more.",
-      image: operationsImg,
-      alt: "Pharmacy operations showing digital consultation and drone delivery coordination",
-      bullets: ["Demand forecasting per SKU per branch", "Seasonal trend detection (malaria season, etc.)", "Automated reorder suggestions with supplier pricing", "Slow-mover and dead-stock identification"],
-      stat: { value: "34%", label: "Avg. reduction in overstock" },
+      key: "ai", icon: icons.ai, color: "#7c3aed", bg: "rgba(124,58,237,0.1)",
+      titleKey: "home.featureAiTitle", taglineKey: "home.featureAiTagline", bodyKey: "home.featureAiBody",
+      image: operationsImg, alt: "Pharmacy operations showing digital consultation and drone delivery coordination",
+      bulletKeys: ["home.featureAiBullet1", "home.featureAiBullet2", "home.featureAiBullet3", "home.featureAiBullet4"],
+      statValue: "34%", statLabelKey: "home.featureAiStatLabel",
     },
     {
-      key: "distribution",
-      icon: icons.truck,
-      color: "#059669",
-      bg: "rgba(5,150,105,0.1)",
-      title: "Medicine Distribution",
-      tagline: "Move stock between branches with confidence.",
-      description: "Create inter-branch transfer orders, generate dispatch notes, and confirm receipt by scan. Every movement is logged, auditable, and reflected in both branches' inventory counts immediately.",
-      image: operationsImg,
-      alt: "Pharmacy distribution and delivery network coordination across branches",
-      bullets: ["Inter-branch stock transfer with full audit trail", "Driver dispatch notes and proof of delivery", "Recall propagation reaches all branches instantly", "Supplier order management and GRN capture"],
-      stat: { value: "48 hrs", label: "Average transfer cycle time" },
+      key: "distribution", icon: icons.truck, color: "#059669", bg: "rgba(5,150,105,0.1)",
+      titleKey: "home.featureDistributionTitle", taglineKey: "home.featureDistributionTagline", bodyKey: "home.featureDistributionBody",
+      image: operationsImg, alt: "Pharmacy distribution and delivery network coordination across branches",
+      bulletKeys: ["home.featureDistributionBullet1", "home.featureDistributionBullet2", "home.featureDistributionBullet3", "home.featureDistributionBullet4"],
+      statValue: "48 hrs", statLabelKey: "home.featureDistributionStatLabel",
     },
   ];
 
   const current = features[activeFeature];
+
+  const realityBullets: [TranslationKey, string][] = [
+    ["home.realityBullet1", "#0d9488"],
+    ["home.realityBullet2", "#1e5fa8"],
+    ["home.realityBullet3", "#7c3aed"],
+    ["home.realityBullet4", "#059669"],
+  ];
+
+  const howSteps: { n: string; icon: ReactNode; color: string; bg: string; titleKey: TranslationKey; bodyKey: TranslationKey; badgeKey?: TranslationKey }[] = [
+    { n: "01", icon: icons.stock, color: "#0d9488", bg: "rgba(13,148,136,0.1)", titleKey: "home.howStep1Title", bodyKey: "home.howStep1Body" },
+    { n: "02", icon: icons.phone, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)", titleKey: "home.howStep2Title", bodyKey: "home.howStep2Body", badgeKey: "home.howStep2Badge" },
+    { n: "03", icon: icons.key, color: "#7c3aed", bg: "rgba(124,58,237,0.1)", titleKey: "home.howStep3Title", bodyKey: "home.howStep3Body" },
+  ];
+
+  const finalPoints: TranslationKey[] = ["home.finalPoint1", "home.finalPoint2", "home.finalPoint3"];
+  const footerProductKeys: TranslationKey[] = [
+    "home.featureStockTitle", "home.featureBarcodeTitle", "home.featureSalesTitle", "home.featureAiTitle", "home.featureDistributionTitle",
+  ];
+  const footerCompanyKeys: TranslationKey[] = [
+    "home.footerCompanyAbout", "home.footerCompanyTerms", "home.footerCompanyPrivacy", "home.footerCompanyRura", "home.footerCompanyCouncil",
+  ];
 
   return (
     <div style={{ background: "#f8fafb", minHeight: "100vh" }}>
@@ -253,8 +252,12 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-0.5">
-            {[["Features", "#features"], ["How it works", "#how-it-works"], ["Contact", "#footer"]].map(([label, href]) => (
-              <a key={label} href={href}
+            {([
+              [t("home.navFeatures"), "#features"],
+              [t("home.navHowItWorks"), "#how-it-works"],
+              [t("home.navContact"), "#footer"],
+            ] as const).map(([label, href]) => (
+              <a key={href} href={href}
                 className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 style={{ color: "#374151", fontFamily: "var(--font-body)" }}
                 onMouseEnter={e => (e.currentTarget.style.background = "#f1f5f9")}
@@ -265,32 +268,39 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
           </nav>
 
           <div className="hidden md:flex items-center gap-2">
+            <LanguageSwitcher />
             <button type="button" onClick={onLogin} className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors"
               style={{ color: "#374151", fontFamily: "var(--font-display)" }}
               onMouseEnter={e => (e.currentTarget.style.background = "#f1f5f9")}
               onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-              Log in
+              {t("home.logIn")}
             </button>
             <a href={REGISTER_URL}
               className="btn-cta px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-md"
               style={{ fontFamily: "var(--font-display)" }}>
-              Register Your Pharmacy
+              {t("home.registerCta")}
             </a>
           </div>
 
-          <button className="md:hidden p-2 rounded-lg" onClick={() => setMenuOpen(!menuOpen)}
-            style={{ color: "#374151" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "#f1f5f9")}
-            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-            <div className="w-5 h-5">{menuOpen ? icons.close : icons.menu}</div>
-          </button>
+          <div className="md:hidden flex items-center gap-2">
+            <LanguageSwitcher />
+            <button className="p-2 rounded-lg" onClick={() => setMenuOpen(!menuOpen)}
+              style={{ color: "#374151" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "#f1f5f9")}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+              <div className="w-5 h-5">{menuOpen ? icons.close : icons.menu}</div>
+            </button>
+          </div>
         </div>
 
         {menuOpen && (
           <div className="md:hidden px-4 pb-5 pt-2 flex flex-col gap-1"
             style={{ borderTop: "1px solid #e8edf4", background: "#fff" }}>
-            {[["Features", "#features"], ["How it works", "#how-it-works"]].map(([l, h]) => (
-              <a key={l} href={h} className="py-3 text-sm font-medium"
+            {([
+              [t("home.navFeatures"), "#features"],
+              [t("home.navHowItWorks"), "#how-it-works"],
+            ] as const).map(([l, h]) => (
+              <a key={h} href={h} className="py-3 text-sm font-medium"
                 style={{ color: "#374151", fontFamily: "var(--font-body)" }}
                 onClick={() => setMenuOpen(false)}>{l}</a>
             ))}
@@ -298,12 +308,12 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
               <button type="button" onClick={() => { setMenuOpen(false); onLogin(); }}
                 className="py-2.5 text-center text-sm font-semibold rounded-xl"
                 style={{ color: "#374151", border: "1px solid #e2e8f0", fontFamily: "var(--font-display)" }}>
-                Log in
+                {t("home.logIn")}
               </button>
               <a href={REGISTER_URL} onClick={() => setMenuOpen(false)}
                 className="btn-cta py-2.5 text-center text-sm font-bold text-white rounded-xl"
                 style={{ fontFamily: "var(--font-display)" }}>
-                Register Your Pharmacy
+                {t("home.registerCta")}
               </a>
             </div>
           </div>
@@ -325,25 +335,25 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
               <div className="animate-fade-up inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-semibold mb-7"
                 style={{ background: "rgba(13,148,136,0.09)", color: "#0f766e", border: "1px solid rgba(13,148,136,0.18)" }}>
                 <span className="live-dot" />
-                <span style={{ marginLeft: 6 }}>Trusted by pharmacies across Rwanda</span>
+                <span style={{ marginLeft: 6 }}>{t("home.heroBadge")}</span>
               </div>
 
               <h1 className="animate-fade-up delay-100 text-4xl sm:text-5xl lg:text-[3.4rem] font-extrabold leading-[1.08] mb-6"
                 style={{ fontFamily: "var(--font-display)", color: "#0f172a", letterSpacing: "-0.03em" }}>
-                Run your pharmacy<br />
-                <span className="text-gradient">smarter, not harder</span>
+                {t("home.heroTitleLine1")}<br />
+                <span className="text-gradient">{t("home.heroTitleLine2")}</span>
               </h1>
 
               <p className="animate-fade-up delay-200 text-lg mb-8 max-w-md"
                 style={{ color: "#4b5563", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
-                Stock management, barcode tracking, point-of-sale, AI forecasting, and multi-branch control — one system built for East African pharmacies.
+                {t("home.heroBody")}
               </p>
 
               <div className="animate-fade-up delay-300 flex flex-col sm:flex-row gap-3 mb-10">
                 <a href={REGISTER_URL}
                   className="btn-cta inline-flex items-center justify-center gap-2.5 px-7 py-3.5 rounded-xl font-bold text-white shadow-lg text-base"
                   style={{ fontFamily: "var(--font-display)" }}>
-                  Register Your Pharmacy
+                  {t("home.registerCta")}
                   <div className="w-4 h-4">{icons.arrow}</div>
                 </a>
                 <button type="button" onClick={onLogin}
@@ -351,20 +361,20 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                   style={{ color: "#374151", border: "1px solid #d1d5db", fontFamily: "var(--font-display)", background: "#fff" }}
                   onMouseEnter={e => (e.currentTarget.style.borderColor = "#0d9488")}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = "#d1d5db")}>
-                  Already registered? Log in
+                  {t("home.heroAlreadyRegistered")}
                 </button>
               </div>
 
               {/* Trust stats — real counts from the database, not the design's template numbers */}
               <div className="animate-fade-up delay-400 flex items-center gap-6">
                 {[
-                  { n: stats.activeBranches, s: "", label: "Pharmacies", color: "#0d9488" },
-                  { n: stats.trackedSkus, s: "", label: "SKUs tracked", color: "#1e5fa8" },
-                  { n: stats.cities, s: "", label: "Cities", color: "#7c3aed" },
+                  { n: stats.activeBranches, label: t("home.statPharmacies"), color: "#0d9488" },
+                  { n: stats.trackedSkus, label: t("home.statSkus"), color: "#1e5fa8" },
+                  { n: stats.cities, label: t("home.statCities"), color: "#7c3aed" },
                 ].map(item => (
                   <div key={item.label}>
                     <div className="text-2xl font-extrabold stat-glow" style={{ fontFamily: "var(--font-display)", color: item.color }}>
-                      <Counter to={item.n} suffix={item.s} />
+                      <Counter to={item.n} />
                     </div>
                     <div className="text-xs mt-0.5" style={{ color: "#9ca3af", fontFamily: "var(--font-body)" }}>{item.label}</div>
                   </div>
@@ -386,17 +396,17 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                   <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold"
                     style={{ background: "rgba(13,148,136,0.9)", color: "#fff", fontFamily: "var(--font-display)" }}>
                     <span className="live-dot" style={{ background: "#fff" }} />
-                    <span style={{ marginLeft: 6 }}>Live system — Kigali Central Branch</span>
+                    <span style={{ marginLeft: 6 }}>{t("home.heroLiveLabel")}</span>
                   </div>
                 </div>
               </div>
 
               {/* Floating stat bubbles */}
-              <StatBubble value="1,284 SKUs" label="In stock, 3 branches" color="#0d9488" delay={0}
+              <StatBubble value="1,284 SKUs" label={t("home.statSkusInStock")} color="#0d9488" delay={0}
                 className="absolute -left-8 top-16 z-10" />
-              <StatBubble value="RWF 842k" label="Revenue today" color="#1e5fa8" delay={0.8}
+              <StatBubble value="RWF 842k" label={t("home.statRevenueToday")} color="#1e5fa8" delay={0.8}
                 className="absolute -right-6 top-44 z-10" />
-              <StatBubble value="3 expiring" label="Within 30 days" color="#b45309" delay={1.6}
+              <StatBubble value="3 expiring" label={t("home.statExpiring")} color="#b45309" delay={1.6}
                 className="absolute -left-4 bottom-20 z-10" />
             </div>
           </div>
@@ -416,29 +426,24 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div className="reveal-left">
               <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#0d9488", fontFamily: "var(--font-display)" }}>
-                Designed for your reality
+                {t("home.realityEyebrow")}
               </p>
               <h2 className="text-3xl md:text-4xl font-extrabold mb-5"
                 style={{ fontFamily: "var(--font-display)", color: "#0f172a", letterSpacing: "-0.02em", lineHeight: 1.15 }}>
-                Built around how East African pharmacies actually work
+                {t("home.realityHeading")}
               </h2>
               <p className="text-base mb-7" style={{ color: "#4b5563", fontFamily: "var(--font-body)", lineHeight: 1.75 }}>
-                From dispensary counters in Kigali to community health posts in the hills — PharmSync handles Mutuella de Santé claims, RAMA insurance, drone-assisted delivery coordination, and mobile pharmacy operations without requiring an IT department.
+                {t("home.realityBody")}
               </p>
               <ul className="space-y-3.5">
-                {[
-                  ["Kinyarwanda & English interface", "#0d9488"],
-                  ["Works on low-bandwidth connections", "#1e5fa8"],
-                  ["RURA-compliant record keeping", "#7c3aed"],
-                  ["Mutuella & RAMA insurance built in", "#059669"],
-                ].map(([text, color]) => (
-                  <li key={text} className="flex items-center gap-3 text-sm font-medium"
+                {realityBullets.map(([key, color]) => (
+                  <li key={key} className="flex items-center gap-3 text-sm font-medium"
                     style={{ color: "#374151", fontFamily: "var(--font-body)" }}>
                     <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
                       style={{ background: `${color}18` }}>
                       <div className="w-3 h-3" style={{ color }}>{icons.check}</div>
                     </span>
-                    {text}
+                    {t(key)}
                   </li>
                 ))}
               </ul>
@@ -456,9 +461,9 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 style={{ background: "#0f172a" }}>
                 <div className="flex items-center gap-2 mb-1">
                   <span className="live-dot" />
-                  <span className="text-xs font-semibold ml-1.5" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>Rwanda Pharmacy Council</span>
+                  <span className="text-xs font-semibold ml-1.5" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>{t("home.realityBadgeOrg")}</span>
                 </div>
-                <div className="text-sm font-bold" style={{ color: "#fff", fontFamily: "var(--font-display)" }}>Compliant & Verified</div>
+                <div className="text-sm font-bold" style={{ color: "#fff", fontFamily: "var(--font-display)" }}>{t("home.realityBadgeStatus")}</div>
               </div>
             </div>
           </div>
@@ -472,15 +477,15 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
           {/* Section header */}
           <div className="reveal text-center mb-14">
             <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#0d9488", fontFamily: "var(--font-display)" }}>
-              Platform capabilities
+              {t("home.featuresEyebrow")}
             </p>
             <h2 className="text-3xl md:text-[2.6rem] font-extrabold mb-4"
               style={{ fontFamily: "var(--font-display)", color: "#0f172a", letterSpacing: "-0.025em", lineHeight: 1.15 }}>
-              Everything your pharmacy needs,<br className="hidden md:block" />
-              <span className="text-gradient"> nothing it doesn't</span>
+              {t("home.featuresHeadingLine1")}<br className="hidden md:block" />
+              <span className="text-gradient"> {t("home.featuresHeadingLine2")}</span>
             </h2>
             <p className="text-base max-w-xl mx-auto" style={{ color: "#6b7280", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
-              Five tightly integrated modules — built to work together from day one.
+              {t("home.featuresSubheading")}
             </p>
           </div>
 
@@ -499,7 +504,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 }}
                 onClick={() => setActiveFeature(i)}>
                 <div className="w-4 h-4">{f.icon}</div>
-                {f.title}
+                {t(f.titleKey)}
               </button>
             ))}
           </div>
@@ -523,17 +528,17 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                   style={{ background: "rgba(15,23,42,0.85)", border: "1px solid rgba(255,255,255,0.1)" }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>
-                      Key metric
+                      {t("home.keyMetricLabel")}
                     </span>
                     <span className="live-dot" />
                   </div>
                   <div className="flex items-end justify-between">
                     <div>
                       <div className="text-2xl font-extrabold" style={{ color: current.color, fontFamily: "var(--font-display)" }}>
-                        {current.stat.value}
+                        {current.statValue}
                       </div>
                       <div className="text-xs mt-0.5" style={{ color: "#64748b", fontFamily: "var(--font-body)" }}>
-                        {current.stat.label}
+                        {t(current.statLabelKey)}
                       </div>
                     </div>
                     <Sparkline color={current.color} />
@@ -551,25 +556,25 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
               </div>
               <p className="text-xs font-bold uppercase tracking-widest mb-2"
                 style={{ color: current.color, fontFamily: "var(--font-display)" }}>
-                {current.tagline}
+                {t(current.taglineKey)}
               </p>
               <h3 className="text-2xl md:text-3xl font-extrabold mb-4"
                 style={{ fontFamily: "var(--font-display)", color: "#0f172a", letterSpacing: "-0.02em" }}>
-                {current.title}
+                {t(current.titleKey)}
               </h3>
               <p className="text-base mb-6"
                 style={{ color: "#4b5563", fontFamily: "var(--font-body)", lineHeight: 1.75 }}>
-                {current.description}
+                {t(current.bodyKey)}
               </p>
               <ul className="space-y-3">
-                {current.bullets.map(b => (
-                  <li key={b} className="flex items-start gap-3 text-sm"
+                {current.bulletKeys.map(bKey => (
+                  <li key={bKey} className="flex items-start gap-3 text-sm"
                     style={{ color: "#374151", fontFamily: "var(--font-body)" }}>
                     <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
                       style={{ background: current.bg }}>
                       <div className="w-3 h-3" style={{ color: current.color }}>{icons.check}</div>
                     </span>
-                    {b}
+                    {t(bKey)}
                   </li>
                 ))}
               </ul>
@@ -599,8 +604,8 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 </div>
                 <div className="p-3.5" style={{ background: "#fff" }}>
                   <div className="text-sm font-bold mb-0.5"
-                    style={{ fontFamily: "var(--font-display)", color: "#0f172a" }}>{f.title}</div>
-                  <div className="text-xs" style={{ color: "#9ca3af", fontFamily: "var(--font-body)" }}>{f.tagline}</div>
+                    style={{ fontFamily: "var(--font-display)", color: "#0f172a" }}>{t(f.titleKey)}</div>
+                  <div className="text-xs" style={{ color: "#9ca3af", fontFamily: "var(--font-body)" }}>{t(f.taglineKey)}</div>
                 </div>
               </div>
             ))}
@@ -623,19 +628,19 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-5"
                   style={{ background: "rgba(13,148,136,0.85)", color: "#fff", fontFamily: "var(--font-display)" }}>
                   <span className="live-dot" style={{ background: "#fff" }} />
-                  <span style={{ marginLeft: 6 }}>Complete Stock Visibility</span>
+                  <span style={{ marginLeft: 6 }}>{t("home.productsBadge")}</span>
                 </div>
                 <h3 className="text-3xl md:text-4xl font-extrabold mb-4 text-white"
                   style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.025em", lineHeight: 1.15 }}>
-                  From POM to OTC to Lab Supplies — every category, one system
+                  {t("home.productsHeading")}
                 </h3>
                 <p className="text-base mb-7 text-white/80" style={{ fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
-                  Prescription medicines, over-the-counter products, supplements, medical devices, and personal care — PharmSync handles every product category with the same precision.
+                  {t("home.productsBody")}
                 </p>
                 <a href={REGISTER_URL}
                   className="btn-cta inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-white shadow-lg text-sm"
                   style={{ fontFamily: "var(--font-display)" }}>
-                  Get started today
+                  {t("home.productsCta")}
                   <div className="w-4 h-4">{icons.arrow}</div>
                 </a>
               </div>
@@ -649,11 +654,11 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="reveal text-center mb-16">
             <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#0d9488", fontFamily: "var(--font-display)" }}>
-              How it works
+              {t("home.howEyebrow")}
             </p>
             <h2 className="text-3xl md:text-4xl font-extrabold"
               style={{ fontFamily: "var(--font-display)", color: "#0f172a", letterSpacing: "-0.025em" }}>
-              Up and running in three steps
+              {t("home.howHeading")}
             </h2>
           </div>
 
@@ -662,15 +667,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
             <div className="hidden md:block absolute top-12 left-1/6 right-1/6 h-px"
               style={{ background: "linear-gradient(90deg, #0d9488, #1e5fa8, #7c3aed)", opacity: 0.3, zIndex: 0 }} />
 
-            {[
-              { n: "01", icon: icons.stock, color: "#0d9488", bg: "rgba(13,148,136,0.1)",
-                title: "Register your pharmacy", body: "Fill in your pharmacy name, location, branches, and contact details. The form takes under five minutes and is available in English and Kinyarwanda." },
-              { n: "02", icon: icons.phone, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)",
-                title: "We verify you by phone", body: "Our team reviews every application and calls you personally before granting access. This isn't automated — it's a real person who understands pharmacy operations.",
-                badge: "⏱  1–2 business days" },
-              { n: "03", icon: icons.key, color: "#7c3aed", bg: "rgba(124,58,237,0.1)",
-                title: "Receive your access code", body: "Once verified, an SMS code activates your account. Your branches can be onboarded immediately after — no waiting, no extra approval required." },
-            ].map(({ n, icon, color, bg, title, body, badge }, i) => (
+            {howSteps.map(({ n, icon, color, bg, titleKey, bodyKey, badgeKey }, i) => (
               <div key={n} className="reveal relative z-10 rounded-2xl p-7 flex flex-col items-center text-center"
                 style={{ background: "#fff", border: "1px solid #e8edf4", animationDelay: `${i * 0.15}s` }}>
                 <div className="relative w-20 h-20 rounded-2xl flex items-center justify-center mb-5 shadow-sm"
@@ -681,12 +678,12 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                     {parseInt(n)}
                   </span>
                 </div>
-                <h3 className="text-lg font-bold mb-3" style={{ fontFamily: "var(--font-display)", color: "#0f172a" }}>{title}</h3>
-                <p className="text-sm" style={{ color: "#6b7280", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>{body}</p>
-                {badge && (
+                <h3 className="text-lg font-bold mb-3" style={{ fontFamily: "var(--font-display)", color: "#0f172a" }}>{t(titleKey)}</h3>
+                <p className="text-sm" style={{ color: "#6b7280", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>{t(bodyKey)}</p>
+                {badgeKey && (
                   <span className="inline-block mt-4 px-3 py-1.5 rounded-full text-xs font-semibold"
                     style={{ background: "rgba(30,95,168,0.08)", color: "#1e5fa8", fontFamily: "var(--font-body)" }}>
-                    {badge}
+                    {t(badgeKey)}
                   </span>
                 )}
               </div>
@@ -712,31 +709,31 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
 
           <h2 className="reveal text-3xl md:text-5xl font-extrabold text-white mb-5"
             style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.03em", lineHeight: 1.1 }}>
-            Ready to bring your<br />
-            <span style={{ color: "#2dd4bf" }}>pharmacy online?</span>
+            {t("home.finalHeadingLine1")}<br />
+            <span style={{ color: "#2dd4bf" }}>{t("home.finalHeadingLine2")}</span>
           </h2>
           <p className="reveal delay-100 text-lg mb-10" style={{ color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
-            Join pharmacies across Rwanda already operating with confidence — real-time stock, accurate records, and insurance claims that actually get paid.
+            {t("home.finalBody")}
           </p>
 
           <div className="reveal delay-200">
             <a href={REGISTER_URL}
               className="btn-cta inline-flex items-center gap-3 px-9 py-4 rounded-xl font-extrabold text-white text-lg shadow-2xl mb-4"
               style={{ fontFamily: "var(--font-display)" }}>
-              Register Your Pharmacy
+              {t("home.registerCta")}
               <div className="w-5 h-5">{icons.arrow}</div>
             </a>
           </div>
           <p className="reveal delay-300 text-sm" style={{ color: "rgba(255,255,255,0.5)", fontFamily: "var(--font-body)" }}>
-            Approval typically takes 1–2 business days — our team verifies every pharmacy by phone before activation.
+            {t("home.finalNote")}
           </p>
 
           <div className="reveal delay-400 flex flex-wrap items-center justify-center gap-6 mt-10">
-            {["No credit card required", "Human-reviewed application", "Support in Kinyarwanda & English"].map(t => (
-              <div key={t} className="flex items-center gap-2 text-sm"
+            {finalPoints.map(key => (
+              <div key={key} className="flex items-center gap-2 text-sm"
                 style={{ color: "rgba(255,255,255,0.55)", fontFamily: "var(--font-body)" }}>
                 <div className="w-4 h-4" style={{ color: "#2dd4bf" }}>{icons.check}</div>
-                {t}
+                {t(key)}
               </div>
             ))}
           </div>
@@ -756,41 +753,41 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 </span>
               </div>
               <p className="text-sm" style={{ color: "#475569", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
-                Pharmacy management software built for East African operations and compliance.
+                {t("home.footerTagline")}
               </p>
             </div>
 
             {/* Product */}
             <div>
-              <h4 className="text-sm font-bold mb-4" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>Product</h4>
-              {["Stock Management", "Barcode Manager", "Sales & Revenue", "AI Forecasting", "Medicine Distribution"].map(item => (
-                <a key={item} href="#features"
+              <h4 className="text-sm font-bold mb-4" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>{t("home.footerProductHeading")}</h4>
+              {footerProductKeys.map(key => (
+                <a key={key} href="#features"
                   className="block text-sm py-1.5 transition-colors"
                   style={{ color: "#475569", fontFamily: "var(--font-body)" }}
                   onMouseEnter={e => (e.currentTarget.style.color = "#2dd4bf")}
                   onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
-                  {item}
+                  {t(key)}
                 </a>
               ))}
             </div>
 
             {/* Company */}
             <div>
-              <h4 className="text-sm font-bold mb-4" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>Company</h4>
-              {["About PharmSync", "Terms of Service", "Privacy Policy", "RURA Compliance", "Rwanda Pharmacy Council"].map(item => (
-                <a key={item} href="#"
+              <h4 className="text-sm font-bold mb-4" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>{t("home.footerCompanyHeading")}</h4>
+              {footerCompanyKeys.map(key => (
+                <a key={key} href="#"
                   className="block text-sm py-1.5 transition-colors"
                   style={{ color: "#475569", fontFamily: "var(--font-body)" }}
                   onMouseEnter={e => (e.currentTarget.style.color = "#2dd4bf")}
                   onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
-                  {item}
+                  {t(key)}
                 </a>
               ))}
             </div>
 
             {/* Contact */}
             <div>
-              <h4 className="text-sm font-bold mb-4" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>Contact</h4>
+              <h4 className="text-sm font-bold mb-4" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>{t("home.footerContactHeading")}</h4>
               <div className="space-y-2.5 text-sm" style={{ color: "#475569", fontFamily: "var(--font-body)" }}>
                 <div>support@pharmsync.rw</div>
                 <div>+250 788 000 000</div>
@@ -801,7 +798,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 style={{ background: "rgba(13,148,136,0.15)", color: "#2dd4bf", fontFamily: "var(--font-display)", border: "1px solid rgba(13,148,136,0.2)" }}
                 onMouseEnter={e => (e.currentTarget.style.background = "rgba(13,148,136,0.25)")}
                 onMouseLeave={e => (e.currentTarget.style.background = "rgba(13,148,136,0.15)")}>
-                Existing branch? Log in →
+                {t("home.footerExistingBranch")}
               </button>
             </div>
           </div>
@@ -809,10 +806,10 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-8"
             style={{ borderTop: "1px solid #1e293b" }}>
             <p className="text-xs" style={{ color: "#334155", fontFamily: "var(--font-body)" }}>
-              © 2026 PharmSync Ltd. Incorporated in Rwanda. All rights reserved.
+              {t("home.footerCopyright", { year: new Date().getFullYear() })}
             </p>
             <p className="text-xs" style={{ color: "#1e293b", fontFamily: "var(--font-body)" }}>
-              regulatory@pharmsync.rw
+              {t("home.footerRegulatory")}
             </p>
           </div>
         </div>

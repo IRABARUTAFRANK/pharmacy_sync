@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Building2, Phone, Mail, MapPin, ArrowRight, CheckCircle2,
   Loader2, ShieldCheck, KeyRound, RefreshCw, AlertCircle, Copy, Check, Lock,
@@ -73,6 +73,13 @@ export default function BranchPortal() {
   const [checkBusy, setCheckBusy] = useState(false);
   const [checkError, setCheckError] = useState("");
 
+  // Mirrors `step` for the polling effect below to read synchronously inside
+  // an async callback — a plain closure over `step` would see whatever value
+  // was current when the poll *started*, not when its response actually
+  // arrives, which is exactly the race that clobbered the password step.
+  const stepRef = useRef<Step>(step);
+  useEffect(() => { stepRef.current = step; }, [step]);
+
   function applyRecord(record: BranchRecord) {
     setApplication(record);
     if (record.status === "active") setActivated(record);
@@ -120,13 +127,25 @@ export default function BranchPortal() {
   // verification. The activation email (link + code) is sent by the super
   // admin's own action, not triggered from here — this only reflects status
   // changes (otp_sent, denied, active) once they happen.
+  //
+  // Guarded against a real race: clicking "Verify" itself flips the server
+  // status to 'active' (via activate_pharmacy_account()) and moves the UI
+  // straight to the "password" step — but a poll tick already in flight at
+  // that moment resolves *after* verify does, sees status='active', and
+  // without the stepRef check below would call applyRecord() and stomp the
+  // "password" step back to "success" a beat later, before a password was
+  // ever set. Checking stepRef.current (not the `step` this closure was
+  // created with) right before applying the poll's result closes that
+  // window: once verify has moved past "pending"/"otp" locally, a stale
+  // poll response is simply dropped instead of overriding it.
   useEffect(() => {
     if (step !== "pending" && step !== "otp") return;
     if (!applicationId) return;
     const interval = setInterval(async () => {
+      if (stepRef.current !== "pending" && stepRef.current !== "otp") return;
       try {
         const record = await getPharmacyApplication(applicationId);
-        if (record) applyRecord(record);
+        if (record && (stepRef.current === "pending" || stepRef.current === "otp")) applyRecord(record);
       } catch {
         // transient network errors are ignored; the next tick retries
       }

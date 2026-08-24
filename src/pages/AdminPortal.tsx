@@ -19,8 +19,25 @@ import {
   signOutAdmin,
   verifyAdminOtp,
 } from "../lib/onboarding";
+import { useTranslation, LanguageSwitcher } from "../lib/i18n";
+import type { TranslationKey } from "../lib/i18n/en";
 
 type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets";
+
+function statusLabelKey(status: BranchStatus | TicketRecord["status"]): TranslationKey {
+  const map: Record<string, TranslationKey> = {
+    pending: "admin.statusPending",
+    approved: "admin.statusApproved",
+    otp_sent: "admin.statusOtpSent",
+    active: "admin.statusActive",
+    locked: "admin.statusLocked",
+    denied: "admin.statusDenied",
+    open: "admin.statusOpen",
+    in_progress: "admin.statusInProgress",
+    resolved: "admin.statusResolved",
+  };
+  return map[status] ?? "admin.statusPending";
+}
 
 /** Clears the #admin hash, handing control back to App's router (the PharmSync home/dashboard). */
 function backToHome() {
@@ -30,6 +47,7 @@ function backToHome() {
 // ── Small reusable pieces ─────────────────────────────────────────────────────
 
 function Badge({ status }: { status: BranchStatus | TicketRecord["status"] }) {
+  const { t } = useTranslation();
   const map: Record<string, string> = {
     pending:     "bg-amber-100 text-amber-700 border-amber-200",
     approved:    "bg-blue-100 text-blue-700 border-blue-200",
@@ -41,12 +59,9 @@ function Badge({ status }: { status: BranchStatus | TicketRecord["status"] }) {
     in_progress: "bg-blue-100 text-blue-700 border-blue-200",
     resolved:    "bg-green-100 text-green-700 border-green-200",
   };
-  const labels: Record<string, string> = {
-    otp_sent: "OTP Sent", in_progress: "In Progress"
-  };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wide ${map[status] ?? ""}`}>
-      {labels[status] ?? status}
+      {t(statusLabelKey(status))}
     </span>
   );
 }
@@ -101,6 +116,7 @@ function fmt(iso: string) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: TicketRecord[] }) {
+  const { t } = useTranslation();
   const pending = branches.filter((b) => b.status === "pending").length;
   const active  = branches.filter((b) => b.status === "active").length;
   const locked  = branches.filter((b) => b.status === "locked").length;
@@ -110,38 +126,38 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: T
     ...branches.map((b) => ({
       time: b.submittedAt,
       icon: <Building2 className="w-3.5 h-3.5 text-green-500" />,
-      text: `${b.pharmacyName} — ${b.status}`,
+      text: `${b.pharmacyName} — ${t(statusLabelKey(b.status))}`,
     })),
-    ...tickets.map((t) => ({
-      time: t.submittedAt,
+    ...tickets.map((tk) => ({
+      time: tk.submittedAt,
       icon: <Ticket className="w-3.5 h-3.5 text-violet-500" />,
-      text: `[Ticket] ${t.branchName}: "${t.subject}"`,
+      text: `[Ticket] ${tk.branchName}: "${tk.subject}"`,
     })),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 8);
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-800">System Overview</h2>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.systemOverview")}</h2>
         <p className="text-xs text-slate-400 mt-0.5 font-mono">
-          PharmacySync Admin · {new Date().toDateString()}
+          {t("admin.systemOverviewSubtitle", { date: new Date().toDateString() })}
         </p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Clock className="w-5 h-5 text-amber-600" />} label="Pending Approval" value={pending} color="bg-amber-50" />
-        <StatCard icon={<Activity className="w-5 h-5 text-green-600" />} label="Active Branches" value={active} color="bg-green-50" />
-        <StatCard icon={<Lock className="w-5 h-5 text-orange-600" />} label="Locked Branches" value={locked} color="bg-orange-50" />
-        <StatCard icon={<Ticket className="w-5 h-5 text-violet-600" />} label="Open Tickets" value={openTix} color="bg-violet-50" />
+        <StatCard icon={<Clock className="w-5 h-5 text-amber-600" />} label={t("admin.pendingApproval")} value={pending} color="bg-amber-50" />
+        <StatCard icon={<Activity className="w-5 h-5 text-green-600" />} label={t("admin.activeBranches")} value={active} color="bg-green-50" />
+        <StatCard icon={<Lock className="w-5 h-5 text-orange-600" />} label={t("admin.lockedBranchesLabel")} value={locked} color="bg-orange-50" />
+        <StatCard icon={<Ticket className="w-5 h-5 text-violet-600" />} label={t("admin.openTicketsLabel")} value={openTix} color="bg-violet-50" />
       </div>
 
       {locked > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-orange-700 text-sm">Security Alert</p>
+            <p className="font-semibold text-orange-700 text-sm">{t("admin.securityAlert")}</p>
             <p className="text-xs text-orange-600 mt-0.5">
-              {locked} branch{locked > 1 ? "es have" : " has"} been locked due to excessive failed login attempts. Go to Security to manage.
+              {t(locked > 1 ? "admin.securityAlertPlural" : "admin.securityAlertSingular", { count: locked })}
             </p>
           </div>
         </div>
@@ -151,8 +167,8 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: T
         <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 flex items-start gap-3">
           <Bell className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold text-violet-700 text-sm">{openTix} Open Support {openTix > 1 ? "Tickets" : "Ticket"}</p>
-            <p className="text-xs text-violet-600 mt-0.5">Branch{openTix > 1 ? "es" : ""} need help. Check the Tickets tab.</p>
+            <p className="font-semibold text-violet-700 text-sm">{t(openTix > 1 ? "admin.openTicketsHeadlinePlural" : "admin.openTicketsHeadlineSingular", { count: openTix })}</p>
+            <p className="text-xs text-violet-600 mt-0.5">{t(openTix > 1 ? "admin.needsHelpPlural" : "admin.needsHelpSingular")}</p>
           </div>
         </div>
       )}
@@ -160,7 +176,7 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: T
       <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-green-600" />
-          <p className="font-semibold text-sm text-slate-700">Recent Activity</p>
+          <p className="font-semibold text-sm text-slate-700">{t("admin.recentActivity")}</p>
         </div>
         <div className="divide-y divide-slate-50">
           {feed.map((f, i) => (
@@ -185,6 +201,7 @@ function Approvals({
   branches: BranchRecord[];
   onChange: () => void;
 }) {
+  const { t } = useTranslation();
   const [detailBranch, setDetailBranch] = useState<BranchRecord | null>(null);
   const [action, setAction] = useState<"approve" | "deny" | null>(null);
   const [denyReason, setDenyReason] = useState("");
@@ -208,7 +225,7 @@ function Approvals({
       setAction(null);
       onChange();
     } catch (reason) {
-      window.alert(reason instanceof Error ? reason.message : "Approval failed.");
+      window.alert(reason instanceof Error ? reason.message : t("admin.approvalFailed"));
     } finally {
       setSendingOtp(false);
     }
@@ -223,21 +240,21 @@ function Approvals({
       setDenyReason("");
       onChange();
     } catch (reason) {
-      window.alert(reason instanceof Error ? reason.message : "Denial failed.");
+      window.alert(reason instanceof Error ? reason.message : t("admin.denialFailed"));
     }
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-800">Branch Approvals</h2>
-        <p className="text-xs text-slate-400 mt-0.5">{pending.length} request{pending.length !== 1 ? "s" : ""} awaiting review</p>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.branchApprovals")}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">{t(pending.length !== 1 ? "admin.requestsAwaitingPlural" : "admin.requestsAwaitingSingular", { count: pending.length })}</p>
       </div>
 
       {pending.length === 0 ? (
         <div className="bg-white rounded-xl border border-green-100 p-12 text-center">
           <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
-          <p className="text-sm text-slate-500">All caught up — no pending approvals</p>
+          <p className="text-sm text-slate-500">{t("admin.allCaughtUp")}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -250,7 +267,7 @@ function Approvals({
                     <Badge status={b.status} />
                     {b.calledAt && (
                       <span className="flex items-center gap-1 text-[10px] text-green-600 font-semibold">
-                        <Phone className="w-3 h-3" /> Called
+                        <Phone className="w-3 h-3" /> {t("admin.called")}
                       </span>
                     )}
                   </div>
@@ -268,22 +285,22 @@ function Approvals({
                       onClick={() => markCalled(b.id)}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
                     >
-                      <Phone className="w-3.5 h-3.5" /> Mark as Called
+                      <Phone className="w-3.5 h-3.5" /> {t("admin.markAsCalled")}
                     </button>
                   )}
                   <button
                     onClick={() => { setDetailBranch(b); setAction("deny"); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
                   >
-                    <XCircle className="w-3.5 h-3.5" /> Deny
+                    <XCircle className="w-3.5 h-3.5" /> {t("admin.deny")}
                   </button>
                   <button
                     disabled={!b.calledAt}
                     onClick={() => { setDetailBranch(b); setAction("approve"); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={!b.calledAt ? "You must call the branch first" : ""}
+                    title={!b.calledAt ? t("admin.mustCallFirst") : ""}
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Approve & Send OTP
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t("admin.approveAndSendOtp")}
                   </button>
                 </div>
               </div>
@@ -294,7 +311,7 @@ function Approvals({
 
       {processed.length > 0 && (
         <div>
-          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-3">Processed</p>
+          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-3">{t("admin.processed")}</p>
           <div className="space-y-2">
             {processed.map((b) => (
               <div key={b.id} className="bg-white rounded-lg border border-slate-100 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
@@ -306,7 +323,7 @@ function Approvals({
                 <div className="flex items-center gap-2">
                   {b.status === "otp_sent" && (
                     <span className="font-mono text-xs bg-violet-50 border border-violet-200 text-violet-700 px-2 py-0.5 rounded-md">
-                      Awaiting email OTP
+                      {t("admin.awaitingEmailOtp")}
                     </span>
                   )}
                   <Badge status={b.status} />
@@ -319,27 +336,27 @@ function Approvals({
 
       {/* Approve modal */}
       {detailBranch && action === "approve" && (
-        <Modal title="Approve & Send OTP" onClose={() => { setDetailBranch(null); setAction(null); }}>
+        <Modal title={t("admin.approveAndSendOtp")} onClose={() => { setDetailBranch(null); setAction(null); }}>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Approve portal access for{" "}
+              {t("admin.approvePortalAccessFor")}{" "}
               <span className="font-semibold text-slate-800">{detailBranch.pharmacyName}</span>?
             </p>
             <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-1.5 text-xs">
-              <p className="font-semibold text-green-800 flex items-center gap-1.5"><Send className="w-3 h-3" /> What will happen:</p>
-              <p className="text-green-700">• The pharmacy page can request a 6-digit code at <strong>{detailBranch.email}</strong></p>
-              <p className="text-green-700">• They enter that code to create the one operator account for this branch</p>
-              <p className="text-green-700">• A unique PSYNC branch code is assigned on activation</p>
+              <p className="font-semibold text-green-800 flex items-center gap-1.5"><Send className="w-3 h-3" /> {t("admin.whatWillHappen")}</p>
+              <p className="text-green-700">{t("admin.approveBullet1", { email: detailBranch.email })}</p>
+              <p className="text-green-700">{t("admin.approveBullet2")}</p>
+              <p className="text-green-700">{t("admin.approveBullet3")}</p>
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => { setDetailBranch(null); setAction(null); }}
                 className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
-                Cancel
+                {t("admin.cancel")}
               </button>
               <button onClick={handleApprove} disabled={sendingOtp}
                 className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
                 {sendingOtp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                {sendingOtp ? "Sending OTP…" : "Approve & Send OTP"}
+                {sendingOtp ? t("admin.sendingOtp") : t("admin.approveAndSendOtp")}
               </button>
             </div>
           </div>
@@ -348,28 +365,28 @@ function Approvals({
 
       {/* Deny modal */}
       {detailBranch && action === "deny" && (
-        <Modal title="Deny Application" onClose={() => { setDetailBranch(null); setAction(null); setDenyReason(""); }}>
+        <Modal title={t("admin.denyApplication")} onClose={() => { setDetailBranch(null); setAction(null); setDenyReason(""); }}>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Deny portal access for{" "}
+              {t("admin.denyPortalAccessFor")}{" "}
               <span className="font-semibold text-slate-800">{detailBranch.pharmacyName}</span>?
             </p>
             <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">Reason (optional)</label>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.reasonOptional")}</label>
               <textarea
                 value={denyReason} onChange={(e) => setDenyReason(e.target.value)}
-                rows={3} placeholder="Enter reason for denial…"
+                rows={3} placeholder={t("admin.enterDenialReason")}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 resize-none focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors"
               />
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => { setDetailBranch(null); setAction(null); setDenyReason(""); }}
                 className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
-                Cancel
+                {t("admin.cancel")}
               </button>
               <button onClick={handleDeny}
                 className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                <XCircle className="w-3.5 h-3.5" /> Deny Access
+                <XCircle className="w-3.5 h-3.5" /> {t("admin.denyAccess")}
               </button>
             </div>
           </div>
@@ -382,6 +399,7 @@ function Approvals({
 // ── Branches directory ────────────────────────────────────────────────────────
 
 function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchRecord[]; adminEmail: string; onChange: () => void }) {
+  const { t } = useTranslation();
   const [filter, setFilter] = useState<BranchStatus | "all">("all");
   const [detail, setDetail] = useState<BranchRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BranchRecord | null>(null);
@@ -412,11 +430,16 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
     );
   }
 
+  const colHeaders: TranslationKey[] = [
+    "admin.colAppId", "admin.colPharmacy", "admin.colLocation", "admin.colPhone",
+    "admin.colBranchCode", "admin.colStatus", "admin.colFailedLogins",
+  ];
+
   return (
     <div className="space-y-6 animate-fade-up">
       <div>
-        <h2 className="text-xl font-bold text-slate-800">Branch Directory</h2>
-        <p className="text-xs text-slate-400 mt-0.5">{branches.length} branches registered</p>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.branchDirectory")}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">{t("admin.branchesRegistered", { count: branches.length })}</p>
       </div>
 
       <div className="flex gap-2 flex-wrap">
@@ -427,7 +450,7 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
                 ? "border-green-500 text-green-700 bg-green-50"
                 : "border-slate-200 text-slate-500 hover:border-green-300"
             }`}>
-            {s.replace("_", " ")}
+            {s === "all" ? t("admin.statusAll") : t(statusLabelKey(s))}
           </button>
         ))}
       </div>
@@ -437,9 +460,10 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                {["App ID","Pharmacy","Location","Phone","Branch Code","Status","Failed Logins",""].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                {colHeaders.map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{t(h)}</th>
                 ))}
+                <th />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -466,7 +490,7 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
             </tbody>
           </table>
           {shown.length === 0 && (
-            <p className="text-center py-10 text-xs text-slate-400">No branches with status "{filter}"</p>
+            <p className="text-center py-10 text-xs text-slate-400">{t("admin.noBranchesWithStatus", { filter: filter === "all" ? t("admin.statusAll") : t(statusLabelKey(filter)) })}</p>
           )}
         </div>
       </div>
@@ -482,6 +506,7 @@ function BranchDetailView({
 }: {
   branch: BranchRecord; onBack: () => void; onDelete: () => void; children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [resending, setResending] = useState(false);
   const [resendResult, setResendResult] = useState<{ ok: boolean; message: string } | null>(null);
 
@@ -490,9 +515,9 @@ function BranchDetailView({
     setResendResult(null);
     try {
       await requestPharmacyOtp(branch.email);
-      setResendResult({ ok: true, message: `Sent to ${branch.email}.` });
+      setResendResult({ ok: true, message: t("admin.resendSentTo", { email: branch.email }) });
     } catch (reason) {
-      setResendResult({ ok: false, message: reason instanceof Error ? reason.message : "Could not send the email." });
+      setResendResult({ ok: false, message: reason instanceof Error ? reason.message : t("admin.resendFailed") });
     } finally {
       setResending(false);
     }
@@ -502,7 +527,7 @@ function BranchDetailView({
     <div className="space-y-6 animate-fade-up">
       <button onClick={onBack}
         className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-700 transition-colors">
-        <ArrowLeft className="w-3.5 h-3.5" /> Back to branches
+        <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.backToBranches")}
       </button>
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -517,12 +542,12 @@ function BranchDetailView({
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Phone", value: branch.phone, mono: true, icon: <Phone className="w-3.5 h-3.5" /> },
-          { label: "Email", value: branch.email, mono: true, icon: <Mail className="w-3.5 h-3.5" /> },
-          { label: "Location", value: branch.location, icon: <MapPin className="w-3.5 h-3.5" /> },
-          { label: "Failed Logins", value: branch.failedLogins, icon: <AlertTriangle className="w-3.5 h-3.5" /> },
-          { label: "Branch Code", value: branch.branchCode ?? "—", mono: true, icon: <Building2 className="w-3.5 h-3.5" /> },
-          { label: "Activation Code", value: branch.activationCode ?? "—", mono: true, icon: <KeyRound className="w-3.5 h-3.5" /> },
+          { label: t("admin.fieldPhone"), value: branch.phone, mono: true, icon: <Phone className="w-3.5 h-3.5" /> },
+          { label: t("admin.fieldEmail"), value: branch.email, mono: true, icon: <Mail className="w-3.5 h-3.5" /> },
+          { label: t("admin.fieldLocation"), value: branch.location, icon: <MapPin className="w-3.5 h-3.5" /> },
+          { label: t("admin.fieldFailedLogins"), value: branch.failedLogins, icon: <AlertTriangle className="w-3.5 h-3.5" /> },
+          { label: t("admin.fieldBranchCode"), value: branch.branchCode ?? "—", mono: true, icon: <Building2 className="w-3.5 h-3.5" /> },
+          { label: t("admin.fieldActivationCode"), value: branch.activationCode ?? "—", mono: true, icon: <KeyRound className="w-3.5 h-3.5" /> },
         ].map((row, i) => (
           <div key={i} className="bg-white rounded-xl border border-green-100 shadow-sm p-4"
             style={{ animation: `fadeUp 0.4s cubic-bezier(.22,.68,0,1.2) both`, animationDelay: `${i * 0.04}s` }}>
@@ -537,11 +562,11 @@ function BranchDetailView({
 
       {branch.status === "otp_sent" && (
         <div className="bg-violet-50 border border-violet-200 rounded-xl p-4">
-          <p className="text-xs text-violet-700 mb-3">An activation link and 6-digit code were emailed directly to the applicant by Supabase Auth. Neither is ever visible here.</p>
+          <p className="text-xs text-violet-700 mb-3">{t("admin.otpSentNotice")}</p>
           <button onClick={() => void resend()} disabled={resending}
             className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-violet-300 text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-60">
             {resending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-            {resending ? "Resending…" : "Resend activation email"}
+            {resending ? t("admin.resending") : t("admin.resendActivationEmail")}
           </button>
           {resendResult && (
             <p className={`text-xs mt-2 ${resendResult.ok ? "text-violet-700" : "text-red-600 font-semibold"}`}>
@@ -552,22 +577,22 @@ function BranchDetailView({
       )}
       {branch.deniedReason && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-          <p className="text-xs font-semibold text-red-700 mb-0.5">Denial reason</p>
+          <p className="text-xs font-semibold text-red-700 mb-0.5">{t("admin.denialReasonLabel")}</p>
           <p className="text-xs text-red-600">{branch.deniedReason}</p>
         </div>
       )}
 
       {branch.branchId && (
         <div className="bg-white rounded-xl border border-red-100 shadow-sm p-5">
-          <p className="text-sm font-bold text-slate-800">Danger zone</p>
+          <p className="text-sm font-bold text-slate-800">{t("admin.dangerZone")}</p>
           <p className="text-xs text-slate-500 mt-1 mb-4">
-            Permanently deletes this branch and everything it owns. This cannot be undone.
+            {t("admin.dangerZoneBody")}
           </p>
           <button
             onClick={onDelete}
             className="flex items-center justify-center gap-2 border border-red-200 text-red-600 hover:bg-red-50 font-semibold py-2.5 px-5 rounded-lg text-xs transition-colors"
           >
-            <Trash2 className="w-3.5 h-3.5" /> Delete this branch
+            <Trash2 className="w-3.5 h-3.5" /> {t("admin.deleteThisBranch")}
           </button>
         </div>
       )}
@@ -588,6 +613,7 @@ function DeleteBranchModal({
 }: {
   branch: BranchRecord; adminEmail: string; onClose: () => void; onDeleted: () => void;
 }) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<"warn" | "email" | "otp">("warn");
   const [email, setEmail] = useState(adminEmail);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -595,14 +621,14 @@ function DeleteBranchModal({
   const [busy, setBusy] = useState(false);
 
   async function sendCode() {
-    if (!email.trim()) { setError("Enter your admin email."); return; }
+    if (!email.trim()) { setError(t("admin.enterEmailError")); return; }
     setBusy(true);
     setError("");
     try {
       await requestAdminOtp(email.trim());
       setStep("otp");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not send the code.");
+      setError(reason instanceof Error ? reason.message : t("admin.couldNotSendCode"));
     } finally {
       setBusy(false);
     }
@@ -610,7 +636,7 @@ function DeleteBranchModal({
 
   async function confirmDelete() {
     const token = otp.join("");
-    if (token.length < 6) { setError("Enter the complete 6-digit code."); return; }
+    if (token.length < 6) { setError(t("admin.enterFullCodeError")); return; }
     setBusy(true);
     setError("");
     try {
@@ -618,7 +644,7 @@ function DeleteBranchModal({
       await deleteBranch(branch.branchId!);
       onDeleted();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not delete this branch.");
+      setError(reason instanceof Error ? reason.message : t("admin.couldNotDelete"));
     } finally {
       setBusy(false);
     }
@@ -631,26 +657,24 @@ function DeleteBranchModal({
   }
 
   return (
-    <Modal title="Delete branch" onClose={onClose}>
+    <Modal title={t("admin.deleteBranchModalTitle")} onClose={onClose}>
       {step === "warn" && (
         <div className="space-y-4">
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex gap-2">
             <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
             <p className="text-xs text-red-700">
-              This permanently deletes <span className="font-bold">{branch.pharmacyName}</span> and every row it
-              owns — stock, batches, barcodes, sales, staff accounts, tickets, everything. This cannot be undone.
+              {t("admin.deleteWarnBody", { name: branch.pharmacyName })}
             </p>
           </div>
           <p className="text-xs text-slate-500">
-            To continue, you'll re-enter your admin email and a fresh emailed code — this isn't covered by just
-            being signed in.
+            {t("admin.deleteWarnNote")}
           </p>
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
-              Cancel
+              {t("admin.cancel")}
             </button>
             <button onClick={() => setStep("email")} className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors">
-              <Trash2 className="w-3.5 h-3.5" /> Continue
+              <Trash2 className="w-3.5 h-3.5" /> {t("admin.continue")}
             </button>
           </div>
         </div>
@@ -658,7 +682,7 @@ function DeleteBranchModal({
 
       {step === "email" && (
         <div className="space-y-3">
-          <p className="text-xs text-slate-500">Re-enter your admin email to receive a verification code.</p>
+          <p className="text-xs text-slate-500">{t("admin.reenterEmailPrompt")}</p>
           <input
             type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
             placeholder="you@pharmsync.rw"
@@ -668,14 +692,14 @@ function DeleteBranchModal({
           <button onClick={() => void sendCode()} disabled={busy}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <KeyRound className="w-3.5 h-3.5" />}
-            {busy ? "Sending…" : "Send verification code"}
+            {busy ? t("admin.sending") : t("admin.sendVerificationCode")}
           </button>
         </div>
       )}
 
       {step === "otp" && (
         <div className="space-y-3">
-          <p className="text-xs text-slate-500">Enter the 6-digit code emailed to <strong>{email}</strong> to permanently delete this branch.</p>
+          <p className="text-xs text-slate-500">{t("admin.enterCodeToDelete", { email })}</p>
           <div className="flex gap-2 justify-between">
             {otp.map((digit, i) => (
               <input
@@ -690,7 +714,7 @@ function DeleteBranchModal({
           <button onClick={() => void confirmDelete()} disabled={busy}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-            {busy ? "Deleting…" : "Verify & permanently delete"}
+            {busy ? t("admin.deleting") : t("admin.verifyAndDelete")}
           </button>
         </div>
       )}
@@ -701,6 +725,7 @@ function DeleteBranchModal({
 // ── Security ──────────────────────────────────────────────────────────────────
 
 function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: () => void }) {
+  const { t } = useTranslation();
   const [confirmLock, setConfirmLock]       = useState<BranchRecord | null>(null);
   const [confirmRelease, setConfirmRelease] = useState<BranchRecord | null>(null);
 
@@ -724,15 +749,15 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-800">Security Management</h2>
-        <p className="text-xs text-slate-400 mt-0.5">Monitor failed logins and manage branch lockouts</p>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.securityManagement")}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">{t("admin.securitySubtitle")}</p>
       </div>
 
       {highRisk.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <p className="text-sm font-semibold text-amber-700">High-Risk Branches ({highRisk.length})</p>
+            <p className="text-sm font-semibold text-amber-700">{t("admin.highRiskBranches", { count: highRisk.length })}</p>
           </div>
           {highRisk.map((b) => (
             <div key={b.id} className="bg-white border border-amber-200 rounded-xl p-4 flex items-start justify-between gap-4 flex-wrap shadow-sm">
@@ -744,12 +769,12 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
                 <p className="font-bold text-slate-800">{b.pharmacyName}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{b.email}</p>
                 <p className="text-xs text-amber-600 font-semibold mt-1 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" /> {b.failedLogins} failed login attempts
+                  <AlertTriangle className="w-3 h-3" /> {t("admin.failedLoginAttemptsCount", { count: b.failedLogins })}
                 </p>
               </div>
               <button onClick={() => setConfirmLock(b)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-orange-300 text-orange-600 rounded-lg hover:bg-orange-50 transition-colors">
-                <Lock className="w-3.5 h-3.5" /> Temporarily Lock
+                <Lock className="w-3.5 h-3.5" /> {t("admin.temporarilyLock")}
               </button>
             </div>
           ))}
@@ -759,12 +784,12 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Lock className="w-4 h-4 text-orange-500" />
-          <p className="text-sm font-semibold text-slate-700">Locked Branches ({locked.length})</p>
+          <p className="text-sm font-semibold text-slate-700">{t("admin.lockedBranchesCount", { count: locked.length })}</p>
         </div>
         {locked.length === 0 ? (
           <div className="bg-white rounded-xl border border-green-100 p-10 text-center">
             <ShieldAlert className="w-8 h-8 text-green-300 mx-auto mb-2" />
-            <p className="text-xs text-slate-400">No branches currently locked</p>
+            <p className="text-xs text-slate-400">{t("admin.noBranchesLocked")}</p>
           </div>
         ) : (
           locked.map((b) => (
@@ -778,18 +803,18 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
                   <p className="font-bold text-slate-800">{b.pharmacyName}</p>
                   <p className="text-xs text-slate-500">{b.email}</p>
                   <div className="mt-2 space-y-0.5">
-                    <p className="text-[11px] text-orange-600 font-mono">Locked: {b.lockedAt ? fmt(b.lockedAt) : "—"}</p>
-                    <p className="text-[11px] text-slate-400 font-mono">Failed logins: {b.failedLogins}</p>
+                    <p className="text-[11px] text-orange-600 font-mono">{t("admin.lockedAtLabel", { date: b.lockedAt ? fmt(b.lockedAt) : "—" })}</p>
+                    <p className="text-[11px] text-slate-400 font-mono">{t("admin.failedLoginsLabel", { count: b.failedLogins })}</p>
                   </div>
                   <div className="mt-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2">
                     <p className="text-[10px] text-orange-600 font-mono italic">
-                      "Your account is temporarily suspended. Contact the super admin to reactivate."
+                      {t("admin.suspendedQuote")}
                     </p>
                   </div>
                 </div>
                 <button onClick={() => setConfirmRelease(b)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
-                  <Unlock className="w-3.5 h-3.5" /> Release Branch
+                  <Unlock className="w-3.5 h-3.5" /> {t("admin.releaseBranch")}
                 </button>
               </div>
             </div>
@@ -798,18 +823,18 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
       </div>
 
       {confirmLock && (
-        <Modal title="Lock Branch" onClose={() => setConfirmLock(null)}>
+        <Modal title={t("admin.lockModalTitle")} onClose={() => setConfirmLock(null)}>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Temporarily lock <span className="font-semibold text-slate-800">{confirmLock.pharmacyName}</span> due to {confirmLock.failedLogins} failed login attempts?
+              {t("admin.lockConfirmBody", { name: confirmLock.pharmacyName, count: confirmLock.failedLogins })}
             </p>
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700">
-              The branch will be suspended and an automated notification will be sent instructing them to contact the super admin for reactivation.
+              {t("admin.lockConfirmNote")}
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmLock(null)} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+              <button onClick={() => setConfirmLock(null)} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
               <button onClick={() => void lock(confirmLock)} className="flex items-center gap-2 px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors">
-                <Lock className="w-3.5 h-3.5" /> Lock Branch
+                <Lock className="w-3.5 h-3.5" /> {t("admin.lockBranchBtn")}
               </button>
             </div>
           </div>
@@ -817,18 +842,18 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
       )}
 
       {confirmRelease && (
-        <Modal title="Release Branch" onClose={() => setConfirmRelease(null)}>
+        <Modal title={t("admin.releaseModalTitle")} onClose={() => setConfirmRelease(null)}>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Reactivate <span className="font-semibold text-slate-800">{confirmRelease.pharmacyName}</span>? Failed login count will be reset.
+              {t("admin.releaseConfirmBody", { name: confirmRelease.pharmacyName })}
             </p>
             <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700">
-              A confirmation notification will be sent to {confirmRelease.email}.
+              {t("admin.releaseConfirmNote", { email: confirmRelease.email })}
             </div>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setConfirmRelease(null)} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+              <button onClick={() => setConfirmRelease(null)} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
               <button onClick={() => void release(confirmRelease)} className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-                <Unlock className="w-3.5 h-3.5" /> Release Branch
+                <Unlock className="w-3.5 h-3.5" /> {t("admin.releaseBranch")}
               </button>
             </div>
           </div>
@@ -841,6 +866,7 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
 // ── Tickets ───────────────────────────────────────────────────────────────────
 
 function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange: () => void }) {
+  const { t } = useTranslation();
   const [detail, setDetail] = useState<TicketRecord | null>(null);
 
   const priorityOrder = { high: 0, medium: 1, low: 2 };
@@ -858,41 +884,44 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
     medium: "bg-amber-100 text-amber-700 border-amber-200",
     low:    "bg-slate-100 text-slate-600 border-slate-200",
   };
+  const priorityLabelKey: Record<TicketRecord["priority"], TranslationKey> = {
+    high: "admin.priorityHigh", medium: "admin.priorityMedium", low: "admin.priorityLow",
+  };
 
   const open = tickets.filter((t) => t.status === "open").length;
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-800">Support Tickets</h2>
-        <p className="text-xs text-slate-400 mt-0.5">{open} open · {tickets.filter((t) => t.status === "in_progress").length} in progress</p>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.supportTickets")}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">{t("admin.openInProgressSummary", { open, inProgress: tickets.filter((tk) => tk.status === "in_progress").length })}</p>
       </div>
 
       {open > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
           <Bell className="w-5 h-5 text-red-500 shrink-0" />
           <p className="text-sm text-red-700">
-            <span className="font-semibold">{open} open ticket{open > 1 ? "s" : ""}</span> require your attention.
+            <span className="font-semibold">{t(open > 1 ? "admin.openTicketsRequireAttentionPlural" : "admin.openTicketsRequireAttentionSingular", { count: open })}</span>
           </p>
         </div>
       )}
 
       <div className="space-y-3">
-        {sorted.map((t) => (
-          <div key={t.id} onClick={() => setDetail(t)}
+        {sorted.map((tk) => (
+          <div key={tk.id} onClick={() => setDetail(tk)}
             className="bg-white rounded-xl border border-green-100 shadow-sm p-4 cursor-pointer hover:border-green-300 transition-colors">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="font-mono text-[10px] text-slate-400">{t.id}</span>
-                  <Badge status={t.status} />
-                  <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${priorityStyles[t.priority]}`}>
-                    {t.priority}
+                  <span className="font-mono text-[10px] text-slate-400">{tk.id}</span>
+                  <Badge status={tk.status} />
+                  <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${priorityStyles[tk.priority]}`}>
+                    {t(priorityLabelKey[tk.priority])}
                   </span>
                 </div>
-                <p className="font-bold text-slate-800 truncate">{t.subject}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{t.branchName} · {timeAgo(t.submittedAt)}</p>
-                <p className="text-xs text-slate-400 mt-1.5 line-clamp-1">{t.message}</p>
+                <p className="font-bold text-slate-800 truncate">{tk.subject}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{tk.branchName} · {timeAgo(tk.submittedAt)}</p>
+                <p className="text-xs text-slate-400 mt-1.5 line-clamp-1">{tk.message}</p>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
             </div>
@@ -901,19 +930,19 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
         {sorted.length === 0 && (
           <div className="bg-white rounded-xl border border-green-100 p-12 text-center">
             <Ticket className="w-8 h-8 text-green-300 mx-auto mb-2" />
-            <p className="text-xs text-slate-400">No support tickets</p>
+            <p className="text-xs text-slate-400">{t("admin.noSupportTickets")}</p>
           </div>
         )}
       </div>
 
       {detail && (
-        <Modal title={`Ticket ${detail.id}`} onClose={() => setDetail(null)}>
+        <Modal title={t("admin.ticketModalTitle", { id: detail.id })} onClose={() => setDetail(null)}>
           <div className="space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
               <Badge status={detail.status} />
               <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${
                 { high: "bg-red-100 text-red-700 border-red-200", medium: "bg-amber-100 text-amber-700 border-amber-200", low: "bg-slate-100 text-slate-600 border-slate-200" }[detail.priority]
-              }`}>{detail.priority}</span>
+              }`}>{t(priorityLabelKey[detail.priority])}</span>
               <span className="font-mono text-[10px] text-slate-400">{fmt(detail.submittedAt)}</span>
             </div>
             <div>
@@ -924,7 +953,7 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
               <p className="text-xs text-slate-600 leading-relaxed">{detail.message}</p>
             </div>
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-widest text-slate-400 block mb-2">Update Status</label>
+              <label className="text-[10px] font-mono uppercase tracking-widest text-slate-400 block mb-2">{t("admin.updateStatus")}</label>
               <div className="flex gap-2 flex-wrap">
                 {(["open","in_progress","resolved"] as TicketRecord["status"][]).map((s) => (
                   <button key={s} onClick={() => updateStatus(detail.id, s)}
@@ -933,7 +962,7 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
                         ? "border-green-500 bg-green-50 text-green-700"
                         : "border-slate-200 text-slate-500 hover:border-green-300"
                     }`}>
-                    {s.replace("_", " ")}
+                    {t(statusLabelKey(s))}
                   </button>
                 ))}
               </div>
@@ -952,6 +981,7 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
 // asked for credentials — anyone opening #admin saw the dashboard shell.
 
 function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
+  const { t } = useTranslation();
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -960,14 +990,14 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
   const [verifying, setVerifying] = useState(false);
 
   async function sendCode() {
-    if (!email.trim()) { setError("Enter your admin email."); return; }
+    if (!email.trim()) { setError(t("admin.enterEmailError")); return; }
     setSending(true);
     setError("");
     try {
       await requestAdminOtp(email.trim());
       setStep("otp");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not send the code.");
+      setError(reason instanceof Error ? reason.message : t("admin.couldNotSendCode"));
     } finally {
       setSending(false);
     }
@@ -975,14 +1005,14 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
 
   async function verify() {
     const token = otp.join("");
-    if (token.length < 6) { setError("Enter the complete 6-digit code."); return; }
+    if (token.length < 6) { setError(t("admin.enterFullCodeError")); return; }
     setVerifying(true);
     setError("");
     try {
       await verifyAdminOtp(email.trim(), token);
       onAuthed(email.trim());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Incorrect code, or this account is not a super admin.");
+      setError(reason instanceof Error ? reason.message : t("admin.incorrectCodeError"));
     } finally {
       setVerifying(false);
     }
@@ -997,16 +1027,19 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-emerald-50 px-4">
       <div className="w-full max-w-sm">
-        <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors mb-4">
-          <ArrowLeft className="w-3.5 h-3.5" /> Back to PharmSync
-        </a>
+        <div className="flex items-center justify-between mb-4">
+          <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors">
+            <ArrowLeft className="w-3.5 h-3.5" /> {t("common.backToPharmSync")}
+          </a>
+          <LanguageSwitcher />
+        </div>
       <div className="w-full bg-white rounded-2xl border border-green-100 shadow-sm p-7">
         <div className="w-11 h-11 bg-green-600 rounded-xl flex items-center justify-center mb-5 shadow-sm shadow-green-200">
           <ShieldAlert className="w-5 h-5 text-white" />
         </div>
-        <h1 className="font-bold text-slate-800 text-lg mb-1">Super Admin sign-in</h1>
-        <p className="text-xs text-slate-500 mb-5">This portal requires a verified platform-admin account.</p>
+        <h1 className="font-bold text-slate-800 text-lg mb-1">{t("admin.gateTitle")}</h1>
+        <p className="text-xs text-slate-500 mb-5">{t("admin.gateSubtitle")}</p>
 
         {step === "email" ? (
           <div className="space-y-3">
@@ -1019,12 +1052,12 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
             <button onClick={() => void sendCode()} disabled={sending}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
               {sending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-              {sending ? "Sending…" : "Send sign-in code"}
+              {sending ? t("admin.sending") : t("admin.sendCode")}
             </button>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">Enter the 6-digit code emailed to <strong>{email}</strong>.</p>
+            <p className="text-xs text-slate-500">{t("admin.enterCodeInstructions", { email })}</p>
             <div className="flex gap-2 justify-between">
               {otp.map((digit, i) => (
                 <input
@@ -1039,10 +1072,10 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
             <button onClick={() => void verify()} disabled={verifying}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
               {verifying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-              {verifying ? "Verifying…" : "Verify & sign in"}
+              {verifying ? t("admin.verifying") : t("admin.verifyAndSignIn")}
             </button>
             <button onClick={() => { setStep("email"); setOtp(["", "", "", "", "", ""]); setError(""); }}
-              className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors">Use a different email</button>
+              className="w-full text-xs text-slate-400 hover:text-slate-600 transition-colors">{t("admin.useDifferentEmail")}</button>
           </div>
         )}
       </div>
@@ -1053,15 +1086,16 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
 
 // ── Main AdminPortal ──────────────────────────────────────────────────────────
 
-const NAV: { id: NavId; label: string; icon: React.ReactNode }[] = [
-  { id: "dashboard", label: "Dashboard",  icon: <LayoutDashboard className="w-4 h-4" /> },
-  { id: "approvals", label: "Approvals",  icon: <CheckSquare className="w-4 h-4" /> },
-  { id: "branches",  label: "Branches",   icon: <Users className="w-4 h-4" /> },
-  { id: "security",  label: "Security",   icon: <ShieldAlert className="w-4 h-4" /> },
-  { id: "tickets",   label: "Tickets",    icon: <Ticket className="w-4 h-4" /> },
+const NAV: { id: NavId; labelKey: TranslationKey; icon: React.ReactNode }[] = [
+  { id: "dashboard", labelKey: "admin.navDashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
+  { id: "approvals", labelKey: "admin.navApprovals", icon: <CheckSquare className="w-4 h-4" /> },
+  { id: "branches",  labelKey: "admin.navBranches",  icon: <Users className="w-4 h-4" /> },
+  { id: "security",  labelKey: "admin.navSecurity",  icon: <ShieldAlert className="w-4 h-4" /> },
+  { id: "tickets",   labelKey: "admin.navTickets",   icon: <Ticket className="w-4 h-4" /> },
 ];
 
 export default function AdminPortal() {
+  const { t } = useTranslation();
   const [authChecked, setAuthChecked] = useState(false);
   const [authed, setAuthed]           = useState(false);
   const [adminEmail, setAdminEmail]   = useState("");
@@ -1128,7 +1162,7 @@ export default function AdminPortal() {
             </div>
             <div>
               <p className="font-bold text-green-900 text-sm">PharmacySync</p>
-              <p className="text-[10px] text-green-600 font-mono">Super Admin</p>
+              <p className="text-[10px] text-green-600 font-mono">{t("admin.brandSuperAdmin")}</p>
             </div>
           </div>
         </div>
@@ -1144,7 +1178,7 @@ export default function AdminPortal() {
               }`}>
               <span className="flex items-center gap-2.5 font-medium">
                 {item.icon}
-                {item.label}
+                {t(item.labelKey)}
               </span>
               {badges[item.id] ? (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
@@ -1157,16 +1191,24 @@ export default function AdminPortal() {
           ))}
         </nav>
 
+        {/* Language switcher lives in the sidebar (not the top bar) — the
+            top bar in the branch dashboard was already found to clip
+            controls appended after its crowded flex row, so this control
+            gets its own guaranteed-visible spot instead. */}
+        <div className="px-4 pb-3">
+          <LanguageSwitcher />
+        </div>
+
         <div className="px-4 py-4 border-t border-green-100">
           <div className="flex items-center gap-2.5 bg-green-50 rounded-xl p-2.5">
             <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center shrink-0">
               <span className="text-white text-[10px] font-bold">SA</span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-700">Super Admin</p>
+              <p className="text-xs font-semibold text-slate-700">{t("admin.brandSuperAdmin")}</p>
               <p className="text-[10px] text-slate-400 font-mono truncate">{adminEmail || "signed in"}</p>
             </div>
-            <button onClick={handleSignOut} title="Sign out" className="shrink-0 text-slate-400 hover:text-red-600 transition-colors">
+            <button onClick={handleSignOut} title={t("admin.signOutTitle")} className="shrink-0 text-slate-400 hover:text-red-600 transition-colors">
               <XCircle className="w-4 h-4" />
             </button>
           </div>
@@ -1181,17 +1223,17 @@ export default function AdminPortal() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
             </button>
             <div>
-              <h1 className="font-bold text-slate-800">{NAV.find((n) => n.id === nav)?.label}</h1>
+              <h1 className="font-bold text-slate-800">{t(NAV.find((n) => n.id === nav)?.labelKey ?? "admin.navDashboard")}</h1>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors">
-              <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Back to PharmSync</span>
+              <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t("common.backToPharmSync")}</span>
             </a>
-            <span className="font-mono text-[10px] text-slate-400 hidden sm:block">MVP v1.0</span>
+            <span className="font-mono text-[10px] text-slate-400 hidden sm:block">{t("admin.version")}</span>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] text-green-600 font-semibold">LIVE</span>
+              <span className="text-[10px] text-green-600 font-semibold">{t("admin.live")}</span>
             </div>
           </div>
         </header>

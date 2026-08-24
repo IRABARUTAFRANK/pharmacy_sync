@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { NAV_ITEMS, alertsData, PAGE_LABELS, type Role } from './data'
+import { NAV_ITEMS, alertsData, type Role } from './data'
+import { useTranslation, LanguageSwitcher } from './lib/i18n'
+import type { TranslationKey } from './lib/i18n/en'
 import LiveInventoryPage from './pages/LiveInventoryPage'
 import StockReceivingPage from './pages/StockReceivingPage'
 import BarcodeManagerPage from './pages/BarcodeManagerPage'
@@ -22,8 +24,11 @@ function hashToRoute(hash: string): HashRoute {
   // recovery tokens appended to the hash (#access_token=…&type=recovery&…),
   // not one of our own routes — checked first since it never starts with
   // "#admin"/"#branch" but must still take priority over falling through
-  // to "home".
-  if (hash.includes('type=recovery')) return 'reset'
+  // to "home". An expired/already-used link redirects the same way but with
+  // #error=access_denied&error_code=otp_expired&... instead — that must
+  // route here too (not fall through to the marketing home page with no
+  // explanation) so ResetPassword.tsx can show *why* and offer a new link.
+  if (hash.includes('type=recovery') || hash.startsWith('#error=')) return 'reset'
   // startsWith, not ===, so the emailed activation link (#branch?email=...)
   // still routes to the branch portal instead of falling through to home.
   if (hash === '#admin' || hash.startsWith('#admin?')) return 'admin'
@@ -43,11 +48,15 @@ function useHashRoute(): HashRoute {
 
 // ─── Role Config ──────────────────────────────────────────────────────────────
 
-const ROLES: { id: Role; label: string; abbr: string; color: string }[] = [
-  { id: 'owner',      label: 'Owner',      abbr: 'OW', color: '#1e8a4a' },
-  { id: 'manager',    label: 'Manager',    abbr: 'MG', color: '#0284c7' },
-  { id: 'pharmacist', label: 'Pharmacist', abbr: 'PH', color: '#7c3aed' },
+const ROLES: { id: Role; abbr: string; color: string }[] = [
+  { id: 'owner',      abbr: 'OW', color: '#1e8a4a' },
+  { id: 'manager',    abbr: 'MG', color: '#0284c7' },
+  { id: 'pharmacist', abbr: 'PH', color: '#7c3aed' },
 ]
+
+function roleLabelKey(id: Role): TranslationKey {
+  return id === 'owner' ? 'shell.roleOwner' : id === 'manager' ? 'shell.roleManager' : 'shell.rolePharmacist'
+}
 
 // ─── Export Modal (inline here, used from any page) ───────────────────────────
 
@@ -102,6 +111,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
 // ─── Notifications Dropdown ───────────────────────────────────────────────────
 
 function NotifDropdown({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation()
   const active = alertsData.filter(a => !a.dismissed)
   return (
     <div style={{
@@ -110,8 +120,8 @@ function NotifDropdown({ onClose }: { onClose: () => void }) {
       boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
     }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>Notifications</span>
-        <span style={{ fontSize: 11, fontWeight: 600, background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '1px 7px' }}>{active.length} active</span>
+        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{t('shell.notifications')}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '1px 7px' }}>{t('shell.activeAlerts', { count: active.length })}</span>
       </div>
       <div style={{ maxHeight: 340, overflowY: 'auto' }}>
         {active.map(a => {
@@ -130,7 +140,7 @@ function NotifDropdown({ onClose }: { onClose: () => void }) {
         })}
       </div>
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-        <button onClick={onClose} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>View all alerts →</button>
+        <button onClick={onClose} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
       </div>
     </div>
   )
@@ -139,6 +149,7 @@ function NotifDropdown({ onClose }: { onClose: () => void }) {
 // ─── User Menu ────────────────────────────────────────────────────────────────
 
 function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: BranchAccess; role: Role; onRoleChange: (r: Role) => void; onSignOut: () => void; onClose: () => void }) {
+  const { t } = useTranslation()
   return (
     <div style={{
       position: 'absolute', right: 0, top: '110%', width: 220, zIndex: 100,
@@ -147,7 +158,7 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
     }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{access.fullName}</div>
-        <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{access.branchName} · {ROLES.find(r => r.id === role)?.label}</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{access.branchName} · {t(roleLabelKey(role))}</div>
       </div>
       <div style={{ display: 'none' }} aria-hidden="true">
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Switch Role (Demo)</div>
@@ -165,12 +176,12 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
             <span style={{ width: 24, height: 24, borderRadius: 6, background: r.color + '20', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: r.color }}>
               {r.abbr}
             </span>
-            {r.label}
+            {t(roleLabelKey(r.id))}
           </button>
         ))}
       </div>
       <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)' }}>
-        <button onClick={onSignOut} style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Sign Out</button>
+        <button onClick={onSignOut} style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{t('shell.signOut')}</button>
       </div>
     </div>
   )
@@ -178,13 +189,21 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
+const DATE_RANGE_OPTIONS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', 'quarter', 'custom'] as const
+type DateRangeOption = typeof DATE_RANGE_OPTIONS[number]
+const dateRangeLabelKey: Record<DateRangeOption, TranslationKey> = {
+  today: 'shell.dateToday', thisWeek: 'shell.dateThisWeek', thisMonth: 'shell.dateThisMonth',
+  lastMonth: 'shell.dateLastMonth', quarter: 'shell.dateQuarter', custom: 'shell.dateCustom',
+}
+
 export default function App() {
   const hashRoute = useHashRoute()
+  const { t } = useTranslation()
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
   const [accessLoading, setAccessLoading] = useState(true)
   const [search, setSearch]         = useState('')
-  const [dateRange, setDateRange]   = useState('This Month')
+  const [dateRange, setDateRange]   = useState<DateRangeOption>('thisMonth')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showNotif, setShowNotif]   = useState(false)
   const [showUser, setShowUser]     = useState(false)
@@ -221,7 +240,7 @@ export default function App() {
   if (hashRoute === 'reset') return <ResetPassword />
 
   if (accessLoading) {
-    return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'Inter, sans-serif' }}>Loading workspace…</main>
+    return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'Inter, sans-serif' }}>{t('shell.loadingWorkspace')}</main>
   }
 
   if (!access) {
@@ -273,7 +292,7 @@ export default function App() {
           {sidebarOpen && (
             <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'DM Sans, sans-serif', letterSpacing: '-0.01em' }}>PharmSync</div>
-              <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>The Pharmacy Sync</div>
+              <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>{t('shell.tagline')}</div>
             </div>
           )}
         </div>
@@ -289,10 +308,22 @@ export default function App() {
                 {currentRole.abbr}
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: currentRole.color }}>{currentRole.label}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: currentRole.color }}>{t(roleLabelKey(currentRole.id))}</div>
                 <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{access.branchName}</div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Language switcher — lives here, not the top bar, because the top
+            bar's search box + date filter + branch badge + notif bell +
+            avatar already crowd a laptop-width screen; anything appended
+            after them there risked being squeezed past the app-shell's
+            overflow:hidden and never rendering at all. The sidebar has its
+            own space that isn't competing with anything else. */}
+        {sidebarOpen && (
+          <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
+            <LanguageSwitcher />
           </div>
         )}
 
@@ -300,6 +331,7 @@ export default function App() {
         <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto', overflowX: 'hidden' }}>
           {visibleNav.map(item => {
             const active = page === item.id
+            const navLabel = t(`nav.${item.id}` as TranslationKey)
             return (
               <button key={item.id} onClick={() => setPage(item.id)} style={{
                 width: '100%', display: 'flex', alignItems: 'center',
@@ -313,12 +345,12 @@ export default function App() {
               }}
                 onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
                 onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-                title={!sidebarOpen ? item.label : undefined}
+                title={!sidebarOpen ? navLabel : undefined}
               >
                 <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
                 {sidebarOpen && (
                   <>
-                    <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</span>
+                    <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{navLabel}</span>
                     {item.badge !== undefined && (
                       <span style={{
                         background: item.id === 'alerts' ? '#dc2626' : 'var(--primary)',
@@ -357,7 +389,7 @@ export default function App() {
             {sidebarOpen && (
               <div style={{ overflow: 'hidden', textAlign: 'left' }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
-                <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{currentRole.label}</div>
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{t(roleLabelKey(currentRole.id))}</div>
               </div>
             )}
           </button>
@@ -384,7 +416,7 @@ export default function App() {
           >☰</button>
 
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
-            {PAGE_LABELS[page]}
+            {t(`page.${page}` as TranslationKey)}
           </div>
 
           <div style={{ flex: 1 }} />
@@ -394,7 +426,7 @@ export default function App() {
             <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--ink-faint)', pointerEvents: 'none' }}>🔍</span>
             <input
               value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Search patients, products, TXN…"
+              placeholder={t('shell.searchPlaceholder')}
               style={{
                 width: '100%', padding: '7px 10px 7px 28px', borderRadius: 8,
                 border: '1px solid var(--border)', fontSize: 12, outline: 'none',
@@ -407,15 +439,15 @@ export default function App() {
           </div>
 
           {/* Date filter */}
-          <select value={dateRange} onChange={e => setDateRange(e.target.value)} style={{
+          <select value={dateRange} onChange={e => setDateRange(e.target.value as DateRangeOption)} style={{
             padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
             fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
             cursor: 'pointer', outline: 'none', flexShrink: 0,
           }}>
-            {['Today', 'This Week', 'This Month', 'Last Month', 'Q3 2026', 'Custom Range'].map(d => <option key={d}>{d}</option>)}
+            {DATE_RANGE_OPTIONS.map(opt => <option key={opt} value={opt}>{t(dateRangeLabelKey[opt])}</option>)}
           </select>
 
-          <div title="This dashboard is limited to your assigned branch" style={{
+          <div title={t('shell.branchScopedNotice')} style={{
             padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
             fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
             fontWeight: 600, flexShrink: 0,
@@ -433,7 +465,7 @@ export default function App() {
           }}>
             <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#16a34a' : '#d97706', flexShrink: 0 }} />
             <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? '#16a34a' : '#d97706', whiteSpace: 'nowrap' }}>
-              {isOnline ? 'Online' : `Offline${pendingSync > 0 ? ` · ${pendingSync} queued` : ''}`}
+              {isOnline ? t('shell.online') : pendingSync > 0 ? t('shell.offlineQueued', { count: pendingSync }) : t('shell.offline')}
             </span>
           </div>
 

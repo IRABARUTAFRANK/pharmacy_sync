@@ -1,10 +1,25 @@
 import { useState } from "react";
-import { Lock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Lock, AlertCircle, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
 import { updatePassword } from "../lib/auth";
 import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton } from "./AuthShell";
 import loginImg from "../assets/products.jpg";
 
 const MIN_PASSWORD_LENGTH = 8;
+
+// Parses Supabase's own error params from a failed auth-link redirect, e.g.
+// #error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired
+// A used or expired reset link redirects exactly like this — same shape as
+// the success case, just with error params instead of a session — and
+// without this check it was falling through to a bare "set password" form
+// that would fail the moment it tried to call updatePassword() with no
+// session behind it. App.tsx's hash router already sends any #error=... hash
+// here (alongside the type=recovery success case), so this only has to read it.
+function linkError(): string | null {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const description = params.get("error_description");
+  if (!description) return null;
+  return description.replace(/\+/g, " ");
+}
 
 // Reached via the link in a "forgot password" email (see LoginView's
 // requestBranchPasswordReset -> lib/auth.ts sendBranchPasswordReset). That
@@ -22,6 +37,7 @@ export default function ResetPassword() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  const [expiredMessage] = useState(linkError);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,12 +63,25 @@ export default function ResetPassword() {
     <AuthShell
       image={loginImg}
       imageAlt="Pharmacist using a digital stock management system with full pharmacy shelves visible"
-      eyebrow="Reset password"
-      tagline="Choose a new password to get back into your branch dashboard."
+      eyebrow={expiredMessage ? "Link expired" : "Reset password"}
+      tagline={expiredMessage ? "Request a new reset link to continue." : "Choose a new password to get back into your branch dashboard."}
       onBack={() => { window.location.hash = ""; }}
     >
       <div className="rounded-2xl p-8" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
-        {done ? (
+        {expiredMessage ? (
+          <div className="text-center py-4">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#fef2f2" }}>
+              <AlertCircle className="w-7 h-7" style={{ color: "#dc2626" }} />
+            </div>
+            <h1 className="text-xl font-extrabold" style={authCardHeading}>This link no longer works</h1>
+            <p className="text-sm mt-2" style={authBody}>{expiredMessage}.</p>
+            <p className="text-sm mt-1" style={authBody}>Reset links are one-time use and expire after a few hours — request a fresh one to continue.</p>
+            <button type="button" onClick={() => { window.location.hash = ""; }}
+              className="flex items-center justify-center gap-2 mx-auto mt-6" style={{ ...authPrimaryButton, width: "auto", padding: "12px 24px" }}>
+              <RefreshCw className="w-4 h-4" /> Back to sign in
+            </button>
+          </div>
+        ) : done ? (
           <div className="text-center py-4">
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(13,148,136,0.1)" }}>
               <CheckCircle2 className="w-7 h-7" style={{ color: "#0d9488" }} />
