@@ -3,7 +3,7 @@ import {
   LayoutDashboard, CheckSquare, Building2, ShieldAlert, Ticket,
   Phone, Mail, MapPin, Clock, AlertTriangle, CheckCircle2, XCircle,
   Lock, Unlock, RefreshCw, ChevronRight, Eye, Send, Bell, Activity,
-  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound, Package, Plus, Ban, Tag,
+  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound, Package, Plus, Ban, Tag, Percent,
 } from "lucide-react";
 import type { BranchRecord, BranchStatus } from "../lib/store";
 import {
@@ -43,10 +43,20 @@ import {
   type ProductVariantInput,
   type TaxRate,
 } from "../lib/products";
+import {
+  adminClearInsuranceCoverage,
+  adminCreateInsuranceProvider,
+  adminSetInsuranceCoverage,
+  adminUpdateInsuranceProvider,
+  loadCoverageOverridesWithNames,
+  loadInsuranceProviders,
+  type CoverageOverrideRow,
+  type InsuranceProvider,
+} from "../lib/sales";
 import { useTranslation, LanguageSwitcher } from "../lib/i18n";
 import type { TranslationKey } from "../lib/i18n/en";
 
-type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets" | "products" | "categories" | "productRequests";
+type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets" | "products" | "categories" | "productRequests" | "insurance";
 
 function statusLabelKey(status: BranchStatus | TicketStatus): TranslationKey {
   const map: Record<string, TranslationKey> = {
@@ -1445,6 +1455,269 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
   );
 }
 
+// ── Insurance ────────────────────────────────────────────────────────────────
+// Each provider has one default_coverage_percentage applied to every product
+// by default; insurance_product_coverage holds only the exceptions (a row
+// existing there IS the "differs from default" flag — 0% is a real override
+// meaning "not covered at all", not a special case).
+
+function ProviderFormModal({ provider, onClose, onSaved }: {
+  provider?: InsuranceProvider; onClose: () => void; onSaved: () => void;
+}) {
+  const [name, setName] = useState(provider?.name ?? "");
+  const [rate, setRate] = useState(provider ? String(provider.defaultCoveragePercentage) : "");
+  const [contact, setContact] = useState(provider?.contactInfo ?? "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const parsed = Number(rate);
+    if (!name.trim()) { setError("Provider name is required."); return; }
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) { setError("Default coverage must be between 0 and 100."); return; }
+    setBusy(true);
+    setError("");
+    try {
+      if (provider) await adminUpdateInsuranceProvider(provider.id, name.trim(), parsed, contact.trim());
+      else await adminCreateInsuranceProvider(name.trim(), parsed, contact.trim());
+      onSaved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save this insurance provider.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={provider ? "Edit Insurance Provider" : "Add Insurance Provider"} onClose={onClose}>
+      <div className="space-y-3">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">Provider Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. RSSB, MMI, Radiant"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">Default Coverage Applied to All Medicines (%)</label>
+          <input type="number" min="0" max="100" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">Contact Info (optional)</label>
+          <input value={contact} onChange={(e) => setContact(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            {provider ? "Save Changes" : "Add Provider"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvider; onClose: () => void }) {
+  const [overrides, setOverrides] = useState<CoverageOverrideRow[]>([]);
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [productQuery, setProductQuery] = useState("");
+  const [pickedProductId, setPickedProductId] = useState("");
+  const [pct, setPct] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [rows, productList] = await Promise.all([loadCoverageOverridesWithNames(provider.id), adminListProducts()]);
+      setOverrides(rows);
+      setProducts(productList);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load coverage for this provider.");
+    } finally {
+      setLoading(false);
+    }
+  }, [provider.id]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const overriddenIds = new Set(overrides.map((o) => o.productId));
+  const needle = productQuery.trim().toLowerCase();
+  const candidates = products.filter((p) => !overriddenIds.has(p.id) && (!needle || p.name.toLowerCase().includes(needle)));
+
+  async function saveOverride(productId: string, coveragePercentage: number) {
+    setBusy(true);
+    setError("");
+    try {
+      await adminSetInsuranceCoverage(provider.id, productId, coveragePercentage);
+      setPickedProductId("");
+      setPct("");
+      setProductQuery("");
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save this coverage override.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearOverride(productId: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await adminClearInsuranceCoverage(provider.id, productId);
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not clear this override.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={`Coverage — ${provider.name}`} onClose={onClose}>
+      <div className="space-y-4 max-h-[65vh] overflow-y-auto">
+        <p className="text-xs text-slate-500">Default coverage is <strong>{provider.defaultCoveragePercentage}%</strong> for every product. Add a row below only for a product that should differ — including 0% for "not covered at all".</p>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+
+        {loading ? (
+          <p className="text-xs text-slate-400">Loading…</p>
+        ) : overrides.length === 0 ? (
+          <p className="text-xs text-slate-400">No exceptions yet — every product uses the default.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {overrides.map((o) => (
+              <div key={o.productId} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
+                <span className="text-sm text-slate-700">{o.productName}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-xs font-bold ${o.coveragePercentage === 0 ? "text-red-600" : "text-green-700"}`}>
+                    {o.coveragePercentage === 0 ? "Not covered" : `${o.coveragePercentage}%`}
+                  </span>
+                  <button onClick={() => void clearOverride(o.productId)} disabled={busy} title="Revert to default"
+                    className="text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="border-t border-slate-100 pt-3 space-y-2">
+          <label className="text-xs font-semibold text-slate-600 block">Add a Product Override</label>
+          <input value={pickedProductId ? products.find((p) => p.id === pickedProductId)?.name ?? "" : productQuery}
+            onChange={(e) => { setProductQuery(e.target.value); setPickedProductId(""); }}
+            placeholder="Search a product…"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+          {!pickedProductId && productQuery.trim() && (
+            <div className="border border-slate-100 rounded-lg max-h-32 overflow-y-auto">
+              {candidates.slice(0, 20).map((p) => (
+                <button key={p.id} onClick={() => { setPickedProductId(p.id); setProductQuery(""); }}
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-green-50 transition-colors">
+                  {p.name}
+                </button>
+              ))}
+              {candidates.length === 0 && <p className="px-3 py-1.5 text-xs text-slate-400">No matching product.</p>}
+            </div>
+          )}
+          {pickedProductId && (
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" max="100" step="0.01" value={pct} onChange={(e) => setPct(e.target.value)}
+                placeholder="Coverage %" className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+              <button onClick={() => setPct("0")} className="text-xs font-semibold text-red-600 hover:underline">Not covered</button>
+              <div className="flex-1" />
+              <button onClick={() => void saveOverride(pickedProductId, Number(pct))} disabled={busy || pct.trim() === "" || !Number.isFinite(Number(pct))}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+                {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Save
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function InsuranceView() {
+  const [providers, setProviders] = useState<InsuranceProvider[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editing, setEditing] = useState<InsuranceProvider | null>(null);
+  const [managing, setManaging] = useState<InsuranceProvider | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setProviders(await loadInsuranceProviders());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load insurance providers.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Insurance Providers</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{providers.length} provider{providers.length === 1 ? "" : "s"}</p>
+        </div>
+        <button onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Add Provider
+        </button>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
+
+      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                {["Provider", "Default Coverage", "Contact", ""].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {providers.map((p) => (
+                <tr key={p.id} className="hover:bg-green-50/30 transition-colors">
+                  <td className="px-4 py-3 font-semibold text-slate-700">{p.name}</td>
+                  <td className="px-4 py-3 text-slate-500">{p.defaultCoveragePercentage}%</td>
+                  <td className="px-4 py-3 text-slate-500">{p.contactInfo || "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-3">
+                      <button onClick={() => setManaging(p)} className="text-xs font-semibold text-green-700 hover:underline">Manage Coverage</button>
+                      <button onClick={() => setEditing(p)} className="text-xs font-semibold text-slate-500 hover:underline">Edit</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!loading && providers.length === 0 && (
+            <p className="text-center py-10 text-xs text-slate-400">No insurance providers yet — add one to start covering sales.</p>
+          )}
+        </div>
+      </div>
+
+      {showAdd && <ProviderFormModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); void refresh(); }} />}
+      {editing && <ProviderFormModal provider={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); void refresh(); }} />}
+      {managing && <ManageCoverageModal provider={managing} onClose={() => setManaging(null)} />}
+    </div>
+  );
+}
+
 // ── Product Requests ────────────────────────────────────────────────────────
 // A branch that can't find a product while receiving stock sends a free-text
 // message (with an optional photo) instead of filling in a structured form
@@ -1807,6 +2080,7 @@ const NAV: { id: NavId; labelKey: TranslationKey; icon: React.ReactNode }[] = [
   { id: "products",  labelKey: "admin.navProducts",  icon: <Package className="w-4 h-4" /> },
   { id: "categories", labelKey: "admin.navCategories", icon: <Tag className="w-4 h-4" /> },
   { id: "productRequests", labelKey: "admin.navProductRequests", icon: <Plus className="w-4 h-4" /> },
+  { id: "insurance", labelKey: "admin.navInsurance", icon: <Percent className="w-4 h-4" /> },
   { id: "security",  labelKey: "admin.navSecurity",  icon: <ShieldAlert className="w-4 h-4" /> },
   { id: "tickets",   labelKey: "admin.navTickets",   icon: <Ticket className="w-4 h-4" /> },
 ];
@@ -1970,6 +2244,7 @@ export default function AdminPortal() {
           {nav === "products"  && <ProductsView />}
           {nav === "categories" && <CategoriesView branches={branches} />}
           {nav === "productRequests" && <ProductRequestsView />}
+          {nav === "insurance" && <InsuranceView />}
           {nav === "security"  && <Security branches={branches} onChange={refresh} />}
           {nav === "tickets"   && <TicketsView tickets={tickets} onChange={refresh} />}
         </main>

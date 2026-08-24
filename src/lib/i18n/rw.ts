@@ -190,6 +190,7 @@ const rw: Record<TranslationKey, string> = {
   "admin.navTickets": "Ubufasha",
   "admin.navProducts": "Ibicuruzwa",
   "admin.navProductRequests": "Ubusabe bw'Ibicuruzwa",
+  "admin.navInsurance": "Ubwishingizi",
 
   // ── Admin portal — sign-in gate ───────────────────────────────────────────
   "admin.gateTitle": "Kwinjira kw'Umuyobozi Mukuru",

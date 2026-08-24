@@ -5,6 +5,9 @@ import type { TranslationKey } from './lib/i18n/en'
 import LiveInventoryPage from './pages/LiveInventoryPage'
 import StockReceivingPage from './pages/StockReceivingPage'
 import BarcodeManagerPage from './pages/BarcodeManagerPage'
+import SalesPage from './pages/SalesPage'
+import TransactionsPage from './pages/TransactionsPage'
+import InsurancePage from './pages/InsurancePage'
 import RequestProductPage from './pages/RequestProductPage'
 import AlertsPage from './pages/AlertsPage'
 import HelpPage from './pages/HelpPage'
@@ -288,12 +291,12 @@ export default function App() {
       case 'receiving':     return <StockReceivingPage />
       case 'requestProduct': return <RequestProductPage />
       case 'barcode':       return <BarcodeManagerPage />
-      case 'sales':         return <DatabaseBackedPage title="Sales & POS" tables="sales · sale_items · receipts" />
+      case 'sales':         return <SalesPage />
       case 'analytics':     return <DatabaseBackedPage title="Analytics" tables="sales · sale_items · sales_forecasts" />
       case 'alerts':        return <AlertsPage />
-      case 'transactions':  return <DatabaseBackedPage title="Transactions" tables="sales · sale_items · receipts" />
+      case 'transactions':  return <TransactionsPage />
       case 'compliance':    return <DatabaseBackedPage title="Compliance" tables="sales · tax_rates" />
-      case 'insurance':     return <DatabaseBackedPage title="Insurance" tables="insurance_claims · insurance_providers" />
+      case 'insurance':     return <InsurancePage />
       case 'branch':        return <DatabaseBackedPage title="Branch Management" tables="branches · users · branch_settings" />
       case 'help':          return <HelpPage />
       default:              return null

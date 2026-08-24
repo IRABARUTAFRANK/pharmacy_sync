@@ -2814,3 +2814,374 @@ grant execute on function public.admin_create_category(text, text, uuid) to auth
 
 revoke all on function public.admin_create_tax_rate(text, numeric) from public;
 grant execute on function public.admin_create_tax_rate(text, numeric) to authenticated;
+
+-- ============================================================================
+-- SALES / INSURANCE / RECEIPTS
+-- ============================================================================
+-- insurance_providers, insurance_product_coverage, sales, sale_items, receipts,
+-- and insurance_claims all existed in the schema already but were never
+-- actually reachable: RLS was enabled on every one of them with zero policies
+-- and zero grants, which is a silent "always empty" state, not an error.
+-- Closing that gap here, plus the one new column and the RPCs needed to
+-- actually run a sale.
+
+alter table public.insurance_providers enable row level security;
+alter table public.insurance_product_coverage enable row level security;
+alter table public.sales enable row level security;
+alter table public.sale_items enable row level security;
+alter table public.receipts enable row level security;
+alter table public.insurance_claims enable row level security;
+
+grant select on public.insurance_providers, public.insurance_product_coverage to authenticated;
+grant select on public.sales, public.sale_items, public.receipts, public.insurance_claims to authenticated;
+-- Deliberately no insert/update/delete grants anywhere in this block: insurance
+-- providers/coverage are only ever written by the admin_* functions below
+-- (each asserts super-admin internally); sales/sale_items/receipts/
+-- insurance_claims are only ever written by complete_sale(), atomically, so a
+-- sale can never exist without its stock decrement, receipt, and (if any)
+-- insurance claim all landing together or not at all.
+
+drop policy if exists "insurance providers readable" on public.insurance_providers;
+create policy "insurance providers readable" on public.insurance_providers for select to authenticated using (true);
+
+drop policy if exists "insurance coverage readable" on public.insurance_product_coverage;
+create policy "insurance coverage readable" on public.insurance_product_coverage for select to authenticated using (true);
+
+drop policy if exists "sales branch access" on public.sales;
+create policy "sales branch access" on public.sales for select to authenticated
+using (public.is_super_admin() or branch_id = public.current_branch_id());
+
+drop policy if exists "sale items branch access" on public.sale_items;
+create policy "sale items branch access" on public.sale_items for select to authenticated
+using (
+  public.is_super_admin()
+  or exists (select 1 from public.sales s where s.id = sale_items.sale_id and s.branch_id = public.current_branch_id())
+);
+
+drop policy if exists "receipts branch access" on public.receipts;
+create policy "receipts branch access" on public.receipts for select to authenticated
+using (
+  public.is_super_admin()
+  or exists (select 1 from public.sales s where s.id = receipts.sale_id and s.branch_id = public.current_branch_id())
+);
+
+drop policy if exists "insurance claims branch access" on public.insurance_claims;
+create policy "insurance claims branch access" on public.insurance_claims for select to authenticated
+using (
+  public.is_super_admin()
+  or exists (select 1 from public.sales s where s.id = insurance_claims.sale_id and s.branch_id = public.current_branch_id())
+);
+
+-- Per-line insurance detail, requested explicitly: insurance_claims only ever
+-- recorded one blended percentage/amount for a whole sale, which loses which
+-- specific products insurance actually covered. This is the portion of THIS
+-- line's total (subtotal + tax) that insurance paid, snapshotted at sale
+-- time -- 0 for a self-pay line. insurance_claims remains the sale-level
+-- summary (its coverage_percentage_applied is the blended effective rate
+-- across the whole sale, its claim_amount the sum of every line's amount here).
+alter table public.sale_items add column if not exists insurance_covered_amount numeric(12,2) not null default 0;
+alter table public.sale_items drop constraint if exists sale_items_insurance_covered_amount_check;
+alter table public.sale_items add constraint sale_items_insurance_covered_amount_check check (insurance_covered_amount >= 0);
+
+-- ── lookup_barcode(): add product_id and tax_rate_id ───────────────────────
+-- Needed to check insurance_product_coverage and compute tax; complete_sale()
+-- below does NOT reuse this function (it does its own row-locked, status- and
+-- type-checked lookup), but the sale cart's "scan to preview" step does, so it
+-- needs these two fields too. create or replace cannot change a function's
+-- return columns, so the old signature has to be dropped first.
+drop function if exists public.lookup_barcode(text);
+create function public.lookup_barcode(p_code text)
+returns table(
+  barcode_id uuid, code text, barcode_type text, status text,
+  quantity_available integer, pieces_per_pack integer, child_count integer,
+  parent_code text, stock_batch_id uuid, batch_number text, expiry_date date,
+  delivery_code text, selling_price numeric, product_id uuid, product_name text,
+  tax_rate_id uuid, dosage text, form text, manufacturer_name text, supplier_name text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    bc.id,
+    bc.code::text,
+    bc.barcode_type::text,
+    bc.status::text,
+    bc.quantity_available,
+    bc.pieces_per_pack,
+    bc.child_count,
+    parent.code::text,
+    sb.id,
+    sb.batch_number::text,
+    sb.expiry_date,
+    sb.delivery_code::text,
+    sb.selling_price,
+    p.id,
+    p.name::text,
+    p.tax_rate_id,
+    pv.dosage::text,
+    pv.form::text,
+    sb.manufacturer_name::text,
+    s.supplier_name::text
+  from public.barcodes bc
+  join public.stock_batches sb on sb.id = bc.stock_batch_id
+  join public.product_variants pv on pv.id = sb.product_variant_id
+  join public.products p on p.id = pv.product_id
+  left join public.barcodes parent on parent.id = bc.parent_barcode_id
+  left join public.suppliers s on s.id = sb.supplier_id
+  where upper(bc.code) = upper(btrim(p_code))
+    and (
+      public.is_super_admin()
+      or sb.branch_id = public.current_branch_id()
+    )
+  limit 1
+$$;
+
+grant execute on function public.lookup_barcode(text) to authenticated;
+
+-- ── Insurance admin RPCs ─────────────────────────────────────────────────
+
+create or replace function public.admin_create_insurance_provider(
+  p_name text, p_default_coverage_percentage numeric, p_contact_info text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  perform public.assert_super_admin();
+  if nullif(btrim(p_name), '') is null then
+    raise exception 'Insurance provider name is required';
+  end if;
+  if p_default_coverage_percentage is null or p_default_coverage_percentage < 0 or p_default_coverage_percentage > 100 then
+    raise exception 'Default coverage percentage must be between 0 and 100';
+  end if;
+  insert into public.insurance_providers (name, default_coverage_percentage, contact_info)
+  values (btrim(p_name), p_default_coverage_percentage, nullif(btrim(coalesce(p_contact_info, '')), ''))
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.admin_update_insurance_provider(
+  p_provider_id uuid, p_name text, p_default_coverage_percentage numeric, p_contact_info text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  if p_default_coverage_percentage is null or p_default_coverage_percentage < 0 or p_default_coverage_percentage > 100 then
+    raise exception 'Default coverage percentage must be between 0 and 100';
+  end if;
+  update public.insurance_providers
+  set name = btrim(p_name),
+      default_coverage_percentage = p_default_coverage_percentage,
+      contact_info = nullif(btrim(coalesce(p_contact_info, '')), '')
+  where id = p_provider_id;
+  if not found then raise exception 'Insurance provider not found'; end if;
+end;
+$$;
+
+-- Sets (or changes) a per-product override. Pass 0 for "not covered at all" --
+-- that is still a row here, not a special case, matching the table's own
+-- "a row existing here IS the differs-from-default flag" design.
+create or replace function public.admin_set_insurance_coverage(
+  p_provider_id uuid, p_product_id uuid, p_coverage_percentage numeric
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  if p_coverage_percentage is null or p_coverage_percentage < 0 or p_coverage_percentage > 100 then
+    raise exception 'Coverage percentage must be between 0 and 100';
+  end if;
+  insert into public.insurance_product_coverage (insurance_provider_id, product_id, coverage_percentage)
+  values (p_provider_id, p_product_id, p_coverage_percentage)
+  on conflict (insurance_provider_id, product_id) do update set coverage_percentage = excluded.coverage_percentage;
+end;
+$$;
+
+-- Removes the override, so the product reverts to the provider's default.
+create or replace function public.admin_clear_insurance_coverage(p_provider_id uuid, p_product_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  delete from public.insurance_product_coverage
+  where insurance_provider_id = p_provider_id and product_id = p_product_id;
+end;
+$$;
+
+revoke all on function public.admin_create_insurance_provider(text, numeric, text) from public;
+grant execute on function public.admin_create_insurance_provider(text, numeric, text) to authenticated;
+
+revoke all on function public.admin_update_insurance_provider(uuid, text, numeric, text) from public;
+grant execute on function public.admin_update_insurance_provider(uuid, text, numeric, text) to authenticated;
+
+revoke all on function public.admin_set_insurance_coverage(uuid, uuid, numeric) from public;
+grant execute on function public.admin_set_insurance_coverage(uuid, uuid, numeric) to authenticated;
+
+revoke all on function public.admin_clear_insurance_coverage(uuid, uuid) from public;
+grant execute on function public.admin_clear_insurance_coverage(uuid, uuid) to authenticated;
+
+-- ── complete_sale(): the one and only way a sale is ever created ───────────
+-- One barcode code per line -- always a pack, never a carton (a carton isn't
+-- a sellable unit, see Section 5 of the original design doc). Selling a pack
+-- sells everything inside it at once (quantity = pieces_per_pack), since
+-- quantity_available on a pack row is a 1-or-0 "does this exact physical pack
+-- still exist" flag, not a piece-level counter -- consistent with how
+-- receive_stock_delivery() creates these rows and how the inventory/barcode
+-- dashboards already read them.
+--
+-- `for update of bc` row-locks each scanned barcode for the duration of the
+-- transaction: without it, two cashiers scanning the same physical pack in
+-- the same instant could both pass the "is it still available" check before
+-- either one's update lands, selling the same physical pack twice.
+create or replace function public.complete_sale(p_lines jsonb, p_insurance_provider_id uuid default null)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  line jsonb;
+  v_code text;
+  v_barcode record;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+  end if;
+
+  v_receipt_number := format('RCT-%s-%s', to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, total_amount)
+  values (v_sale, v_branch, v_user, 0); -- patched below once the real total is known
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    -- Checking `found` here, not `v_barcode.id is null`: v_barcode is a plain
+    -- `record`, and referencing a field on one that has never matched a row
+    -- (e.g. the very first scanned code being invalid) raises "record is not
+    -- assigned yet" instead of comparing as null.
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.barcode_type <> 'pack' then
+      raise exception 'Barcode % is a carton, not a sellable pack -- scan an individual pack instead', v_code;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+    if coalesce(v_barcode.quantity_available, 0) < 1 then
+      raise exception 'Barcode % has already been sold', v_code;
+    end if;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    v_subtotal := v_barcode.selling_price * v_barcode.pieces_per_pack;
+    v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+    v_line_total := v_subtotal + v_tax_amount;
+    v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+    insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+    values (v_sale, v_barcode.id, v_tax_rate_id, v_barcode.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+    update public.barcodes
+    set quantity_available = 0, status = 'sold_out'
+    where id = v_barcode.id;
+
+    v_total := v_total + v_line_total;
+    v_covered_total := v_covered_total + v_line_covered;
+  end loop;
+
+  update public.sales set total_amount = v_total where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total, v_covered_total, v_total - v_covered_total;
+end;
+$$;
+
+revoke all on function public.complete_sale(jsonb, uuid) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid) to authenticated;

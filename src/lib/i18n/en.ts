@@ -190,6 +190,7 @@ const en = {
   "admin.navTickets": "Tickets",
   "admin.navProducts": "Products",
   "admin.navProductRequests": "Product Requests",
+  "admin.navInsurance": "Insurance",
 
   // ── Admin portal — sign-in gate ───────────────────────────────────────────
   "admin.gateTitle": "Super Admin sign-in",

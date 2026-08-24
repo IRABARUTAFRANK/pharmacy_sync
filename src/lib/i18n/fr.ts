@@ -190,6 +190,7 @@ const fr: Record<TranslationKey, string> = {
   "admin.navTickets": "Tickets",
   "admin.navProducts": "Produits",
   "admin.navProductRequests": "Demandes de produits",
+  "admin.navInsurance": "Assurance",
 
   // ── Admin portal — sign-in gate ───────────────────────────────────────────
   "admin.gateTitle": "Connexion Super Administrateur",
