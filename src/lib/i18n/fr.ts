@@ -11,6 +11,7 @@ const fr: Record<TranslationKey, string> = {
   "nav.overview": "Aperçu",
   "nav.inventory": "Tableau de stock",
   "nav.receiving": "Réception de stock",
+  "nav.requestProduct": "Demander un produit",
   "nav.barcode": "Gestion des codes-barres",
   "nav.sales": "Ventes / Caisse",
   "nav.analytics": "Analyses",
@@ -25,6 +26,7 @@ const fr: Record<TranslationKey, string> = {
   "page.overview": "Aperçu du tableau de bord",
   "page.inventory": "Tableau de stock",
   "page.receiving": "Réception de livraison",
+  "page.requestProduct": "Demander un produit",
   "page.barcode": "Gestion des codes-barres",
   "page.sales": "Ventes & Caisse",
   "page.analytics": "Analyses & Prévisions",
@@ -186,6 +188,8 @@ const fr: Record<TranslationKey, string> = {
   "admin.navBranches": "Pharmacies",
   "admin.navSecurity": "Sécurité",
   "admin.navTickets": "Tickets",
+  "admin.navProducts": "Produits",
+  "admin.navProductRequests": "Demandes de produits",
 
   // ── Admin portal — sign-in gate ───────────────────────────────────────────
   "admin.gateTitle": "Connexion Super Administrateur",
@@ -212,6 +216,7 @@ const fr: Record<TranslationKey, string> = {
   "admin.statusOpen": "Ouvert",
   "admin.statusInProgress": "En cours",
   "admin.statusResolved": "Résolu",
+  "admin.statusClosed": "Fermé",
 
   // ── Admin portal — dashboard ───────────────────────────────────────────────
   "admin.systemOverview": "Vue d'ensemble du système",
@@ -329,6 +334,63 @@ const fr: Record<TranslationKey, string> = {
   "admin.priorityHigh": "Élevée",
   "admin.priorityMedium": "Moyenne",
   "admin.priorityLow": "Faible",
+
+  // ── Admin portal — products & tax ──────────────────────────────────────────
+  "admin.productsAndTax": "Produits et taxes",
+  "admin.productsCount": "{count} produits dans le catalogue",
+  "admin.addProduct": "Ajouter un produit",
+  "admin.searchProducts": "Rechercher par nom de produit ou nom générique…",
+  "admin.colProductType": "Type",
+  "admin.colVariants": "Variantes",
+  "admin.colTaxRate": "Taux de taxe",
+  "admin.noProductsFound": "Aucun produit ne correspond à votre recherche",
+  "admin.productName": "Nom du produit",
+  "admin.genericName": "Nom générique (facultatif)",
+  "admin.productType": "Type de produit",
+  "admin.productTypeMedicine": "Médicament",
+  "admin.productTypeSupply": "Fourniture",
+  "admin.productTypeOther": "Autre",
+  "admin.taxRate": "Taux de taxe",
+  "admin.variants": "Variantes (dosage / forme / unité)",
+  "admin.dosagePlaceholder": "Dosage (ex. 500mg)",
+  "admin.formPlaceholder": "Forme (ex. Comprimé)",
+  "admin.unitPlaceholder": "Unité (ex. Plaquette)",
+  "admin.addVariant": "Ajouter une variante",
+  "admin.productNameRequired": "Le nom du produit est requis.",
+  "admin.selectTaxRate": "Sélectionnez un taux de taxe.",
+
+  // ── Admin portal — product requests ────────────────────────────────────────
+  "admin.productRequests": "Demandes de produits",
+  "admin.partOfDelivery": "Fait partie d'une livraison",
+  "admin.noDosageRecorded": "Aucun dosage/forme enregistré",
+  "admin.approveRequest": "Approuver la demande",
+  "admin.approveRequestIntro": "Demandé par {branch}. Vérifiez et finalisez la fiche produit avant d'approuver.",
+  "admin.linkedToDeliveryNote": "Cette demande est liée à une livraison déjà en cours — une fois approuvée, la pharmacie pourra terminer la réception sous cette même livraison.",
+  "admin.rejectRequest": "Refuser la demande",
+  "admin.rejectRequestConfirm": "Refuser la demande pour « {product} » ?",
+
+  // ── Admin portal — tax rate management ─────────────────────────────────────
+  "admin.addTaxRate": "Ajouter un taux de taxe",
+  "admin.taxRateName": "Nom du taux de taxe",
+  "admin.taxRateNamePlaceholder": "ex. Taux réduit",
+  "admin.taxRatePercentage": "Pourcentage",
+  "admin.taxRateNameRequired": "Le nom du taux de taxe est requis.",
+  "admin.taxRateInvalid": "Saisissez un pourcentage entre 0 et 100.",
+
+  // ── Admin portal — categories (system-wide) ─────────────────────────────────
+  "admin.navCategories": "Catégories",
+  "admin.categoriesSystemWide": "Catégories — Toutes les pharmacies",
+  "admin.categoriesCount": "{count} catégories dans l'ensemble des pharmacies",
+  "admin.addCategory": "Ajouter une catégorie",
+  "admin.categoryName": "Nom de la catégorie",
+  "admin.categoryDescription": "Description (facultatif)",
+  "admin.categoryTarget": "Ajouter à",
+  "admin.categoryAllBranches": "Toutes les pharmacies",
+  "admin.categoryNameRequired": "Le nom de la catégorie est requis.",
+  "admin.searchCategories": "Rechercher par nom de catégorie ou de pharmacie…",
+  "admin.colCategory": "Catégorie",
+  "admin.colDescription": "Description",
+  "admin.noCategoriesFound": "Aucune catégorie ne correspond à votre recherche",
 };
 
 export default fr;

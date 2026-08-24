@@ -1681,3 +1681,1136 @@ $$;
 
 revoke all on function public.admin_delete_branch(uuid) from public;
 grant execute on function public.admin_delete_branch(uuid) to authenticated;
+
+-- ============================================================================
+-- PRODUCT OWNERSHIP LOCKDOWN, ADMIN-MANAGED TAX, PRODUCT REQUESTS, REAL
+-- TICKETS/NOTIFICATIONS, DELIVERY-LINKED APPROVAL
+-- ============================================================================
+-- Branches can no longer invent products during stock receiving. A branch
+-- that can't find a product in the catalogue files a product_requests row
+-- instead; only the super admin creates products (and sets their tax rate),
+-- via admin_create_product() or admin_approve_product_request(). This block
+-- is additive/idempotent like the rest of this file and safe to re-run.
+-- ============================================================================
+
+-- ── Canonical tax rates ──────────────────────────────────────────────────
+-- 'Exempt' (0%) may already exist (created lazily by the old
+-- receive_stock_delivery(), or by re-running this block). Rwanda's 2025 VAT
+-- law reform: standard rate 18%, pharmaceutical products VAT-exempt. These
+-- are the two rates the super admin chooses between on the Products & Tax
+-- screen; every product still defaults to Exempt (0%) on creation.
+insert into public.tax_rates (name, rate_percentage)
+values ('Exempt', 0), ('Standard Rate', 18)
+on conflict (name) do nothing;
+
+-- ── support_tickets — add priority, matching the console UI it now backs ──
+alter table public.support_tickets
+  add column if not exists priority varchar(10) not null default 'medium';
+alter table public.support_tickets drop constraint if exists support_tickets_priority_check;
+alter table public.support_tickets add constraint support_tickets_priority_check
+  check (priority in ('low','medium','high'));
+
+-- ── notifications — widen source_type for the new resolution events ──────
+alter table public.notifications drop constraint if exists notifications_source_type_check;
+alter table public.notifications add constraint notifications_source_type_check
+  check (source_type in ('batch_recall','stock_adjustment','product_request_approved','product_request_rejected'));
+
+-- ============================================================================
+-- PRODUCT REQUESTS
+-- ============================================================================
+-- A branch files one when a delivery includes a product not yet in the
+-- catalogue. delivery_id/batch/price/packaging columns are only populated
+-- when the request arose mid-receiving (see finish_pending_delivery_item()
+-- below); a request filed with no delivery in progress leaves them null and
+-- is a pure catalogue ask the branch will receive normally once approved.
+
+create table if not exists public.product_requests (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null references public.branches(id),
+  requested_by uuid not null references public.users(id),
+  product_name varchar(150) not null,
+  generic_name varchar(150),
+  product_type varchar(20) not null default 'medicine' check (product_type in ('medicine','supply','other')),
+  dosage varchar(50), form varchar(50), unit varchar(30),
+  category_name varchar(100),
+  notes text,
+  status varchar(20) not null default 'pending' check (status in ('pending','approved','rejected')),
+  resolved_product_id uuid references public.products(id),
+  resolved_variant_id uuid references public.product_variants(id),
+  resolved_by uuid references public.users(id),
+  resolved_at timestamptz,
+  rejection_reason text,
+  finished_at timestamptz,
+  delivery_id uuid references public.stock_deliveries(id),
+  batch_number varchar(80), expiry_date date,
+  cost_price numeric(12,2), selling_price numeric(12,2),
+  cartons integer, packs_per_carton integer, packs integer, pieces_per_pack integer,
+  manufacturer_name varchar(150),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_product_requests_branch_status on public.product_requests(branch_id, status);
+
+alter table public.product_requests enable row level security;
+drop policy if exists "branch access" on public.product_requests;
+create policy "branch access" on public.product_requests
+for all to authenticated
+using (public.is_super_admin() or branch_id = public.current_branch_id())
+with check (public.is_super_admin() or branch_id = public.current_branch_id());
+
+-- Select-only: writes go through submit_product_request()/the admin RPCs
+-- below, which validate branch/role/status before touching the row. The
+-- branch's own "pending product requests" panel reads this table directly
+-- (RLS already scopes it to branch_id = current_branch_id()).
+grant select on public.product_requests to authenticated;
+
+-- ============================================================================
+-- SHARED HELPER — create one stock batch + its barcode tree
+-- ============================================================================
+-- Factored out of receive_stock_delivery() so finish_pending_delivery_item()
+-- (below) can create a stock batch under an EARLIER delivery without
+-- duplicating the carton/pack barcode-generation loop. Same packing rule as
+-- barcodes_packing_shape: a carton (box) parent with pack children, or bare
+-- packs with no parent.
+
+create or replace function public.create_stock_batch_with_barcodes(
+  p_variant uuid, p_branch uuid, p_supplier uuid, p_manufacturer text,
+  p_delivery uuid, p_delivery_code text, p_user uuid,
+  p_batch_number text, p_expiry date, p_cost numeric, p_sell numeric,
+  p_cartons integer, p_packs integer, p_pieces integer
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_batch uuid;
+  v_parent uuid;
+  i integer;
+  j integer;
+begin
+  insert into public.stock_batches (
+    product_variant_id, branch_id, supplier_id, manufacturer_name, delivery_id, delivery_code,
+    logged_by, batch_number, expiry_date, cost_price, selling_price, quantity_received
+  ) values (
+    p_variant, p_branch, p_supplier, p_manufacturer, p_delivery, p_delivery_code, p_user,
+    p_batch_number, p_expiry, p_cost, p_sell,
+    case when p_cartons > 0 then p_cartons * p_packs * p_pieces else p_packs * p_pieces end
+  )
+  returning id into v_batch;
+
+  if p_cartons > 0 then
+    for i in 1..p_cartons loop
+      insert into public.barcodes (stock_batch_id, barcode_type, code, code_source, child_count, quantity_available)
+      values (v_batch, 'box', public.generate_short_barcode_code(), 'generated', p_packs, 1)
+      returning id into v_parent;
+      for j in 1..p_packs loop
+        insert into public.barcodes (stock_batch_id, parent_barcode_id, barcode_type, code, code_source, pieces_per_pack, quantity_available)
+        values (v_batch, v_parent, 'pack', public.generate_short_barcode_code(), 'generated', p_pieces, 1);
+      end loop;
+    end loop;
+  else
+    for j in 1..p_packs loop
+      insert into public.barcodes (stock_batch_id, barcode_type, code, code_source, pieces_per_pack, quantity_available)
+      values (v_batch, 'pack', public.generate_short_barcode_code(), 'generated', p_pieces, 1);
+    end loop;
+  end if;
+
+  return v_batch;
+end;
+$$;
+
+-- ============================================================================
+-- receive_stock_delivery() — remove inline product/variant creation
+-- ============================================================================
+-- Re-declared to drop the branch that used to create a public.products /
+-- public.product_variants row from a bare product_name. A line without
+-- product_variant_id now raises immediately, directing the caller to file a
+-- product request instead. Batch/barcode creation now goes through the
+-- shared create_stock_batch_with_barcodes() helper above. Supplier and
+-- category handling are otherwise unchanged from the prior declaration.
+
+create or replace function public.receive_stock_delivery(p_supplier_name text, p_notes text, p_lines jsonb)
+returns table(delivery_id uuid, delivery_code text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_delivery uuid := gen_random_uuid();
+  v_supplier uuid;
+  v_code text;
+  line jsonb;
+  v_batch uuid;
+  v_category uuid;
+  v_existing_category uuid;
+  v_existing_category_name text;
+  v_product uuid;
+  v_variant uuid;
+  v_cartons integer;
+  v_packs integer;
+  v_pieces integer;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = v_user and u.is_active;
+
+  if v_branch is null or not exists (
+    select 1 from public.users u
+    where u.id = v_user and u.role in ('owner','manager')
+  ) then
+    raise exception 'Only an active branch manager or owner may receive stock';
+  end if;
+
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one delivery line is required';
+  end if;
+  if nullif(btrim(p_supplier_name), '') is null then
+    raise exception 'Supplier name is required';
+  end if;
+
+  select s.id into v_supplier
+  from public.suppliers s
+  where s.branch_id = v_branch
+    and lower(s.supplier_name) = lower(btrim(p_supplier_name));
+  if v_supplier is null then
+    insert into public.suppliers (supplier_name, branch_id)
+    values (btrim(p_supplier_name), v_branch)
+    returning id into v_supplier;
+  end if;
+
+  v_code := format('DEL-%s-%s', to_char(now(), 'YYYYMMDD'), upper(substr(replace(v_delivery::text, '-', ''), 1, 6)));
+
+  insert into public.stock_deliveries (id, branch_id, supplier_id, delivery_code, received_by, notes)
+  values (v_delivery, v_branch, v_supplier, v_code, v_user, p_notes);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_cartons := coalesce((line->>'cartons')::integer, 0);
+    v_packs := greatest(coalesce((line->>'packs_per_carton')::integer, (line->>'packs')::integer, 1), 1);
+    v_pieces := greatest(coalesce((line->>'pieces_per_pack')::integer, 1), 1);
+
+    if nullif(line->>'product_variant_id', '') is null then
+      raise exception 'This line has no product selected. Use "Request new product" for a product that is not yet in the catalogue -- branches can no longer add products directly.';
+    end if;
+
+    v_variant := (line->>'product_variant_id')::uuid;
+    select pv.product_id into v_product from public.product_variants pv where pv.id = v_variant;
+    if v_product is null then raise exception 'Unknown product variant'; end if;
+
+    if nullif(btrim(coalesce(line->>'category_name','')), '') is not null then
+      insert into public.product_categories (branch_id, name)
+      values (v_branch, btrim(line->>'category_name'))
+      on conflict (branch_id, name) do update set name = excluded.name
+      returning id into v_category;
+
+      -- A product's category is a fact about the product at this branch, not
+      -- about this one delivery -- it is set once and locked, not silently
+      -- moved every time it happens to be received under a different name.
+      select bpc.category_id into v_existing_category
+      from public.branch_product_categorization bpc
+      where bpc.branch_id = v_branch and bpc.product_id = v_product;
+
+      if v_existing_category is null then
+        insert into public.branch_product_categorization (branch_id, product_id, category_id)
+        values (v_branch, v_product, v_category);
+      elsif v_existing_category <> v_category then
+        select pc.name into v_existing_category_name
+        from public.product_categories pc
+        where pc.id = v_existing_category;
+        raise exception 'This product does not belong to the category you chose. It belongs to "%" for this branch -- choose "%", or ask an admin to recategorize it first.',
+          v_existing_category_name, v_existing_category_name;
+      end if;
+      -- else: already filed under this same category, nothing to change.
+    end if;
+
+    v_batch := public.create_stock_batch_with_barcodes(
+      v_variant, v_branch, v_supplier, nullif(btrim(coalesce(line->>'manufacturer_name','')), ''),
+      v_delivery, v_code, v_user, btrim(line->>'batch_number'), (line->>'expiry_date')::date,
+      (line->>'cost_price')::numeric, (line->>'selling_price')::numeric, v_cartons, v_packs, v_pieces
+    );
+  end loop;
+
+  return query select v_delivery, v_code;
+end;
+$$;
+
+-- ============================================================================
+-- finish_pending_delivery_item() — once a product_requests row is approved
+-- and carries delivery-linkage columns (i.e. it arose mid-receiving), the
+-- owning branch calls this to create the stock batch + barcode tree tagged
+-- with the ORIGINAL delivery_id/delivery_code and supplier, so the item is
+-- never orphaned from the delivery it physically arrived in.
+-- ============================================================================
+
+create or replace function public.finish_pending_delivery_item(p_request_id uuid)
+returns table(stock_batch_id uuid, delivery_code text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_branch uuid;
+  v_req public.product_requests%rowtype;
+  v_delivery_code text;
+  v_supplier uuid;
+  v_batch uuid;
+  v_category uuid;
+  v_existing_category uuid;
+  v_existing_category_name text;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may finish a delivery item'; end if;
+
+  select * into v_req from public.product_requests where id = p_request_id;
+  if v_req.id is null then raise exception 'Product request not found'; end if;
+  if v_req.branch_id <> v_branch then raise exception 'This request belongs to a different branch'; end if;
+  if v_req.status <> 'approved' then raise exception 'This request has not been approved yet'; end if;
+  if v_req.finished_at is not null then raise exception 'This item has already been added to stock'; end if;
+  if v_req.resolved_variant_id is null then raise exception 'No product variant was resolved for this request'; end if;
+  if v_req.delivery_id is null or v_req.batch_number is null then
+    raise exception 'This request was not tied to a delivery -- nothing to finish';
+  end if;
+
+  select sd.delivery_code, sd.supplier_id into v_delivery_code, v_supplier
+  from public.stock_deliveries sd
+  where sd.id = v_req.delivery_id;
+  if v_delivery_code is null then raise exception 'The original delivery could not be found'; end if;
+
+  if nullif(btrim(coalesce(v_req.category_name, '')), '') is not null then
+    insert into public.product_categories (branch_id, name)
+    values (v_branch, btrim(v_req.category_name))
+    on conflict (branch_id, name) do update set name = excluded.name
+    returning id into v_category;
+
+    select bpc.category_id into v_existing_category
+    from public.branch_product_categorization bpc
+    where bpc.branch_id = v_branch and bpc.product_id = v_req.resolved_product_id;
+
+    if v_existing_category is null then
+      insert into public.branch_product_categorization (branch_id, product_id, category_id)
+      values (v_branch, v_req.resolved_product_id, v_category);
+    elsif v_existing_category <> v_category then
+      select pc.name into v_existing_category_name from public.product_categories pc where pc.id = v_existing_category;
+      raise exception 'This product does not belong to the category you chose. It belongs to "%" for this branch.', v_existing_category_name;
+    end if;
+  end if;
+
+  v_batch := public.create_stock_batch_with_barcodes(
+    v_req.resolved_variant_id, v_branch, v_supplier, v_req.manufacturer_name,
+    v_req.delivery_id, v_delivery_code, v_user, v_req.batch_number, v_req.expiry_date,
+    v_req.cost_price, v_req.selling_price,
+    coalesce(v_req.cartons, 0), greatest(coalesce(v_req.packs_per_carton, v_req.packs, 1), 1), greatest(coalesce(v_req.pieces_per_pack, 1), 1)
+  );
+
+  update public.product_requests set finished_at = now() where id = p_request_id;
+
+  return query select v_batch, v_delivery_code;
+end;
+$$;
+
+-- ============================================================================
+-- BRANCH-SIDE — file a product request
+-- ============================================================================
+
+create or replace function public.submit_product_request(
+  p_product_name text, p_generic_name text, p_product_type text,
+  p_dosage text, p_form text, p_unit text, p_category_name text, p_notes text,
+  p_delivery_id uuid default null, p_batch_number text default null, p_expiry_date date default null,
+  p_cost_price numeric default null, p_selling_price numeric default null,
+  p_cartons integer default null, p_packs_per_carton integer default null,
+  p_packs integer default null, p_pieces_per_pack integer default null,
+  p_manufacturer_name text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_branch uuid;
+  v_type text;
+  v_id uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may request a product'; end if;
+  if nullif(btrim(coalesce(p_product_name, '')), '') is null then
+    raise exception 'A product name is required';
+  end if;
+  if p_delivery_id is not null and not exists (
+    select 1 from public.stock_deliveries sd where sd.id = p_delivery_id and sd.branch_id = v_branch
+  ) then
+    raise exception 'That delivery does not belong to this branch';
+  end if;
+
+  v_type := coalesce(nullif(p_product_type, ''), 'medicine');
+  if v_type not in ('medicine','supply','other') then v_type := 'other'; end if;
+
+  insert into public.product_requests (
+    branch_id, requested_by, product_name, generic_name, product_type, dosage, form, unit,
+    category_name, notes, delivery_id, batch_number, expiry_date, cost_price, selling_price,
+    cartons, packs_per_carton, packs, pieces_per_pack, manufacturer_name
+  ) values (
+    v_branch, v_user, btrim(p_product_name), nullif(btrim(coalesce(p_generic_name, '')), ''), v_type,
+    nullif(btrim(coalesce(p_dosage, '')), ''), nullif(btrim(coalesce(p_form, '')), ''), nullif(btrim(coalesce(p_unit, '')), ''),
+    nullif(btrim(coalesce(p_category_name, '')), ''), nullif(btrim(coalesce(p_notes, '')), ''),
+    p_delivery_id, nullif(btrim(coalesce(p_batch_number, '')), ''), p_expiry_date, p_cost_price, p_selling_price,
+    p_cartons, p_packs_per_carton, p_packs, p_pieces_per_pack, nullif(btrim(coalesce(p_manufacturer_name, '')), '')
+  )
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- ============================================================================
+-- ADMIN — products, tax rates, and product-request approval
+-- ============================================================================
+
+create or replace function public.admin_list_products()
+returns table(
+  product_id uuid, product_name text, generic_name text, product_type text,
+  tax_rate_id uuid, tax_rate_name text, tax_rate_percentage numeric,
+  variant_id uuid, dosage text, form text, unit text
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  return query
+    select
+      p.id, p.name::text, p.generic_name::text, p.product_type::text,
+      t.id, t.name::text, t.rate_percentage,
+      pv.id, pv.dosage::text, pv.form::text, pv.unit::text
+    from public.products p
+    join public.tax_rates t on t.id = p.tax_rate_id
+    left join public.product_variants pv on pv.product_id = p.id
+    order by p.name, pv.dosage nulls first;
+end;
+$$;
+
+-- p_variants: jsonb array of {"dosage":..,"form":..,"unit":..}, at least one
+-- entry required -- branches can only select an existing product_variant_id
+-- now, so a product created with zero variants would never be receivable.
+create or replace function public.admin_create_product(
+  p_name text, p_generic_name text, p_product_type text, p_tax_rate_id uuid, p_variants jsonb
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_type text;
+  v_product uuid;
+  v_variant jsonb;
+begin
+  perform public.assert_super_admin();
+  if nullif(btrim(coalesce(p_name, '')), '') is null then raise exception 'A product name is required'; end if;
+  if not exists (select 1 from public.tax_rates t where t.id = p_tax_rate_id) then
+    raise exception 'Unknown tax rate';
+  end if;
+  if jsonb_typeof(p_variants) <> 'array' or jsonb_array_length(p_variants) = 0 then
+    raise exception 'At least one variant (dosage/form/unit) is required';
+  end if;
+
+  v_type := coalesce(nullif(p_product_type, ''), 'medicine');
+  if v_type not in ('medicine','supply','other') then v_type := 'other'; end if;
+
+  insert into public.products (tax_rate_id, product_type, name, generic_name)
+  values (p_tax_rate_id, v_type, btrim(p_name), nullif(btrim(coalesce(p_generic_name, '')), ''))
+  returning id into v_product;
+
+  for v_variant in select * from jsonb_array_elements(p_variants) loop
+    insert into public.product_variants (product_id, dosage, form, unit)
+    values (
+      v_product,
+      nullif(btrim(coalesce(v_variant->>'dosage', '')), ''),
+      nullif(btrim(coalesce(v_variant->>'form', '')), ''),
+      nullif(btrim(coalesce(v_variant->>'unit', '')), '')
+    );
+  end loop;
+
+  return v_product;
+end;
+$$;
+
+create or replace function public.admin_set_product_tax(p_product_id uuid, p_tax_rate_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  if not exists (select 1 from public.tax_rates t where t.id = p_tax_rate_id) then
+    raise exception 'Unknown tax rate';
+  end if;
+  update public.products set tax_rate_id = p_tax_rate_id where id = p_product_id;
+  if not found then raise exception 'Product not found'; end if;
+end;
+$$;
+
+create or replace function public.admin_list_product_requests()
+returns table(
+  id uuid, branch_id uuid, branch_name text, requested_by_name text,
+  product_name text, generic_name text, product_type text, dosage text, form text, unit text,
+  category_name text, notes text, status text,
+  delivery_id uuid, batch_number text, expiry_date date, cost_price numeric, selling_price numeric,
+  cartons integer, packs_per_carton integer, packs integer, pieces_per_pack integer, manufacturer_name text,
+  rejection_reason text, finished_at timestamptz, created_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  return query
+    select
+      r.id, r.branch_id, b.name::text, u.full_name::text,
+      r.product_name::text, r.generic_name::text, r.product_type::text, r.dosage::text, r.form::text, r.unit::text,
+      r.category_name::text, r.notes, r.status::text,
+      r.delivery_id, r.batch_number::text, r.expiry_date, r.cost_price, r.selling_price,
+      r.cartons, r.packs_per_carton, r.packs, r.pieces_per_pack, r.manufacturer_name::text,
+      r.rejection_reason, r.finished_at, r.created_at
+    from public.product_requests r
+    join public.branches b on b.id = r.branch_id
+    join public.users u on u.id = r.requested_by
+    order by (r.status = 'pending') desc, r.created_at desc;
+end;
+$$;
+
+-- p_variants: same shape as admin_create_product(). The FIRST entry becomes
+-- this request's resolved_variant_id (the variant this specific delivery
+-- line/batch is for); any further entries just extend the catalogue entry
+-- (e.g. the admin adds other known dosages of the same product while here).
+create or replace function public.admin_approve_product_request(
+  p_request_id uuid, p_product_name text, p_generic_name text, p_product_type text,
+  p_tax_rate_id uuid, p_variants jsonb
+)
+returns table(product_id uuid, variant_id uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req public.product_requests%rowtype;
+  v_type text;
+  v_product uuid;
+  v_first_variant uuid;
+  v_variant uuid;
+  v_variant_json jsonb;
+  v_is_first boolean := true;
+begin
+  perform public.assert_super_admin();
+
+  select * into v_req from public.product_requests where id = p_request_id;
+  if v_req.id is null then raise exception 'Product request not found'; end if;
+  if v_req.status <> 'pending' then raise exception 'Only a pending request can be approved'; end if;
+  if not exists (select 1 from public.tax_rates t where t.id = p_tax_rate_id) then
+    raise exception 'Unknown tax rate';
+  end if;
+  if jsonb_typeof(p_variants) <> 'array' or jsonb_array_length(p_variants) = 0 then
+    raise exception 'At least one variant (dosage/form/unit) is required';
+  end if;
+
+  v_type := coalesce(nullif(p_product_type, ''), 'medicine');
+  if v_type not in ('medicine','supply','other') then v_type := 'other'; end if;
+
+  select p.id into v_product from public.products p where lower(p.name) = lower(btrim(coalesce(p_product_name, v_req.product_name)));
+  if v_product is null then
+    insert into public.products (tax_rate_id, product_type, name, generic_name)
+    values (p_tax_rate_id, v_type, btrim(coalesce(p_product_name, v_req.product_name)), nullif(btrim(coalesce(p_generic_name, v_req.generic_name, '')), ''))
+    returning id into v_product;
+  else
+    update public.products set tax_rate_id = p_tax_rate_id where id = v_product;
+  end if;
+
+  for v_variant_json in select * from jsonb_array_elements(p_variants) loop
+    select pv.id into v_variant
+    from public.product_variants pv
+    where pv.product_id = v_product
+      and coalesce(pv.dosage, '') = coalesce(nullif(btrim(coalesce(v_variant_json->>'dosage', '')), ''), '')
+      and coalesce(pv.form, '') = coalesce(nullif(btrim(coalesce(v_variant_json->>'form', '')), ''), '')
+    limit 1;
+
+    if v_variant is null then
+      insert into public.product_variants (product_id, dosage, form, unit)
+      values (
+        v_product,
+        nullif(btrim(coalesce(v_variant_json->>'dosage', '')), ''),
+        nullif(btrim(coalesce(v_variant_json->>'form', '')), ''),
+        nullif(btrim(coalesce(v_variant_json->>'unit', '')), '')
+      )
+      returning id into v_variant;
+    end if;
+
+    if v_is_first then v_first_variant := v_variant; v_is_first := false; end if;
+  end loop;
+
+  update public.product_requests
+  set status = 'approved', resolved_product_id = v_product, resolved_variant_id = v_first_variant,
+      resolved_by = (select auth.uid()), resolved_at = now()
+  where id = p_request_id;
+
+  insert into public.notifications (branch_id, source_type, source_id, message)
+  values (v_req.branch_id, 'product_request_approved', p_request_id,
+    format('Your request for "%s" was approved and is ready to add to stock.', coalesce(p_product_name, v_req.product_name)));
+
+  return query select v_product, v_first_variant;
+end;
+$$;
+
+create or replace function public.admin_reject_product_request(p_request_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req public.product_requests%rowtype;
+begin
+  perform public.assert_super_admin();
+  select * into v_req from public.product_requests where id = p_request_id;
+  if v_req.id is null then raise exception 'Product request not found'; end if;
+  if v_req.status <> 'pending' then raise exception 'Only a pending request can be rejected'; end if;
+
+  update public.product_requests
+  set status = 'rejected', rejection_reason = nullif(btrim(coalesce(p_reason, '')), ''),
+      resolved_by = (select auth.uid()), resolved_at = now()
+  where id = p_request_id;
+
+  insert into public.notifications (branch_id, source_type, source_id, message)
+  values (v_req.branch_id, 'product_request_rejected', p_request_id,
+    format('Your request for "%s" was declined.%s', v_req.product_name,
+      case when nullif(btrim(coalesce(p_reason, '')), '') is not null then ' Reason: ' || btrim(p_reason) else '' end));
+end;
+$$;
+
+-- ============================================================================
+-- SUPPORT TICKETS — real table, replacing the localStorage mock
+-- ============================================================================
+
+create or replace function public.submit_support_ticket(p_subject text, p_description text, p_priority text default 'medium')
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_branch uuid;
+  v_priority text;
+  v_id uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may submit a ticket'; end if;
+  if nullif(btrim(coalesce(p_subject, '')), '') is null then raise exception 'A subject is required'; end if;
+
+  v_priority := coalesce(nullif(p_priority, ''), 'medium');
+  if v_priority not in ('low','medium','high') then v_priority := 'medium'; end if;
+
+  insert into public.support_tickets (branch_id, raised_by, subject, description, priority)
+  values (v_branch, v_user, btrim(p_subject), nullif(btrim(coalesce(p_description, '')), ''), v_priority)
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.list_my_support_tickets()
+returns table(id uuid, subject text, description text, status text, priority text, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+begin
+  if v_branch is null then raise exception 'Only an active branch user may view tickets'; end if;
+  return query
+    select t.id, t.subject::text, t.description, t.status::text, t.priority::text, t.created_at
+    from public.support_tickets t
+    where t.branch_id = v_branch
+    order by t.created_at desc;
+end;
+$$;
+
+create or replace function public.admin_list_support_tickets()
+returns table(id uuid, branch_id uuid, branch_name text, raised_by_name text, subject text, description text, status text, priority text, created_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  return query
+    select t.id, t.branch_id, b.name::text, u.full_name::text, t.subject::text, t.description, t.status::text, t.priority::text, t.created_at
+    from public.support_tickets t
+    join public.branches b on b.id = t.branch_id
+    join public.users u on u.id = t.raised_by
+    order by (t.status = 'open') desc, t.created_at desc;
+end;
+$$;
+
+create or replace function public.admin_update_ticket_status(p_ticket_id uuid, p_status text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  if p_status not in ('open','in_progress','resolved','closed') then raise exception 'Unknown status'; end if;
+  update public.support_tickets set status = p_status where id = p_ticket_id;
+  if not found then raise exception 'Ticket not found'; end if;
+end;
+$$;
+
+-- ============================================================================
+-- GRANTS — Phase 1 additions
+-- ============================================================================
+
+revoke all on function public.create_stock_batch_with_barcodes(uuid, uuid, uuid, text, uuid, text, uuid, text, date, numeric, numeric, integer, integer, integer) from public, anon, authenticated;
+
+revoke all on function public.finish_pending_delivery_item(uuid) from public;
+grant execute on function public.finish_pending_delivery_item(uuid) to authenticated;
+
+revoke all on function public.submit_product_request(text, text, text, text, text, text, text, text, uuid, text, date, numeric, numeric, integer, integer, integer, integer, text) from public;
+grant execute on function public.submit_product_request(text, text, text, text, text, text, text, text, uuid, text, date, numeric, numeric, integer, integer, integer, integer, text) to authenticated;
+
+revoke all on function public.admin_list_products() from public;
+grant execute on function public.admin_list_products() to authenticated;
+
+revoke all on function public.admin_create_product(text, text, text, uuid, jsonb) from public;
+grant execute on function public.admin_create_product(text, text, text, uuid, jsonb) to authenticated;
+
+revoke all on function public.admin_set_product_tax(uuid, uuid) from public;
+grant execute on function public.admin_set_product_tax(uuid, uuid) to authenticated;
+
+revoke all on function public.admin_list_product_requests() from public;
+grant execute on function public.admin_list_product_requests() to authenticated;
+
+revoke all on function public.admin_approve_product_request(uuid, text, text, text, uuid, jsonb) from public;
+grant execute on function public.admin_approve_product_request(uuid, text, text, text, uuid, jsonb) to authenticated;
+
+revoke all on function public.admin_reject_product_request(uuid, text) from public;
+grant execute on function public.admin_reject_product_request(uuid, text) to authenticated;
+
+revoke all on function public.submit_support_ticket(text, text, text) from public;
+grant execute on function public.submit_support_ticket(text, text, text) to authenticated;
+
+revoke all on function public.list_my_support_tickets() from public;
+grant execute on function public.list_my_support_tickets() to authenticated;
+
+revoke all on function public.admin_list_support_tickets() from public;
+grant execute on function public.admin_list_support_tickets() to authenticated;
+
+revoke all on function public.admin_update_ticket_status(uuid, text) from public;
+grant execute on function public.admin_update_ticket_status(uuid, text) to authenticated;
+
+-- notifications had an RLS policy (in the original "branch access" loop
+-- above) with no matching GRANT -- same class of bug already fixed for
+-- batch_recalls/stock_adjustments elsewhere in this file, which made the
+-- table unreachable from the browser regardless of policy. update is needed
+-- so the client can mark a notification read.
+grant select, update on public.notifications to authenticated;
+
+-- ============================================================================
+-- FOLLOW-UP FIXES — simplified product requests, category/tax admin control,
+-- branch-only suppliers, category de-duplication
+-- ============================================================================
+
+-- ── Suppliers — branch-exclusive, no cross-branch "global" sharing ────────
+-- Previously any branch could also see legacy branch_id-null supplier rows.
+-- Now every branch only ever sees its own.
+drop policy if exists "suppliers access" on public.suppliers;
+create policy "suppliers access" on public.suppliers
+for all to authenticated
+using (public.is_super_admin() or branch_id = public.current_branch_id())
+with check (public.is_super_admin() or branch_id = public.current_branch_id());
+
+-- ── Category de-duplication + enforce the uniqueness this depends on ──────
+-- A table created by an earlier variant of this schema (before the
+-- unique(branch_id, name) constraint existed) never retroactively picks up
+-- a constraint declared later, since `create table if not exists` is a
+-- no-op once the table already exists. Repeated seeding then produced
+-- duplicate rows (the same category name, same branch, several times over
+-- -- e.g. "Allergy & Antihistamines" listed many times in the same
+-- dropdown). This dedupes them (oldest row wins; any categorization
+-- pointed at a row being removed is repointed at the surviving one first)
+-- and makes sure the constraint actually exists so it can't happen again.
+do $$
+begin
+  with ranked as (
+    select id, branch_id,
+           row_number() over (partition by branch_id, lower(name) order by id) as rn,
+           first_value(id) over (partition by branch_id, lower(name) order by id) as keep_id
+    from public.product_categories
+  )
+  update public.branch_product_categorization bpc
+  set category_id = ranked.keep_id
+  from ranked
+  where bpc.category_id = ranked.id and ranked.rn > 1;
+
+  with ranked as (
+    select id, branch_id,
+           row_number() over (partition by branch_id, lower(name) order by id) as rn
+    from public.product_categories
+  )
+  delete from public.product_categories pc
+  using ranked
+  where pc.id = ranked.id and ranked.rn > 1;
+end $$;
+
+do $$
+begin
+  alter table public.product_categories add constraint product_categories_branch_id_name_key unique (branch_id, name);
+-- Adding a constraint that already exists can surface as either error class
+-- depending on the path Postgres takes internally (duplicate_object for the
+-- constraint itself, duplicate_table for the unique index backing it) --
+-- catching only one of the two is why the first version of this block
+-- still failed on a database where the constraint was already present.
+exception when duplicate_object or duplicate_table then null;
+end $$;
+
+-- ============================================================================
+-- ADMIN — categories across every branch, and the ability to add new ones
+-- (e.g. a Ministry of Health mandated category), system-wide or per branch.
+-- ============================================================================
+
+create or replace function public.admin_list_categories()
+returns table(id uuid, branch_id uuid, branch_name text, name text, description text)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  return query
+    select pc.id, pc.branch_id, b.name::text, pc.name::text, pc.description
+    from public.product_categories pc
+    join public.branches b on b.id = pc.branch_id
+    order by b.name, pc.name;
+end;
+$$;
+
+-- p_branch_id null => create this category for every branch that doesn't
+-- already have it (a new government-mandated category, say); a specific
+-- branch id creates it for that one branch only. Returns how many branches
+-- actually got a new row (existing ones are silently skipped).
+create or replace function public.admin_create_category(p_name text, p_description text, p_branch_id uuid default null)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_count integer := 0;
+begin
+  perform public.assert_super_admin();
+  if nullif(btrim(coalesce(p_name, '')), '') is null then raise exception 'A category name is required'; end if;
+
+  if p_branch_id is not null then
+    insert into public.product_categories (branch_id, name, description)
+    values (p_branch_id, btrim(p_name), nullif(btrim(coalesce(p_description, '')), ''))
+    on conflict (branch_id, name) do nothing;
+    get diagnostics v_count = row_count;
+  else
+    insert into public.product_categories (branch_id, name, description)
+    select b.id, btrim(p_name), nullif(btrim(coalesce(p_description, '')), '')
+    from public.branches b
+    on conflict (branch_id, name) do nothing;
+    get diagnostics v_count = row_count;
+  end if;
+
+  return v_count;
+end;
+$$;
+
+-- ============================================================================
+-- ADMIN — tax rates: add new ones (a newly imposed tax, etc.)
+-- ============================================================================
+
+create or replace function public.admin_create_tax_rate(p_name text, p_rate_percentage numeric)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  perform public.assert_super_admin();
+  if nullif(btrim(coalesce(p_name, '')), '') is null then raise exception 'A tax rate name is required'; end if;
+  if p_rate_percentage is null or p_rate_percentage < 0 or p_rate_percentage > 100 then
+    raise exception 'Tax rate must be between 0 and 100';
+  end if;
+  insert into public.tax_rates (name, rate_percentage) values (btrim(p_name), p_rate_percentage) returning id into v_id;
+  return v_id;
+end;
+$$;
+
+-- ============================================================================
+-- PRODUCT REQUESTS — simplified to a message + optional photo
+-- ============================================================================
+-- Replaces the earlier structured version (product name/type/dosage/form/
+-- unit/category, plus delivery-linkage columns for a "finish receiving"
+-- step) with the much simpler flow actually wanted: the branch describes
+-- what's missing in their own words and can attach a photo; the super admin
+-- reads it and creates the real catalogue entry (with proper name/variants/
+-- tax) when approving. Once approved, the branch just receives it normally
+-- as a "Known product" on their next delivery -- no separate finish step.
+-- There is no live data in this table yet (the whole feature is
+-- pre-launch), so it's dropped and recreated rather than migrated column by
+-- column.
+
+drop function if exists public.finish_pending_delivery_item(uuid);
+drop function if exists public.submit_product_request(text, text, text, text, text, text, text, text, uuid, text, date, numeric, numeric, integer, integer, integer, integer, text);
+drop function if exists public.admin_list_product_requests();
+drop table if exists public.product_requests;
+
+create table public.product_requests (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null references public.branches(id),
+  requested_by uuid not null references public.users(id),
+  message text not null,
+  image_path text,
+  status varchar(20) not null default 'pending' check (status in ('pending','approved','rejected')),
+  resolved_product_id uuid references public.products(id),
+  resolved_variant_id uuid references public.product_variants(id),
+  resolved_by uuid references public.users(id),
+  resolved_at timestamptz,
+  rejection_reason text,
+  created_at timestamptz not null default now()
+);
+
+create index idx_product_requests_branch_status on public.product_requests(branch_id, status);
+
+alter table public.product_requests enable row level security;
+create policy "branch access" on public.product_requests
+for all to authenticated
+using (public.is_super_admin() or branch_id = public.current_branch_id())
+with check (public.is_super_admin() or branch_id = public.current_branch_id());
+
+-- Select-only: writes go through submit_product_request()/the admin RPCs
+-- below, which validate branch/role/status before touching the row.
+grant select on public.product_requests to authenticated;
+
+create or replace function public.submit_product_request(p_message text, p_image_path text default null)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_branch uuid;
+  v_id uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may request a product'; end if;
+  if nullif(btrim(coalesce(p_message, '')), '') is null then
+    raise exception 'Describe the product you need';
+  end if;
+
+  insert into public.product_requests (branch_id, requested_by, message, image_path)
+  values (v_branch, v_user, btrim(p_message), nullif(btrim(coalesce(p_image_path, '')), ''))
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+create or replace function public.admin_list_product_requests()
+returns table(
+  id uuid, branch_id uuid, branch_name text, requested_by_name text,
+  message text, image_path text, status text,
+  resolved_product_id uuid, resolved_variant_id uuid,
+  rejection_reason text, created_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  return query
+    select
+      r.id, r.branch_id, b.name::text, u.full_name::text,
+      r.message, r.image_path, r.status::text,
+      r.resolved_product_id, r.resolved_variant_id,
+      r.rejection_reason, r.created_at
+    from public.product_requests r
+    join public.branches b on b.id = r.branch_id
+    join public.users u on u.id = r.requested_by
+    order by (r.status = 'pending') desc, r.created_at desc;
+end;
+$$;
+
+-- p_variants: jsonb array of {"dosage":..,"form":..,"unit":..}. The admin
+-- types the real product name/type/variants/tax fresh here -- the request's
+-- free-text message and photo are just their reference for what to create.
+create or replace function public.admin_approve_product_request(
+  p_request_id uuid, p_product_name text, p_generic_name text, p_product_type text,
+  p_tax_rate_id uuid, p_variants jsonb
+)
+returns table(product_id uuid, variant_id uuid)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req public.product_requests%rowtype;
+  v_type text;
+  v_product uuid;
+  v_first_variant uuid;
+  v_variant uuid;
+  v_variant_json jsonb;
+  v_is_first boolean := true;
+begin
+  perform public.assert_super_admin();
+
+  select * into v_req from public.product_requests where id = p_request_id;
+  if v_req.id is null then raise exception 'Product request not found'; end if;
+  if v_req.status <> 'pending' then raise exception 'Only a pending request can be approved'; end if;
+  if nullif(btrim(coalesce(p_product_name, '')), '') is null then raise exception 'A product name is required'; end if;
+  if not exists (select 1 from public.tax_rates t where t.id = p_tax_rate_id) then
+    raise exception 'Unknown tax rate';
+  end if;
+  if jsonb_typeof(p_variants) <> 'array' or jsonb_array_length(p_variants) = 0 then
+    raise exception 'At least one variant (dosage/form/unit) is required';
+  end if;
+
+  v_type := coalesce(nullif(p_product_type, ''), 'medicine');
+  if v_type not in ('medicine','supply','other') then v_type := 'other'; end if;
+
+  select p.id into v_product from public.products p where lower(p.name) = lower(btrim(p_product_name));
+  if v_product is null then
+    insert into public.products (tax_rate_id, product_type, name, generic_name)
+    values (p_tax_rate_id, v_type, btrim(p_product_name), nullif(btrim(coalesce(p_generic_name, '')), ''))
+    returning id into v_product;
+  else
+    update public.products set tax_rate_id = p_tax_rate_id where id = v_product;
+  end if;
+
+  for v_variant_json in select * from jsonb_array_elements(p_variants) loop
+    select pv.id into v_variant
+    from public.product_variants pv
+    where pv.product_id = v_product
+      and coalesce(pv.dosage, '') = coalesce(nullif(btrim(coalesce(v_variant_json->>'dosage', '')), ''), '')
+      and coalesce(pv.form, '') = coalesce(nullif(btrim(coalesce(v_variant_json->>'form', '')), ''), '')
+    limit 1;
+
+    if v_variant is null then
+      insert into public.product_variants (product_id, dosage, form, unit)
+      values (
+        v_product,
+        nullif(btrim(coalesce(v_variant_json->>'dosage', '')), ''),
+        nullif(btrim(coalesce(v_variant_json->>'form', '')), ''),
+        nullif(btrim(coalesce(v_variant_json->>'unit', '')), '')
+      )
+      returning id into v_variant;
+    end if;
+
+    if v_is_first then v_first_variant := v_variant; v_is_first := false; end if;
+  end loop;
+
+  update public.product_requests
+  set status = 'approved', resolved_product_id = v_product, resolved_variant_id = v_first_variant,
+      resolved_by = (select auth.uid()), resolved_at = now()
+  where id = p_request_id;
+
+  insert into public.notifications (branch_id, source_type, source_id, message)
+  values (v_req.branch_id, 'product_request_approved', p_request_id,
+    format('Your product request was approved: "%s" is now in the catalogue.', btrim(p_product_name)));
+
+  return query select v_product, v_first_variant;
+end;
+$$;
+
+create or replace function public.admin_reject_product_request(p_request_id uuid, p_reason text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req public.product_requests%rowtype;
+begin
+  perform public.assert_super_admin();
+  select * into v_req from public.product_requests where id = p_request_id;
+  if v_req.id is null then raise exception 'Product request not found'; end if;
+  if v_req.status <> 'pending' then raise exception 'Only a pending request can be rejected'; end if;
+
+  update public.product_requests
+  set status = 'rejected', rejection_reason = nullif(btrim(coalesce(p_reason, '')), ''),
+      resolved_by = (select auth.uid()), resolved_at = now()
+  where id = p_request_id;
+
+  insert into public.notifications (branch_id, source_type, source_id, message)
+  values (v_req.branch_id, 'product_request_rejected', p_request_id,
+    format('Your product request was declined.%s',
+      case when nullif(btrim(coalesce(p_reason, '')), '') is not null then ' Reason: ' || btrim(p_reason) else '' end));
+end;
+$$;
+
+-- ============================================================================
+-- STORAGE — product request photos
+-- ============================================================================
+-- Public read (so the admin console can show the photo via a plain URL with
+-- no signed-URL plumbing) but insert-only for authenticated users; nothing
+-- else about this bucket is exposed since there's no update/delete/list
+-- policy for anyone but the (RLS-bypassing) service role.
+
+insert into storage.buckets (id, name, public)
+values ('product-requests', 'product-requests', true)
+on conflict (id) do nothing;
+
+drop policy if exists "product request images are publicly readable" on storage.objects;
+create policy "product request images are publicly readable"
+on storage.objects for select
+to public
+using (bucket_id = 'product-requests');
+
+drop policy if exists "authenticated users can upload product request images" on storage.objects;
+create policy "authenticated users can upload product request images"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'product-requests');
+
+-- ============================================================================
+-- GRANTS — follow-up additions
+-- ============================================================================
+
+revoke all on function public.submit_product_request(text, text) from public;
+grant execute on function public.submit_product_request(text, text) to authenticated;
+
+revoke all on function public.admin_list_product_requests() from public;
+grant execute on function public.admin_list_product_requests() to authenticated;
+
+revoke all on function public.admin_list_categories() from public;
+grant execute on function public.admin_list_categories() to authenticated;
+
+revoke all on function public.admin_create_category(text, text, uuid) from public;
+grant execute on function public.admin_create_category(text, text, uuid) to authenticated;
+
+revoke all on function public.admin_create_tax_rate(text, numeric) from public;
+grant execute on function public.admin_create_tax_rate(text, numeric) to authenticated;

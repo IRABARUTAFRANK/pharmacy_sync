@@ -33,6 +33,7 @@ export interface BarcodeRow {
   product_name: string
   generic_name: string | null
   variant_label: string
+  cost_price: number
   selling_price: number
   /** Pieces this scannable unit represents. A box is a container, so it counts 0. */
   pieces: number
@@ -87,6 +88,7 @@ export interface DeliveryBarcodeLabel {
   variant_label: string
   batch_number: string
   expiry_date: string
+  selling_price: number
 }
 
 // Focused loader for the "print/download this delivery's barcodes" sheet right
@@ -96,7 +98,7 @@ export interface DeliveryBarcodeLabel {
 export async function loadDeliveryBarcodes(deliveryId: string): Promise<DeliveryBarcodeLabel[]> {
   const { data: batches, error: batchError } = await supabase
     .from("stock_batches")
-    .select("id, batch_number, expiry_date, product_variant_id")
+    .select("id, batch_number, expiry_date, product_variant_id, selling_price")
     .eq("delivery_id", deliveryId)
   if (batchError) throw batchError
   const batchIds = (batches ?? []).map(batch => batch.id)
@@ -129,6 +131,7 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
       variant_label: [variant?.dosage, variant?.form, variant?.unit].filter(Boolean).join(" · "),
       batch_number: batch?.batch_number ?? "—",
       expiry_date: batch?.expiry_date ?? "—",
+      selling_price: asNumber(batch?.selling_price),
     }
   })
 }
@@ -186,6 +189,7 @@ export async function loadBarcodeDataset(): Promise<BarcodeDataset> {
       product_name: productName,
       generic_name: product?.generic_name ?? null,
       variant_label: variantLabel,
+      cost_price: asNumber(batch?.cost_price),
       selling_price: asNumber(batch?.selling_price),
       pieces,
       haystack: `${barcode.code} ${productName} ${product?.generic_name ?? ""} ${variantLabel} ${batchNumber} ${deliveryCode ?? ""} ${supplierName} ${batch?.manufacturer_name ?? ""}`.toLowerCase(),

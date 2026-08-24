@@ -1,18 +1,18 @@
-import { useState, useMemo } from 'react'
-import { dbSupportTickets, dbUsers, type DBSupportTicket } from '../data'
+import { useState, useMemo, useEffect, useCallback } from 'react'
+import { listMySupportTickets, submitSupportTicket, type MyTicketRow, type TicketPriority } from '../lib/tickets'
+import { errorMessage } from '../lib/supabase'
 import { Card, StatusBadge, Modal, Btn, ColumnPicker } from '../components'
 
-type ColKey = 'raised_by' | 'branch_id' | 'status' | 'created_at' | 'description'
+type ColKey = 'priority' | 'status' | 'created_at' | 'description'
 
 const COLUMN_DEFS: { key: ColKey; label: string }[] = [
-  { key: 'raised_by',   label: 'Raised By' },
-  { key: 'branch_id',   label: 'Branch' },
+  { key: 'priority',    label: 'Priority' },
   { key: 'status',      label: 'Status' },
   { key: 'created_at',  label: 'Date' },
   { key: 'description', label: 'Description' },
 ]
 
-const DEFAULT_VISIBLE = new Set<ColKey>(['raised_by', 'status', 'created_at'])
+const DEFAULT_VISIBLE = new Set<ColKey>(['priority', 'status', 'created_at'])
 
 const statusColors: Record<string, { c: string; bg: string }> = {
   open:        { c: '#dc2626', bg: '#fef2f2' },
@@ -21,23 +21,27 @@ const statusColors: Record<string, { c: string; bg: string }> = {
   closed:      { c: '#6b7280', bg: '#f3f4f6' },
 }
 
-function TicketModal({ ticket, onClose }: { ticket: DBSupportTicket; onClose: () => void }) {
-  const user = dbUsers.find(u => u.id === ticket.raised_by)
+const priorityColors: Record<TicketPriority, { c: string; bg: string }> = {
+  high:   { c: '#dc2626', bg: '#fef2f2' },
+  medium: { c: '#d97706', bg: '#fef3c7' },
+  low:    { c: '#6b7280', bg: '#f3f4f6' },
+}
+
+function TicketModal({ ticket, onClose }: { ticket: MyTicketRow; onClose: () => void }) {
   const sc = statusColors[ticket.status] ?? statusColors.open
+  const pc = priorityColors[ticket.priority]
   return (
     <Modal title={ticket.subject} onClose={onClose} width={520}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-          {[
-            ['Ticket ID',  ticket.id.slice(0, 16) + '…'],
-            ['Raised By',  user?.full_name ?? ticket.raised_by],
-            ['Created At', ticket.created_at],
-          ].map(([l, v]) => (
-            <div key={l} style={{ background: 'var(--bg)', borderRadius: 7, padding: '9px 10px' }}>
-              <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>{l}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{v}</div>
-            </div>
-          ))}
+          <div style={{ background: 'var(--bg)', borderRadius: 7, padding: '9px 10px' }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Created At</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{new Date(ticket.created_at).toLocaleString()}</div>
+          </div>
+          <div style={{ background: 'var(--bg)', borderRadius: 7, padding: '9px 10px' }}>
+            <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Priority</div>
+            <StatusBadge label={ticket.priority} color={pc.c} bg={pc.bg} />
+          </div>
           <div style={{ background: 'var(--bg)', borderRadius: 7, padding: '9px 10px' }}>
             <div style={{ fontSize: 9, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Status</div>
             <StatusBadge label={ticket.status.replace('_', ' ')} color={sc.c} bg={sc.bg} />
@@ -49,42 +53,65 @@ function TicketModal({ ticket, onClose }: { ticket: DBSupportTicket; onClose: ()
             <p style={{ margin: 0, fontSize: 13, color: 'var(--ink)', lineHeight: 1.6 }}>{ticket.description}</p>
           </div>
         )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 11, color: 'var(--ink-muted)', marginRight: 'auto', alignSelf: 'center' }}>Update status:</span>
-          {(['open','in_progress','resolved','closed'] as const).map(s => {
-            const c = statusColors[s]
-            return (
-              <button key={s} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: `1px solid ${c.c}40`, background: ticket.status === s ? c.bg : '#fff', color: c.c, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                onClick={onClose}>{s.replace('_', ' ')}</button>
-            )
-          })}
-        </div>
+        <p style={{ margin: 0, fontSize: 11, color: 'var(--ink-faint)' }}>Only the super admin can change a ticket's status.</p>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <Btn variant="ghost" onClick={onClose}>Close</Btn>
-          <Btn variant="primary" onClick={onClose}>Save Changes</Btn>
         </div>
       </div>
     </Modal>
   )
 }
 
-function NewTicketModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState({ subject: '', description: '' })
+function NewTicketModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }) {
+  const [subject, setSubject] = useState('')
+  const [description, setDescription] = useState('')
+  const [priority, setPriority] = useState<TicketPriority>('medium')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const inputStyle = { width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' as const }
+
+  async function submit() {
+    if (!subject.trim()) { setError('A subject is required.'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await submitSupportTicket(subject.trim(), description.trim(), priority)
+      onSubmitted()
+    } catch (reason) {
+      setError(errorMessage(reason, 'Could not submit this ticket.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <Modal title="Submit Support Ticket" onClose={onClose} width={480}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {error && <p style={{ margin: 0, fontSize: 12, color: '#dc2626' }}>{error}</p>}
         <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 }}>Subject *</label>
-          <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} placeholder="Brief summary of the issue…"
+          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief summary of the issue…"
             style={inputStyle}
             onFocus={e => e.target.style.borderColor = 'var(--primary)'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
           />
         </div>
         <div>
+          <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 }}>Priority</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['low', 'medium', 'high'] as TicketPriority[]).map(p => {
+              const pc = priorityColors[p]
+              return (
+                <button key={p} type="button" onClick={() => setPriority(p)}
+                  style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: `1px solid ${priority === p ? pc.c : 'var(--border)'}`, background: priority === p ? pc.bg : '#fff', color: priority === p ? pc.c : 'var(--ink-mid)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textTransform: 'capitalize' }}
+                >{p}</button>
+              )
+            })}
+          </div>
+        </div>
+        <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 4 }}>Description</label>
-          <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Describe the issue in detail…"
+          <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the issue in detail…"
             rows={5} style={{ ...inputStyle, resize: 'vertical' }}
             onFocus={e => e.target.style.borderColor = 'var(--primary)'}
             onBlur={e => e.target.style.borderColor = 'var(--border)'}
@@ -92,7 +119,7 @@ function NewTicketModal({ onClose }: { onClose: () => void }) {
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn variant="primary" onClick={onClose}>Submit Ticket</Btn>
+          <Btn variant="primary" onClick={() => void submit()}>{busy ? 'Submitting…' : 'Submit Ticket'}</Btn>
         </div>
       </div>
     </Modal>
@@ -100,33 +127,57 @@ function NewTicketModal({ onClose }: { onClose: () => void }) {
 }
 
 export default function HelpPage() {
-  const [selected, setSelected]       = useState<DBSupportTicket | null>(null)
+  const [tickets, setTickets] = useState<MyTicketRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [selected, setSelected]       = useState<MyTicketRow | null>(null)
   const [showNew, setShowNew]         = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch]           = useState('')
   const [visibleCols, setVisibleCols] = useState<Set<ColKey>>(new Set(DEFAULT_VISIBLE))
 
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      setTickets(await listMySupportTickets())
+    } catch (reason) {
+      setLoadError(errorMessage(reason, 'Unable to load your tickets from the database.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
   const toggleCol = (key: ColKey) =>
     setVisibleCols(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next })
 
   const filtered = useMemo(() => {
-    let ts = dbSupportTickets
+    let ts = tickets
     if (statusFilter !== 'all') ts = ts.filter(t => t.status === statusFilter)
     if (search) { const q = search.toLowerCase(); ts = ts.filter(t => t.subject.toLowerCase().includes(q) || (t.description ?? '').toLowerCase().includes(q)) }
     return [...ts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }, [statusFilter, search])
+  }, [tickets, statusFilter, search])
 
-  const counts = { open: dbSupportTickets.filter(t => t.status === 'open').length, in_progress: dbSupportTickets.filter(t => t.status === 'in_progress').length, resolved: dbSupportTickets.filter(t => t.status === 'resolved').length, closed: dbSupportTickets.filter(t => t.status === 'closed').length }
+  const counts = {
+    open: tickets.filter(t => t.status === 'open').length,
+    in_progress: tickets.filter(t => t.status === 'in_progress').length,
+    resolved: tickets.filter(t => t.status === 'resolved').length,
+    closed: tickets.filter(t => t.status === 'closed').length,
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {loadError && <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 14px', fontSize: 12 }}>{loadError}</div>}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         {([['open','Open'],['in_progress','In Progress'],['resolved','Resolved'],['closed','Closed']] as const).map(([k, l]) => {
           const c = statusColors[k]
           return (
             <div key={k} onClick={() => setStatusFilter(statusFilter === k ? 'all' : k)}
               style={{ background: statusFilter === k ? c.bg : '#fff', border: `1.5px solid ${statusFilter === k ? c.c + '60' : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: c.c, fontFamily: 'DM Sans' }}>{counts[k]}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: c.c, fontFamily: 'DM Sans' }}>{loading ? '—' : counts[k]}</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{l}</div>
             </div>
           )
@@ -145,6 +196,7 @@ export default function HelpPage() {
             />
           </div>
           <ColumnPicker columns={COLUMN_DEFS} visible={visibleCols} onToggle={toggleCol} />
+          <Btn variant="secondary" small onClick={() => void refresh()}>Refresh</Btn>
           <Btn variant="primary" small onClick={() => setShowNew(true)}>+ New Ticket</Btn>
         </div>
 
@@ -153,18 +205,17 @@ export default function HelpPage() {
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Subject</th>
-                {visibleCols.has('raised_by')   && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Raised By</th>}
-                {visibleCols.has('branch_id')   && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Branch</th>}
-                {visibleCols.has('status')      && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>}
-                {visibleCols.has('created_at')  && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date</th>}
-                {visibleCols.has('description') && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Description</th>}
+                {visibleCols.has('priority')     && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Priority</th>}
+                {visibleCols.has('status')       && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>}
+                {visibleCols.has('created_at')   && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Date</th>}
+                {visibleCols.has('description')  && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Description</th>}
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(t => {
                 const sc = statusColors[t.status] ?? statusColors.open
-                const user = dbUsers.find(u => u.id === t.raised_by)
+                const pc = priorityColors[t.priority]
                 return (
                   <tr key={t.id} style={{ borderBottom: '1px solid var(--bg-alt)', cursor: 'pointer', transition: 'background 0.12s' }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
@@ -174,10 +225,9 @@ export default function HelpPage() {
                     <td style={{ padding: '9px 10px', fontWeight: 600, color: 'var(--ink)', maxWidth: 280 }}>
                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.subject}</div>
                     </td>
-                    {visibleCols.has('raised_by')   && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-mid)' }}>{user?.full_name ?? t.raised_by.slice(0, 8) + '…'}</td>}
-                    {visibleCols.has('branch_id')   && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 9, color: 'var(--ink-muted)' }}>{t.branch_id.slice(0, 12)}…</td>}
+                    {visibleCols.has('priority')    && <td style={{ padding: '9px 10px' }}><StatusBadge label={t.priority} color={pc.c} bg={pc.bg} /></td>}
                     {visibleCols.has('status')      && <td style={{ padding: '9px 10px' }}><StatusBadge label={t.status.replace('_', ' ')} color={sc.c} bg={sc.bg} /></td>}
-                    {visibleCols.has('created_at')  && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{t.created_at}</td>}
+                    {visibleCols.has('created_at')  && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{new Date(t.created_at).toLocaleDateString()}</td>}
                     {visibleCols.has('description') && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-muted)', maxWidth: 200 }}>
                       <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.description ?? '—'}</div>
                     </td>}
@@ -188,8 +238,10 @@ export default function HelpPage() {
                   </tr>
                 )
               })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={10} style={{ padding: 28, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>No tickets found.</td></tr>
+              {!loading && filtered.length === 0 && (
+                <tr><td colSpan={10} style={{ padding: 28, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>
+                  {tickets.length === 0 ? "You haven't submitted any tickets yet." : 'No tickets found.'}
+                </td></tr>
               )}
             </tbody>
           </table>
@@ -200,7 +252,7 @@ export default function HelpPage() {
       </Card>
 
       {selected  && <TicketModal ticket={selected} onClose={() => setSelected(null)} />}
-      {showNew   && <NewTicketModal onClose={() => setShowNew(false)} />}
+      {showNew   && <NewTicketModal onClose={() => setShowNew(false)} onSubmitted={() => { setShowNew(false); void refresh() }} />}
     </div>
   )
 }

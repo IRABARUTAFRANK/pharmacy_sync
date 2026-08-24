@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
-import { fmtRWF, alertColors, type AlertSeverity } from './data'
+import Barcode from 'react-barcode'
+import { fmtRWF, fmtRWFExact, alertColors, type AlertSeverity } from './data'
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
@@ -510,4 +511,78 @@ export function CenterAlert({ message, tone = 'error', durationMs = 4000 }: {
       </div>
     </div>
   )
+}
+
+// ─── Printable barcode labels ──────────────────────────────────────────────────
+// Shared between StockReceivingPage (the sheet right after receiving a
+// delivery) and BarcodeManagerPage (individual/bulk reprints from history) so
+// a printed label looks the same everywhere and only needs to carry price in
+// one place.
+
+export interface PrintableBarcode {
+  id: string
+  code: string
+  barcode_type: 'box' | 'pack'
+  product_name: string
+  variant_label?: string | null
+  child_count?: number | null
+  pieces_per_pack?: number | null
+  price?: number | null
+}
+
+// Fixed 4-per-row layout, not CSS Grid's auto-fill: percentage widths on a
+// flex-wrap container lay out the same way in every browser's print engine,
+// where Grid's page-break handling is inconsistent. The horizontal + bottom
+// margin on every cell (not a parent `gap`) is what actually keeps adjacent
+// barcodes from touching once a row breaks across a printed page boundary --
+// gap alone can collapse right at that boundary in some engines.
+const LABEL_COLUMNS = 4
+const LABEL_MARGIN_PCT = 1
+const LABEL_WIDTH_PCT = 100 / LABEL_COLUMNS - LABEL_MARGIN_PCT * 2
+
+export function BarcodeLabel({ label }: { label: PrintableBarcode }) {
+  const isBox = label.barcode_type === 'box'
+  return <div style={{
+    width: `${LABEL_WIDTH_PCT}%`, margin: `0 ${LABEL_MARGIN_PCT}% 20px ${LABEL_MARGIN_PCT}%`,
+    boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+    breakInside: 'avoid', pageBreakInside: 'avoid',
+  }}>
+    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.25, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
+    {label.variant_label && <div style={{ fontSize: 8, color: 'var(--ink-muted)' }}>{label.variant_label}</div>}
+    <Barcode value={label.code} width={1.2} height={36} fontSize={9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
+    {label.price != null && <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--primary, #1e8a4a)' }}>Sell: {fmtRWFExact(label.price)}</div>}
+    <div style={{ fontSize: 7, color: isBox ? 'var(--primary)' : 'var(--ink-muted)', textAlign: 'center', fontWeight: isBox ? 700 : 400 }}>
+      {isBox ? `Carton · ${label.child_count ?? 0} packs` : `Pack · ${label.pieces_per_pack ?? 0} pcs`}
+    </div>
+  </div>
+}
+
+// One printable sheet: a title (delivery code, carton code, or "Selected
+// barcode"), a print button, and the labels laid out 4-per-row. `title` is
+// shown both on screen and on the printed page so a cut-apart sheet can
+// still be traced back to its source.
+export function BarcodeLabelSheet({ title, labels, loading, error }: {
+  title: string; labels: PrintableBarcode[]; loading?: boolean; error?: string | null
+}) {
+  if (loading) return <p style={{ fontSize: 12, color: 'var(--ink-muted)', textAlign: 'center', marginTop: 16 }}>Loading barcode labels…</p>
+  if (error) return <p style={{ fontSize: 12, color: '#b91c1c', textAlign: 'center', marginTop: 16 }}>Could not load the barcode labels: {error}</p>
+  if (labels.length === 0) return null
+
+  return <div style={{ marginTop: 20 }}>
+    <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      <p style={{ fontSize: 11, color: 'var(--ink-muted)', margin: 0 }}>
+        {labels.length} barcode{labels.length === 1 ? '' : 's'} on one sheet, ready to print and cut apart.
+      </p>
+      <Btn variant="primary" small onClick={() => window.print()}>🖨 Print / Save as PDF</Btn>
+    </div>
+    <div className="no-print" style={{ fontSize: 10, color: 'var(--ink-faint, #9ab8a0)', marginBottom: 10 }}>
+      "Print" opens your browser's print dialog — choose "Save as PDF" there to download the sheet instead of printing it.
+    </div>
+    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 14px 0' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>{title}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+        {labels.map(label => <BarcodeLabel key={label.id} label={label} />)}
+      </div>
+    </div>
+  </div>
 }

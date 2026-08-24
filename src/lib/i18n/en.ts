@@ -11,6 +11,7 @@ const en = {
   "nav.overview": "Overview",
   "nav.inventory": "Inventory Dashboard",
   "nav.receiving": "Receive Stock",
+  "nav.requestProduct": "Request Product",
   "nav.barcode": "Barcode Manager",
   "nav.sales": "Sales / POS",
   "nav.analytics": "Analytics",
@@ -25,6 +26,7 @@ const en = {
   "page.overview": "Dashboard Overview",
   "page.inventory": "Inventory Dashboard",
   "page.receiving": "Receive Stock Delivery",
+  "page.requestProduct": "Request a Product",
   "page.barcode": "Barcode Manager",
   "page.sales": "Sales & POS",
   "page.analytics": "Analytics & Forecasting",
@@ -186,6 +188,8 @@ const en = {
   "admin.navBranches": "Branches",
   "admin.navSecurity": "Security",
   "admin.navTickets": "Tickets",
+  "admin.navProducts": "Products",
+  "admin.navProductRequests": "Product Requests",
 
   // ── Admin portal — sign-in gate ───────────────────────────────────────────
   "admin.gateTitle": "Super Admin sign-in",
@@ -212,6 +216,7 @@ const en = {
   "admin.statusOpen": "Open",
   "admin.statusInProgress": "In Progress",
   "admin.statusResolved": "Resolved",
+  "admin.statusClosed": "Closed",
 
   // ── Admin portal — dashboard ───────────────────────────────────────────────
   "admin.systemOverview": "System Overview",
@@ -329,6 +334,63 @@ const en = {
   "admin.priorityHigh": "High",
   "admin.priorityMedium": "Medium",
   "admin.priorityLow": "Low",
+
+  // ── Admin portal — products & tax ──────────────────────────────────────────
+  "admin.productsAndTax": "Products & Tax",
+  "admin.productsCount": "{count} products in the catalogue",
+  "admin.addProduct": "Add product",
+  "admin.searchProducts": "Search by product or generic name…",
+  "admin.colProductType": "Type",
+  "admin.colVariants": "Variants",
+  "admin.colTaxRate": "Tax Rate",
+  "admin.noProductsFound": "No products match your search",
+  "admin.productName": "Product name",
+  "admin.genericName": "Generic name (optional)",
+  "admin.productType": "Product type",
+  "admin.productTypeMedicine": "Medicine",
+  "admin.productTypeSupply": "Supply",
+  "admin.productTypeOther": "Other",
+  "admin.taxRate": "Tax rate",
+  "admin.variants": "Variants (dosage / form / unit)",
+  "admin.dosagePlaceholder": "Dosage (e.g. 500mg)",
+  "admin.formPlaceholder": "Form (e.g. Tablet)",
+  "admin.unitPlaceholder": "Unit (e.g. Blister)",
+  "admin.addVariant": "Add variant",
+  "admin.productNameRequired": "A product name is required.",
+  "admin.selectTaxRate": "Select a tax rate.",
+
+  // ── Admin portal — product requests ────────────────────────────────────────
+  "admin.productRequests": "Product Requests",
+  "admin.partOfDelivery": "Part of a delivery",
+  "admin.noDosageRecorded": "No dosage/form recorded",
+  "admin.approveRequest": "Approve request",
+  "admin.approveRequestIntro": "Requested by {branch}. Review and finalize the catalogue entry before approving.",
+  "admin.linkedToDeliveryNote": "This request is linked to a delivery already in progress — once approved, the branch can finish receiving it under that same delivery.",
+  "admin.rejectRequest": "Reject request",
+  "admin.rejectRequestConfirm": "Reject the request for \"{product}\"?",
+
+  // ── Admin portal — tax rate management ─────────────────────────────────────
+  "admin.addTaxRate": "Add tax rate",
+  "admin.taxRateName": "Tax rate name",
+  "admin.taxRateNamePlaceholder": "e.g. Reduced Rate",
+  "admin.taxRatePercentage": "Percentage",
+  "admin.taxRateNameRequired": "A tax rate name is required.",
+  "admin.taxRateInvalid": "Enter a percentage between 0 and 100.",
+
+  // ── Admin portal — categories (system-wide) ─────────────────────────────────
+  "admin.navCategories": "Categories",
+  "admin.categoriesSystemWide": "Categories — All Branches",
+  "admin.categoriesCount": "{count} categories across every branch",
+  "admin.addCategory": "Add category",
+  "admin.categoryName": "Category name",
+  "admin.categoryDescription": "Description (optional)",
+  "admin.categoryTarget": "Add to",
+  "admin.categoryAllBranches": "Every branch",
+  "admin.categoryNameRequired": "A category name is required.",
+  "admin.searchCategories": "Search by category or branch name…",
+  "admin.colCategory": "Category",
+  "admin.colDescription": "Description",
+  "admin.noCategoriesFound": "No categories match your search",
 } as const;
 
 export default en;

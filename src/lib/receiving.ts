@@ -11,6 +11,8 @@ export interface ReceivingProduct {
   name: string
   generic_name: string | null
   product_type: ProductType
+  tax_rate_name: string
+  tax_rate_percentage: number
 }
 
 export interface ReceivingVariant {
@@ -40,18 +42,26 @@ export interface ReceivingReference {
 
 export async function loadReceivingReference(): Promise<ReceivingReference> {
   const results = await Promise.all([
-    supabase.from("products").select("id, name, generic_name, product_type").order("name"),
+    supabase.from("products").select("id, name, generic_name, product_type, tax_rate_id").order("name"),
     supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
     // product_categories is branch-owned and RLS already restricts it to this branch.
     supabase.from("product_categories").select("*").order("name"),
     // RLS returns the global (branch_id null) rows plus this branch's own rows.
     supabase.from("suppliers").select("id, supplier_name").order("supplier_name"),
+    supabase.from("tax_rates").select("id, name, rate_percentage"),
   ])
   const failed = results.find(result => result.error)
   if (failed?.error) throw failed.error
-  const [products, variants, categories, suppliers] = results.map(result => result.data ?? []) as any[][]
+  const [products, variants, categories, suppliers, taxRates] = results.map(result => result.data ?? []) as any[][]
+  const taxById = new Map(taxRates.map(row => [row.id, row]))
   return {
-    products: products.map(row => ({ id: row.id, name: row.name, generic_name: row.generic_name ?? null, product_type: (row.product_type ?? "medicine") as ProductType })),
+    products: products.map(row => {
+      const tax = taxById.get(row.tax_rate_id)
+      return {
+        id: row.id, name: row.name, generic_name: row.generic_name ?? null, product_type: (row.product_type ?? "medicine") as ProductType,
+        tax_rate_name: tax?.name ?? "—", tax_rate_percentage: Number(tax?.rate_percentage ?? 0),
+      }
+    }),
     variants: variants.map(row => ({ id: row.id, product_id: row.product_id, dosage: row.dosage ?? null, form: row.form ?? null, unit: row.unit ?? null })),
     categories: categories.map(row => ({ id: row.id, name: row.name })),
     suppliers: suppliers.map(row => ({ id: row.id, supplier_name: row.supplier_name })),
@@ -129,18 +139,14 @@ export async function loadProductDefaults(productId: string, variantId: string):
 // One entry of the RPC's p_lines array. Field names mirror the jsonb keys that
 // receive_stock_delivery() reads — do not rename them.
 //
-// A line is EITHER an existing product_variant_id OR a new product_name (plus the
-// optional descriptors the RPC uses to create/reuse the variant), never both.
-// quantity_received is deliberately absent: the RPC derives it from the packaging
-// numbers, so sending it from the client would duplicate a derived fact.
+// product_variant_id is now required: the RPC no longer accepts a bare
+// product_name to create a product/variant on the fly (see
+// src/lib/products.ts's submitProductRequest for the "product not in the
+// catalogue yet" path). quantity_received is deliberately absent: the RPC
+// derives it from the packaging numbers, so sending it from the client would
+// duplicate a derived fact.
 export interface DeliveryLine {
-  product_variant_id?: string
-  product_name?: string
-  product_type?: ProductType
-  generic_name?: string
-  dosage?: string
-  form?: string
-  unit?: string
+  product_variant_id: string
   category_name?: string
   manufacturer_name?: string
   batch_number: string

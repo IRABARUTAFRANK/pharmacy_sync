@@ -1,16 +1,20 @@
-import { useState, useEffect } from 'react'
-import { NAV_ITEMS, alertsData, type Role } from './data'
+import { useState, useEffect, useCallback } from 'react'
+import { NAV_ITEMS, type Role } from './data'
 import { useTranslation, LanguageSwitcher } from './lib/i18n'
 import type { TranslationKey } from './lib/i18n/en'
 import LiveInventoryPage from './pages/LiveInventoryPage'
 import StockReceivingPage from './pages/StockReceivingPage'
 import BarcodeManagerPage from './pages/BarcodeManagerPage'
+import RequestProductPage from './pages/RequestProductPage'
+import AlertsPage from './pages/AlertsPage'
+import HelpPage from './pages/HelpPage'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
 import AdminPortal from './pages/AdminPortal'
 import BranchPortal from './pages/BranchPortal'
 import ResetPassword from './pages/ResetPassword'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
+import { loadLiveAlerts, type LiveAlert } from './lib/alerts'
 
 // ─── Top-level hash router ──────────────────────────────────────────────────────
 // #admin and #branch are the super-admin console and pharmacy registration —
@@ -110,9 +114,17 @@ function ExportModal({ onClose }: { onClose: () => void }) {
 
 // ─── Notifications Dropdown ───────────────────────────────────────────────────
 
-function NotifDropdown({ onClose }: { onClose: () => void }) {
+function alertTimeAgo(iso: string): string {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ago`
+  return `${Math.floor(minutes / 1440)}d ago`
+}
+
+function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () => void }) {
   const { t } = useTranslation()
-  const active = alertsData.filter(a => !a.dismissed)
+  const active = alerts.filter(a => !a.isRead)
   return (
     <div style={{
       position: 'absolute', right: 0, top: '110%', width: 340, zIndex: 100,
@@ -133,11 +145,14 @@ function NotifDropdown({ onClose }: { onClose: () => void }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: dot[a.type] }}>{a.title}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.msg}</div>
-                <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{a.branch} · {a.time}</div>
+                <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
               </div>
             </div>
           )
         })}
+        {active.length === 0 && (
+          <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--ink-faint)' }}>No new alerts</div>
+        )}
       </div>
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
         <button onClick={onClose} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
@@ -211,6 +226,7 @@ export default function App() {
 
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingSync, setPendingSync] = useState(0)
+  const [alerts, setAlerts] = useState<LiveAlert[]>([])
 
   useEffect(() => {
     const up   = () => { setIsOnline(true);  setPendingSync(0) }
@@ -223,6 +239,17 @@ export default function App() {
   useEffect(() => {
     void restoreBranchAccess().then(setAccess).finally(() => setAccessLoading(false))
   }, [])
+
+  const refreshAlerts = useCallback(async () => {
+    try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
+  }, [])
+
+  useEffect(() => { if (access) void refreshAlerts() }, [access, refreshAlerts])
+  useEffect(() => {
+    if (!access) return
+    const id = setInterval(() => void refreshAlerts(), 30000)
+    return () => clearInterval(id)
+  }, [access, refreshAlerts])
 
   const role: Role = access?.role === 'owner' || access?.role === 'manager' || access?.role === 'pharmacist'
     ? access.role
@@ -249,7 +276,8 @@ export default function App() {
 
   const currentRole = ROLES.find(r => r.id === role)!
   const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(role))
-  const alertCount = alertsData.filter(a => !a.dismissed).length
+  const alertCount = alerts.filter(a => !a.isRead).length
+  const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
 
   const closeMenus = () => { setShowNotif(false); setShowUser(false) }
 
@@ -258,15 +286,16 @@ export default function App() {
       case 'overview':      return <DatabaseBackedPage title="Dashboard" tables="sales · sale_items · stock_batches · notifications" />
       case 'inventory':     return <LiveInventoryPage />
       case 'receiving':     return <StockReceivingPage />
+      case 'requestProduct': return <RequestProductPage />
       case 'barcode':       return <BarcodeManagerPage />
       case 'sales':         return <DatabaseBackedPage title="Sales & POS" tables="sales · sale_items · receipts" />
       case 'analytics':     return <DatabaseBackedPage title="Analytics" tables="sales · sale_items · sales_forecasts" />
-      case 'alerts':        return <DatabaseBackedPage title="Alerts" tables="notifications · batch_recalls · stock_adjustments" />
+      case 'alerts':        return <AlertsPage />
       case 'transactions':  return <DatabaseBackedPage title="Transactions" tables="sales · sale_items · receipts" />
       case 'compliance':    return <DatabaseBackedPage title="Compliance" tables="sales · tax_rates" />
       case 'insurance':     return <DatabaseBackedPage title="Insurance" tables="insurance_claims · insurance_providers" />
       case 'branch':        return <DatabaseBackedPage title="Branch Management" tables="branches · users · branch_settings" />
-      case 'help':          return <DatabaseBackedPage title="Support" tables="support_tickets" />
+      case 'help':          return <HelpPage />
       default:              return null
     }
   }
@@ -351,17 +380,17 @@ export default function App() {
                 {sidebarOpen && (
                   <>
                     <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{navLabel}</span>
-                    {item.badge !== undefined && (
+                    {!!navBadge(item.id) && (
                       <span style={{
-                        background: item.id === 'alerts' ? '#dc2626' : 'var(--primary)',
+                        background: '#dc2626',
                         color: '#fff', fontSize: 10, fontWeight: 700,
                         borderRadius: 10, padding: '1px 6px', flexShrink: 0,
-                      }}>{item.badge}</span>
+                      }}>{navBadge(item.id)}</span>
                     )}
                   </>
                 )}
-                {!sidebarOpen && item.badge !== undefined && (
-                  <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: item.id === 'alerts' ? '#dc2626' : 'var(--primary)' }} />
+                {!sidebarOpen && !!navBadge(item.id) && (
+                  <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: '#dc2626' }} />
                 )}
               </button>
             )
@@ -485,7 +514,7 @@ export default function App() {
                 <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, background: '#dc2626', borderRadius: '50%', border: '2px solid #fff' }} />
               )}
             </button>
-            {showNotif && <NotifDropdown onClose={() => setShowNotif(false)} />}
+            {showNotif && <NotifDropdown alerts={alerts} onClose={() => setShowNotif(false)} />}
           </div>
 
           {/* User avatar */}

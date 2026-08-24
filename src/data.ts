@@ -208,12 +208,13 @@ export interface InsuranceProvider {
 export const NAV_ITEMS: NavItem[] = [
   // ── All roles ────────────────────────────────────────────────
   { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'inventory',   label: 'Inventory Dashboard',  icon: '📦', badge: 3, roles: ['owner', 'manager', 'pharmacist'] },
+  { id: 'inventory',   label: 'Inventory Dashboard',  icon: '📦', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'receiving',   label: 'Receive Stock',        icon: '📥', roles: ['owner', 'manager', 'pharmacist'] },
+  { id: 'requestProduct', label: 'Request Product',   icon: '🙋', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'barcode',     label: 'Barcode Manager',      icon: '▦',  roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'analytics',   label: 'Analytics',            icon: '📊', roles: ['owner', 'manager'] },
-  { id: 'alerts',      label: 'Alerts',               icon: '🔔', badge: 5, roles: ['owner', 'manager', 'pharmacist'] },
+  { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager', 'pharmacist'] },
   { id: 'compliance',  label: 'Compliance',           icon: '📋', roles: ['owner', 'manager'] },
   { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager', 'pharmacist'] },
@@ -406,6 +407,11 @@ export const fmtRWF = (n: number) => {
   if (n >= 1000) return `RWF ${(n / 1000).toFixed(0)}K`
   return `RWF ${n.toLocaleString()}`
 }
+
+// Never abbreviates (no "2K" for 2,000) -- for anywhere the exact amount
+// matters: printed barcode labels, per-item cost/selling prices, receipts.
+// fmtRWF's K/M shorthand stays reserved for big aggregate KPI totals.
+export const fmtRWFExact = (n: number) => `RWF ${Math.round(n).toLocaleString()}`
 
 export const pct = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}%`
 

@@ -1,17 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import Barcode from "react-barcode"
-import { Btn, Card, Modal, StatusBadge } from "../components"
-import { fmtRWF } from "../data"
+import { Btn, Card, Modal, StatusBadge, BarcodeLabelSheet, type PrintableBarcode } from "../components"
+import { fmtRWFExact } from "../data"
 import {
   BARCODE_STATUSES,
   emptyBarcodeDataset,
   loadBarcodeDataset,
   type BarcodeDataset,
+  type BarcodeGroup,
   type BarcodeRow,
   type BarcodeStatus,
   type BarcodeType,
 } from "../lib/barcodes"
 import { errorMessage } from "../lib/supabase"
+
+function toPrintable(row: BarcodeRow): PrintableBarcode {
+  return {
+    id: row.id, code: row.code, barcode_type: row.barcode_type,
+    product_name: row.product_name, variant_label: row.variant_label,
+    child_count: row.child_count, pieces_per_pack: row.pieces_per_pack,
+    price: row.selling_price,
+  }
+}
+
+function groupToPrintable(group: BarcodeGroup): PrintableBarcode[] {
+  return [...(group.parent ? [group.parent] : []), ...group.children].map(toPrintable)
+}
 
 const statusMeta: Record<BarcodeStatus, { label: string; color: string; background: string }> = {
   active: { label: "Active", color: "#16a34a", background: "#d1fae5" },
@@ -42,6 +56,18 @@ export default function BarcodeManagerPage() {
   const [type, setType] = useState<"all" | BarcodeType>("all")
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<BarcodeRow | null>(null)
+  const [printJob, setPrintJob] = useState<{ title: string; labels: PrintableBarcode[] } | null>(null)
+  const [printDeliveryCode, setPrintDeliveryCode] = useState("")
+
+  // A "Print" click should feel like one action, not "click Print, notice a
+  // sheet appeared below, click a second Print button" -- so the browser's
+  // print dialog opens itself as soon as the sheet has actually rendered
+  // (rAF, so it's after the DOM update from setPrintJob above lands).
+  useEffect(() => {
+    if (!printJob) return
+    const id = requestAnimationFrame(() => window.print())
+    return () => cancelAnimationFrame(id)
+  }, [printJob])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -72,6 +98,17 @@ export default function BarcodeManagerPage() {
   const parentOfSelected = selected?.parent_barcode_id
     ? dataset.rows.find(row => row.id === selected.parent_barcode_id) ?? null
     : null
+
+  const deliveryCodes = useMemo(
+    () => Array.from(new Set(dataset.rows.map(row => row.delivery_code).filter((code): code is string => !!code))).sort(),
+    [dataset.rows],
+  )
+
+  function printDelivery() {
+    if (!printDeliveryCode) return
+    const labels = dataset.rows.filter(row => row.delivery_code === printDeliveryCode).map(toPrintable)
+    setPrintJob({ title: `Delivery ${printDeliveryCode}`, labels })
+  }
 
   const toggle = (key: string) => setExpanded(current => {
     const next = new Set(current)
@@ -146,6 +183,19 @@ export default function BarcodeManagerPage() {
         <Btn variant="secondary" small onClick={() => void refresh()}>Refresh</Btn>
       </div>
 
+      <div className="no-print" style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 14, flexWrap: "wrap", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)" }}>🖨 Print a whole delivery:</span>
+        <select
+          value={printDeliveryCode}
+          onChange={event => setPrintDeliveryCode(event.target.value)}
+          style={{ padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 6, fontFamily: "inherit", fontSize: 11, background: "#fff" }}
+        >
+          <option value="">Select a delivery…</option>
+          {deliveryCodes.map(code => <option key={code} value={code}>{code}</option>)}
+        </select>
+        <Btn variant="secondary" small onClick={printDelivery} style={printDeliveryCode ? {} : { opacity: 0.5, cursor: "not-allowed", pointerEvents: "none" }}>Print all barcodes</Btn>
+      </div>
+
       <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 10 }}>
         {loading ? "Loading barcode history…" : `${shownRows.toLocaleString()} barcode${shownRows === 1 ? "" : "s"} in ${visible.length.toLocaleString()} group${visible.length === 1 ? "" : "s"}${status === "all" && type === "all" && !query.trim() ? "" : " matching the current filters"}.`}
       </div>
@@ -183,6 +233,7 @@ export default function BarcodeManagerPage() {
                 />
                 {group.statuses.map(entry => <StatusBadge key={entry} label={statusMeta[entry].label} color={statusMeta[entry].color} bg={statusMeta[entry].background} />)}
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink)" }}>{group.pieces.toLocaleString()} pcs</span>
+                <Btn variant="secondary" small onClick={() => setPrintJob({ title: `${group.productName} — Batch ${group.batchNumber}`, labels: groupToPrintable(group) })}>🖨 Print group</Btn>
               </div>
             </div>
 
@@ -192,6 +243,7 @@ export default function BarcodeManagerPage() {
               <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>holds {group.parent.child_count ?? 0} packs · {group.parent.code_source}</span>
               <div style={{ flex: 1 }} />
               <StatusBadge label={statusMeta[group.parent.status].label} color={statusMeta[group.parent.status].color} bg={statusMeta[group.parent.status].background} />
+              <Btn variant="ghost" small onClick={() => setPrintJob({ title: `Carton ${group.parent!.code}`, labels: groupToPrintable(group) })}>Print carton + packs</Btn>
               <Btn variant="ghost" small onClick={() => setSelected(group.parent)}>View</Btn>
             </div>}
 
@@ -207,9 +259,10 @@ export default function BarcodeManagerPage() {
                 {group.kind === "carton" && <span style={{ color: "var(--border-strong)", fontSize: 11 }}>└</span>}
                 <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--ink)" }}>{child.code}</span>
                 <StatusBadge label={typeMeta.pack.label} color={typeMeta.pack.color} bg={typeMeta.pack.background} />
-                <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>{child.pieces_per_pack ?? 0} pieces/pack · {child.quantity_available} available · {fmtRWF(child.selling_price)}</span>
+                <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>{child.pieces_per_pack ?? 0} pieces/pack · {child.quantity_available} available · Sell: {fmtRWFExact(child.selling_price)}</span>
                 <div style={{ flex: 1 }} />
                 <StatusBadge label={statusMeta[child.status].label} color={statusMeta[child.status].color} bg={statusMeta[child.status].background} />
+                <Btn variant="ghost" small onClick={() => setPrintJob({ title: `Barcode ${child.code}`, labels: [toPrintable(child)] })}>Print</Btn>
                 <Btn variant="ghost" small onClick={() => setSelected(child)}>View</Btn>
               </div>)}
               {children.length === 0 && <div style={{ padding: "12px 46px", fontSize: 11, color: "var(--ink-muted)" }}>
@@ -242,6 +295,8 @@ export default function BarcodeManagerPage() {
         <Detail label="Supplier" value={selected.supplier_name} />
         <Detail label="Manufacturer" value={selected.manufacturer_name ?? "—"} />
         <Detail label="Code source" value={selected.code_source} />
+        <Detail label="Cost price (what you paid)" value={fmtRWFExact(selected.cost_price)} />
+        <Detail label="Selling price (what you charge)" value={fmtRWFExact(selected.selling_price)} />
         <Detail
           label={selected.barcode_type === "box" ? "Packs inside" : "Pieces per pack"}
           value={String(selected.barcode_type === "box" ? selected.child_count ?? 0 : selected.pieces_per_pack ?? 0)}
@@ -253,6 +308,18 @@ export default function BarcodeManagerPage() {
       <p style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 14, marginBottom: 0 }}>
         Individual pieces are never barcoded. Stock is counted from pack barcodes only: quantity available × pieces per pack.
       </p>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+        <Btn variant="primary" small onClick={() => { setPrintJob({ title: `Barcode ${selected.code}`, labels: [toPrintable(selected)] }); setSelected(null) }}>🖨 Print this barcode</Btn>
+      </div>
     </Modal>}
+
+    {printJob && (
+      <div style={{ marginTop: 4 }}>
+        <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+          <button onClick={() => setPrintJob(null)} style={{ fontSize: 11, color: "var(--ink-muted)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}>Close print preview</button>
+        </div>
+        <BarcodeLabelSheet title={printJob.title} labels={printJob.labels} />
+      </div>
+    )}
   </div>
 }

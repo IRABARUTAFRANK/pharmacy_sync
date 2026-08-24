@@ -1,33 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import Barcode from "react-barcode"
-import { Btn, Card, CenterAlert, SearchSelect, type ComboOption } from "../components"
-import { fmtRWF } from "../data"
+import { Btn, Card, CenterAlert, Modal, SearchSelect, StatusBadge, BarcodeLabelSheet, type ComboOption, type PrintableBarcode } from "../components"
+import { fmtRWFExact } from "../data"
 import {
   loadProductDefaults,
   loadReceivingReference,
   receiveStockDelivery,
   type DeliveryLine,
   type DeliveryReceipt,
-  type ProductType,
   type ReceivingReference,
 } from "../lib/receiving"
 import { loadDeliveryBarcodes, type DeliveryBarcodeLabel } from "../lib/barcodes"
 import { errorMessage } from "../lib/supabase"
+import {
+  listMyProductRequests,
+  productRequestImageUrl,
+  submitProductRequest,
+  uploadProductRequestImage,
+  type ProductRequestRow,
+} from "../lib/products"
 
 type Packaging = "simple" | "cartons"
-type ProductMode = "known" | "new"
 
 interface LineForm {
   key: string
-  mode: ProductMode
   productId: string
   variantId: string
-  productName: string
-  productType: ProductType
-  genericName: string
-  dosage: string
-  form: string
-  unit: string
   categoryName: string
   manufacturer: string
   batchNumber: string
@@ -43,9 +40,7 @@ interface LineForm {
 let lineSequence = 0
 const blankLine = (): LineForm => ({
   key: `line-${(lineSequence += 1)}`,
-  mode: "known", productId: "", variantId: "",
-  productName: "", productType: "medicine", genericName: "", dosage: "", form: "", unit: "",
-  categoryName: "", manufacturer: "", batchNumber: "", expiryDate: "",
+  productId: "", variantId: "", categoryName: "", manufacturer: "", batchNumber: "", expiryDate: "",
   costPrice: "", sellingPrice: "", packaging: "simple", cartons: "1", packs: "1", piecesPerPack: "1",
 })
 
@@ -106,57 +101,113 @@ function Toggle<T extends string>({ value, options, onChange }: { value: T; opti
   </div>
 }
 
-// Fixed 4-per-row layout, not CSS Grid's auto-fill: percentage widths on a
-// flex-wrap container lay out the same way in every browser's print engine,
-// where Grid's page-break handling is inconsistent. The horizontal + bottom
-// margin on every cell (not a parent `gap`) is what actually keeps adjacent
-// barcodes from touching once a row breaks across a printed page boundary --
-// gap alone can collapse right at that boundary in some engines.
-const COLUMNS = 4
-const CELL_MARGIN_PCT = 1
-const CELL_WIDTH_PCT = 100 / COLUMNS - CELL_MARGIN_PCT * 2
-
-// One printable label per barcode: box (carton) labels are visually distinct
-// from pack labels since they represent different physical things (an outer
-// carton vs. the individual small box you actually stick a code onto).
-function BarcodeLabel({ label }: { label: DeliveryBarcodeLabel }) {
-  const isBox = label.barcode_type === "box"
-  return <div style={{
-    width: `${CELL_WIDTH_PCT}%`, margin: `0 ${CELL_MARGIN_PCT}% 20px ${CELL_MARGIN_PCT}%`,
-    boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-    breakInside: "avoid", pageBreakInside: "avoid",
-  }}>
-    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--ink)", textAlign: "center", lineHeight: 1.25, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label.product_name}</div>
-    {label.variant_label && <div style={{ fontSize: 8, color: "var(--ink-muted)" }}>{label.variant_label}</div>}
-    <Barcode value={label.code} width={1.2} height={36} fontSize={9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
-    <div style={{ fontSize: 7, color: isBox ? "var(--primary)" : "var(--ink-muted)", textAlign: "center", fontWeight: isBox ? 700 : 400 }}>
-      {isBox ? `Carton · ${label.child_count ?? 0} packs` : `Pack · ${label.pieces_per_pack ?? 0} pcs`}
-    </div>
-  </div>
+// react-barcode/print layout lives in src/components.tsx (BarcodeLabel /
+// BarcodeLabelSheet), shared with BarcodeManagerPage's individual/bulk
+// reprints. deliveryLabelsToPrintable() below just adapts this page's own
+// DeliveryBarcodeLabel shape (from loadDeliveryBarcodes()) to that shared
+// PrintableBarcode shape, adding price.
+function deliveryLabelsToPrintable(labels: DeliveryBarcodeLabel[]): PrintableBarcode[] {
+  return labels.map(label => ({
+    id: label.id, code: label.code, barcode_type: label.barcode_type,
+    product_name: label.product_name, variant_label: label.variant_label,
+    child_count: label.child_count, pieces_per_pack: label.pieces_per_pack,
+    price: label.selling_price,
+  }))
 }
 
-function BarcodeSheet({ deliveryCode, labels, loading, error }: { deliveryCode: string; labels: DeliveryBarcodeLabel[]; loading: boolean; error: string | null }) {
-  if (loading) return <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", marginTop: 16 }}>Loading barcode labels…</p>
-  if (error) return <p style={{ fontSize: 12, color: "#b91c1c", textAlign: "center", marginTop: 16 }}>Could not load the barcode labels: {error}</p>
-  if (labels.length === 0) return null
+// Deliberately just a message + an optional photo -- not a structured form.
+// The branch describes what's missing in their own words; the super admin
+// turns it into a real catalogue entry (name, variants, tax) when approving.
+function RequestProductModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }) {
+  const [message, setMessage] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  return <div style={{ marginTop: 20 }}>
-    <div className="no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-      <p style={{ fontSize: 11, color: "var(--ink-muted)", margin: 0 }}>
-        {labels.length} barcode{labels.length === 1 ? "" : "s"} on one sheet, ready to print and cut apart.
+  function pickFile(f: File | null) {
+    setFile(f)
+    setPreview(f ? URL.createObjectURL(f) : null)
+  }
+
+  async function submit() {
+    if (!message.trim()) { setError("Describe the product you need."); return }
+    setBusy(true)
+    setError(null)
+    try {
+      const imagePath = file ? await uploadProductRequestImage(file) : undefined
+      await submitProductRequest(message.trim(), imagePath)
+      onSubmitted()
+    } catch (reason) {
+      setError(errorMessage(reason, "Could not send this request."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <Modal title="Request a new product" onClose={onClose} width={480}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>
+        Can't find a product in the catalogue? Describe what you need and the super admin will add it. You'll see the status below once it's reviewed.
       </p>
-      <Btn variant="primary" small onClick={() => window.print()}>🖨 Print / Save as PDF</Btn>
-    </div>
-    <div className="no-print" style={{ fontSize: 10, color: "var(--ink-faint, #9ab8a0)", marginBottom: 10 }}>
-      "Print" opens your browser's print dialog — choose "Save as PDF" there to download the sheet instead of printing it.
-    </div>
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 14px 0" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink)", marginBottom: 14 }}>Delivery {deliveryCode}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-start" }}>
-        {labels.map(label => <BarcodeLabel key={label.id} label={label} />)}
+      {error && <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>{error}</p>}
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", display: "block", marginBottom: 4 }}>What do you need?</label>
+        <textarea
+          value={message} onChange={event => setMessage(event.target.value)} rows={5}
+          placeholder="e.g. Amoxicillin 500mg capsules — our usual supplier delivered these but they're not in the system yet."
+          style={{ ...inputStyle, resize: "vertical" }}
+        />
+      </div>
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", display: "block", marginBottom: 4 }}>Photo (optional)</label>
+        <input type="file" accept="image/*" onChange={event => pickFile(event.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
+        {preview && <img src={preview} alt="Preview" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid var(--border)" }} />}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
+        <Btn variant="primary" onClick={() => void submit()} style={busy ? { opacity: 0.6, pointerEvents: "none" } : undefined}>{busy ? "Sending…" : "Send request"}</Btn>
       </div>
     </div>
-  </div>
+  </Modal>
+}
+
+const requestStatusMeta: Record<ProductRequestRow["status"], { label: string; color: string; bg: string }> = {
+  pending: { label: "Awaiting admin review", color: "#b45309", bg: "#fef3c7" },
+  approved: { label: "Approved — now in the catalogue", color: "#16a34a", bg: "#dcfce7" },
+  rejected: { label: "Declined", color: "#b91c1c", bg: "#fef2f2" },
+}
+
+// Every product request this branch has filed. Once approved, the product
+// is simply selectable under "Product" below on the next delivery -- there
+// is no separate "finish" step.
+function MyRequestsPanel({ requests, loading }: { requests: ProductRequestRow[]; loading: boolean }) {
+  if (!loading && requests.length === 0) return null
+  return <Card>
+    <div style={{ marginBottom: 10 }}>
+      <h2 style={{ margin: 0, fontSize: 14 }}>Your product requests</h2>
+      <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>Products you've asked the super admin to add to the catalogue.</p>
+    </div>
+    {loading ? <p style={{ fontSize: 11, color: "var(--ink-muted)" }}>Loading…</p> : (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {requests.map(request => {
+          const meta = requestStatusMeta[request.status]
+          return <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--border)", borderRadius: 9, padding: "8px 12px", flexWrap: "wrap" }}>
+            {request.image_path && (
+              <img src={productRequestImageUrl(request.image_path)} alt="" style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6, flexShrink: 0 }} />
+            )}
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.4 }}>{request.message}</div>
+              {request.status === "rejected" && request.rejection_reason && (
+                <div style={{ fontSize: 10, color: "#b91c1c", marginTop: 2 }}>Reason: {request.rejection_reason}</div>
+              )}
+            </div>
+            <StatusBadge label={meta.label} color={meta.color} bg={meta.bg} />
+          </div>
+        })}
+      </div>
+    )}
+  </Card>
 }
 
 export default function StockReceivingPage() {
@@ -169,6 +220,10 @@ export default function StockReceivingPage() {
   const [barcodeLabels, setBarcodeLabels] = useState<DeliveryBarcodeLabel[]>([])
   const [labelsLoading, setLabelsLoading] = useState(false)
   const [labelsError, setLabelsError] = useState<string | null>(null)
+
+  const [myRequests, setMyRequests] = useState<ProductRequestRow[]>([])
+  const [requestsLoading, setRequestsLoading] = useState(true)
+  const [showRequestModal, setShowRequestModal] = useState(false)
 
   const [supplier, setSupplier] = useState("")
   const [notes, setNotes] = useState("")
@@ -195,7 +250,19 @@ export default function StockReceivingPage() {
     }
   }, [])
 
+  const refreshRequests = useCallback(async () => {
+    setRequestsLoading(true)
+    try {
+      setMyRequests(await listMyProductRequests())
+    } catch {
+      // Best-effort panel -- the receiving wizard itself still works without it.
+    } finally {
+      setRequestsLoading(false)
+    }
+  }, [])
+
   useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => { void refreshRequests() }, [refreshRequests])
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current) }, [])
 
   const safeIndex = Math.min(index, lines.length - 1)
@@ -208,12 +275,11 @@ export default function StockReceivingPage() {
 
   const problemsFor = useCallback((candidate: LineForm) => {
     const problems: string[] = []
-    if (candidate.mode === "known") {
-      if (!candidate.productId) problems.push("a product")
-      else if (variantsFor(candidate.productId).length > 0 && !candidate.variantId) problems.push("a variant")
-    } else if (!candidate.productName.trim()) {
-      problems.push("a new product name")
-    }
+    if (!candidate.productId) problems.push("a product")
+    // A product with zero variants can no longer be received here -- the
+    // server no longer creates variants inline. The admin adds a variant
+    // when approving a product request.
+    else if (!candidate.variantId) problems.push("a variant")
     if (!candidate.categoryName.trim()) problems.push("a product category")
     if (!candidate.batchNumber.trim()) problems.push("a batch number")
     if (!candidate.expiryDate) problems.push("an expiry date")
@@ -223,11 +289,12 @@ export default function StockReceivingPage() {
     if (toInt(candidate.piecesPerPack) < 1) problems.push("at least 1 piece per pack")
     if (candidate.packaging === "cartons" && toInt(candidate.cartons) < 1) problems.push("at least 1 carton")
     return problems
-  }, [variantsFor])
+  }, [])
 
   const buildLine = useCallback((candidate: LineForm): DeliveryLine => {
     const packs = Math.max(toInt(candidate.packs, 1), 1)
     const payload: DeliveryLine = {
+      product_variant_id: candidate.variantId,
       batch_number: candidate.batchNumber.trim(),
       expiry_date: candidate.expiryDate,
       cost_price: toMoney(candidate.costPrice),
@@ -242,27 +309,8 @@ export default function StockReceivingPage() {
     } else {
       payload.packs = packs
     }
-
-    const product = reference.products.find(item => item.id === candidate.productId)
-    if (candidate.mode === "known" && candidate.variantId) {
-      payload.product_variant_id = candidate.variantId
-    } else if (candidate.mode === "known" && product) {
-      // The catalogue product exists but has no variant rows yet. Sending it down the
-      // product_name path lets the RPC match the existing product by name and create
-      // its first variant — it never creates a duplicate product row.
-      payload.product_name = product.name
-      payload.product_type = product.product_type
-      payload.generic_name = product.generic_name ?? undefined
-    } else {
-      payload.product_name = candidate.productName.trim()
-      payload.product_type = candidate.productType
-      payload.generic_name = candidate.genericName.trim() || undefined
-      payload.dosage = candidate.dosage.trim() || undefined
-      payload.form = candidate.form.trim() || undefined
-      payload.unit = candidate.unit.trim() || undefined
-    }
     return payload
-  }, [reference.products])
+  }, [])
 
   const updateLine = (patch: Partial<LineForm>) =>
     setLines(current => current.map((item, position) => (position === safeIndex ? { ...item, ...patch } : item)))
@@ -367,6 +415,8 @@ export default function StockReceivingPage() {
     () => lineVariants.map(variant => ({ value: variant.id, label: variantLabel(variant) })),
     [lineVariants],
   )
+  const selectedProduct = reference.products.find(product => product.id === line.productId)
+  const selectedProductTax = selectedProduct ? { name: selectedProduct.tax_rate_name, rate: selectedProduct.tax_rate_percentage } : null
 
   const totals = useMemo(() => lines.reduce((sum, item) => ({
     pieces: sum.pieces + piecesFor(item),
@@ -391,8 +441,8 @@ export default function StockReceivingPage() {
     try {
       const saved = await receiveStockDelivery(supplier.trim(), notes.trim(), lines.map(buildLine))
       setReceipt(saved)
-      // Newly created products, variants, categories and the supplier should show up
-      // in the selectors straight away for the next delivery.
+      // Newly-received quantities and the supplier should show up in the
+      // selectors straight away for the next delivery.
       void loadReceivingReference().then(setReference).catch(() => undefined)
       setLabelsLoading(true)
       setLabelsError(null)
@@ -401,8 +451,8 @@ export default function StockReceivingPage() {
         .catch(reason => setLabelsError(errorMessage(reason)))
         .finally(() => setLabelsLoading(false))
     } catch (reason) {
-      // receive_stock_delivery() raises human-readable exceptions (role, branch status,
-      // missing fields). Surface them verbatim instead of a generic message.
+      // receive_stock_delivery() raises human-readable exceptions (role, branch
+      // status, missing fields). Surface them verbatim instead of a generic message.
       setSubmitError(errorMessage(reason))
     } finally {
       setSubmitting(false)
@@ -424,7 +474,7 @@ export default function StockReceivingPage() {
         <div className="no-print" style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 20 }}>
           <Btn onClick={startNewDelivery}>Start a new delivery</Btn>
         </div>
-        <BarcodeSheet deliveryCode={receipt.delivery_code} labels={barcodeLabels} loading={labelsLoading} error={labelsError} />
+        <BarcodeLabelSheet title={`Delivery ${receipt.delivery_code}`} labels={deliveryLabelsToPrintable(barcodeLabels)} loading={labelsLoading} error={labelsError} />
       </Card>
     </div>
   }
@@ -438,6 +488,8 @@ export default function StockReceivingPage() {
     </div>}
     {submitError && <CenterAlert key={submitError} message={submitError} />}
 
+    <MyRequestsPanel requests={myRequests} loading={requestsLoading} />
+
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
         <div>
@@ -449,7 +501,7 @@ export default function StockReceivingPage() {
         <Btn variant="secondary" small onClick={() => void refresh()}>{loading ? "Loading…" : "Refresh catalogue"}</Btn>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 12 }}>
-        <Field label="Supplier" hint="Type a new name to register it for this branch — the server creates it on save.">
+        <Field label="Supplier" hint="Private to this branch — the server creates a new one for you on save.">
           <SearchSelect
             options={supplierOptions}
             value={supplier}
@@ -474,7 +526,7 @@ export default function StockReceivingPage() {
         { label: "Total pieces", value: totals.pieces.toLocaleString() },
         { label: "Carton barcodes", value: totals.boxes.toLocaleString() },
         { label: "Pack barcodes", value: totals.packs.toLocaleString() },
-        { label: "Cost value", value: fmtRWF(totals.cost) },
+        { label: "Cost value", value: fmtRWFExact(totals.cost) },
       ].map(stat => <div key={stat.label}>
         <div style={{ fontSize: 17, fontWeight: 800, color: "var(--primary)" }}>{stat.value}</div>
         <div style={{ fontSize: 10, color: "var(--ink-muted)", fontWeight: 600 }}>{stat.label}</div>
@@ -507,21 +559,14 @@ export default function StockReceivingPage() {
     <div style={{ overflowX: "clip" }}>
       <div style={{ animation: `${motion} ${motion.startsWith("slide-out") ? 150 : 220}ms ease both` }}>
         <Card>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 14 }}>Product {safeIndex + 1} of {lines.length}</h2>
-              <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>
-                {piecesFor(line).toLocaleString()} pieces · {boxBarcodesFor(line)} carton barcode{boxBarcodesFor(line) === 1 ? "" : "s"} · {packBarcodesFor(line)} pack barcode{packBarcodesFor(line) === 1 ? "" : "s"}. Individual pieces never get a barcode.
-              </p>
-            </div>
-            <Toggle
-              value={line.mode}
-              onChange={mode => updateLine({ mode })}
-              options={[{ id: "known" as ProductMode, label: "Known product" }, { id: "new" as ProductMode, label: "New product" }]}
-            />
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ margin: 0, fontSize: 14 }}>Product {safeIndex + 1} of {lines.length}</h2>
+            <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>
+              {piecesFor(line).toLocaleString()} pieces · {boxBarcodesFor(line)} carton barcode{boxBarcodesFor(line) === 1 ? "" : "s"} · {packBarcodesFor(line)} pack barcode{packBarcodesFor(line) === 1 ? "" : "s"}. Individual pieces never get a barcode.
+            </p>
           </div>
 
-          {line.mode === "known" ? <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Field label="Product" hint={loading ? "Loading the catalogue…" : `${reference.products.length} products in the shared catalogue`}>
               <SearchSelect
                 options={productOptions}
@@ -529,15 +574,20 @@ export default function StockReceivingPage() {
                 onSelect={productId => { updateLine({ productId, variantId: "" }); void applyProductDefaults(productId, "") }}
                 placeholder="Search by product or generic name…"
                 invalid={!line.productId}
-                emptyMessage="No product matches — switch to “New product” to add it."
+                emptyMessage="No product matches."
               />
+              <button
+                type="button"
+                onClick={() => setShowRequestModal(true)}
+                style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "var(--primary)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              >Can't find it? Request it from the admin →</button>
             </Field>
             <Field
               label="Variant"
               hint={!line.productId
                 ? "Choose a product first."
                 : lineVariants.length === 0
-                  ? "None recorded — the server creates this product's first variant on save."
+                  ? "None recorded yet for this product."
                   : `${lineVariants.length} variant${lineVariants.length === 1 ? "" : "s"} for this product`}
             >
               <SearchSelect
@@ -550,30 +600,20 @@ export default function StockReceivingPage() {
                 emptyMessage="No variant matches that search."
               />
             </Field>
-          </div> : <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-            <Field label="Product name">
-              <input value={line.productName} onChange={event => updateLine({ productName: event.target.value })} placeholder="e.g. Amoxicillin" style={{ ...inputStyle, borderColor: line.productName.trim() ? "var(--border)" : "#fca5a5" }} />
-            </Field>
-            <Field label="Product type">
-              <select value={line.productType} onChange={event => updateLine({ productType: event.target.value as ProductType })} style={inputStyle}>
-                <option value="medicine">Medicine</option>
-                <option value="supply">Supply</option>
-                <option value="other">Other</option>
-              </select>
-            </Field>
-            <Field label="Generic name (optional)">
-              <input value={line.genericName} onChange={event => updateLine({ genericName: event.target.value })} style={inputStyle} />
-            </Field>
-            <Field label="Dosage (optional)">
-              <input value={line.dosage} onChange={event => updateLine({ dosage: event.target.value })} placeholder="e.g. 500mg" style={inputStyle} />
-            </Field>
-            <Field label="Form (optional)">
-              <input value={line.form} onChange={event => updateLine({ form: event.target.value })} placeholder="e.g. Tablet" style={inputStyle} />
-            </Field>
-            <Field label="Unit (optional)">
-              <input value={line.unit} onChange={event => updateLine({ unit: event.target.value })} placeholder="e.g. Blister" style={inputStyle} />
-            </Field>
-          </div>}
+            {selectedProductTax && (
+              <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--ink-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontWeight: 700, color: "var(--ink-mid)" }}>Tax:</span>
+                <span style={{
+                  padding: "2px 8px", borderRadius: 999, fontWeight: 700, fontSize: 10,
+                  background: selectedProductTax.rate === 0 ? "#dcfce7" : "#fef3c7",
+                  color: selectedProductTax.rate === 0 ? "#16a34a" : "#b45309",
+                }}>
+                  {selectedProductTax.name} {selectedProductTax.rate > 0 ? `(${selectedProductTax.rate}%)` : ""}
+                </span>
+                <span>— set by the super admin, not editable here.</span>
+              </div>
+            )}
+          </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
             <Field label="Product category" hint="Private to this branch — never visible to any other branch.">
@@ -620,10 +660,10 @@ export default function StockReceivingPage() {
             <Field label="Expiry date">
               <input type="date" value={line.expiryDate} onChange={event => updateLine({ expiryDate: event.target.value })} style={{ ...inputStyle, borderColor: line.expiryDate ? "var(--border)" : "#fca5a5" }} />
             </Field>
-            <Field label="Cost price / piece">
+            <Field label="Cost price / piece (what you pay)">
               <input type="number" min="0" step="0.01" value={line.costPrice} onChange={event => updateLine({ costPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.costPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
             </Field>
-            <Field label="Selling price / piece">
+            <Field label="Selling price / piece (what you charge)">
               <input type="number" min="0" step="0.01" value={line.sellingPrice} onChange={event => updateLine({ sellingPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.sellingPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
             </Field>
           </div>
@@ -688,5 +728,12 @@ export default function StockReceivingPage() {
         }}
       >{submitting ? "Generating…" : "▮▯▮ Generate Barcodes"}</button>
     </div>
+
+    {showRequestModal && (
+      <RequestProductModal
+        onClose={() => setShowRequestModal(false)}
+        onSubmitted={() => { setShowRequestModal(false); void refreshRequests() }}
+      />
+    )}
   </div>
 }

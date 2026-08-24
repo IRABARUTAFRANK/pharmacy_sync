@@ -11,6 +11,7 @@ const rw: Record<TranslationKey, string> = {
   "nav.overview": "Incamake",
   "nav.inventory": "Ububiko bw'Imiti",
   "nav.receiving": "Kwakira Ibicuruzwa",
+  "nav.requestProduct": "Saba Ikicuruzwa",
   "nav.barcode": "Gucunga Barcode",
   "nav.sales": "Kugurisha",
   "nav.analytics": "Isesengura",
@@ -25,6 +26,7 @@ const rw: Record<TranslationKey, string> = {
   "page.overview": "Incamake y'Ikigo",
   "page.inventory": "Ububiko bw'Imiti",
   "page.receiving": "Kwakira Ibicuruzwa Byatanzwe",
+  "page.requestProduct": "Saba Ikicuruzwa",
   "page.barcode": "Gucunga Barcode",
   "page.sales": "Kugurisha n'Ivunjisha",
   "page.analytics": "Isesengura n'Iteganyagihe",
@@ -186,6 +188,8 @@ const rw: Record<TranslationKey, string> = {
   "admin.navBranches": "Amashami",
   "admin.navSecurity": "Umutekano",
   "admin.navTickets": "Ubufasha",
+  "admin.navProducts": "Ibicuruzwa",
+  "admin.navProductRequests": "Ubusabe bw'Ibicuruzwa",
 
   // ── Admin portal — sign-in gate ───────────────────────────────────────────
   "admin.gateTitle": "Kwinjira kw'Umuyobozi Mukuru",
@@ -212,6 +216,7 @@ const rw: Record<TranslationKey, string> = {
   "admin.statusOpen": "Bifunguye",
   "admin.statusInProgress": "Birakemurwa",
   "admin.statusResolved": "Byakemuwe",
+  "admin.statusClosed": "Byafunzwe burundu",
 
   // ── Admin portal — dashboard ───────────────────────────────────────────────
   "admin.systemOverview": "Incamake ya Sisitemu",
@@ -329,6 +334,63 @@ const rw: Record<TranslationKey, string> = {
   "admin.priorityHigh": "Byihutirwa",
   "admin.priorityMedium": "Hagati",
   "admin.priorityLow": "Bitihutirwa",
+
+  // ── Admin portal — products & tax ──────────────────────────────────────────
+  "admin.productsAndTax": "Ibicuruzwa n'Umusoro",
+  "admin.productsCount": "Ibicuruzwa {count} biri mu rutonde",
+  "admin.addProduct": "Ongeraho ikicuruzwa",
+  "admin.searchProducts": "Shakisha ukoresheje izina ry'ikicuruzwa cyangwa izina risanzwe…",
+  "admin.colProductType": "Ubwoko",
+  "admin.colVariants": "Ubwoko bw'Ikoreshwa",
+  "admin.colTaxRate": "Igipimo cy'Umusoro",
+  "admin.noProductsFound": "Nta gicuruzwa gihuye n'ubushakashatsi bwawe",
+  "admin.productName": "Izina ry'ikicuruzwa",
+  "admin.genericName": "Izina risanzwe (Bitari ngombwa)",
+  "admin.productType": "Ubwoko bw'ikicuruzwa",
+  "admin.productTypeMedicine": "Umuti",
+  "admin.productTypeSupply": "Ibikoresho",
+  "admin.productTypeOther": "Ibindi",
+  "admin.taxRate": "Igipimo cy'umusoro",
+  "admin.variants": "Ubwoko bw'ikoreshwa (ingano / imiterere / igipimo)",
+  "admin.dosagePlaceholder": "Ingano (urugero: 500mg)",
+  "admin.formPlaceholder": "Imiterere (urugero: Ikinini)",
+  "admin.unitPlaceholder": "Igipimo (urugero: Blister)",
+  "admin.addVariant": "Ongeraho ubundi bwoko",
+  "admin.productNameRequired": "Izina ry'ikicuruzwa rirakenewe.",
+  "admin.selectTaxRate": "Hitamo igipimo cy'umusoro.",
+
+  // ── Admin portal — product requests ────────────────────────────────────────
+  "admin.productRequests": "Ubusabe bw'Ibicuruzwa",
+  "admin.partOfDelivery": "Bigize impeta",
+  "admin.noDosageRecorded": "Nta ngano/imiterere byanditswe",
+  "admin.approveRequest": "Emeza ubusabe",
+  "admin.approveRequestIntro": "Bwasabwe na {branch}. Suzuma kandi urangize inyandiko y'ikicuruzwa mbere yo kwemeza.",
+  "admin.linkedToDeliveryNote": "Ubu busabe buhuye n'impeta isanzwe itegurwa — nibumara kwemezwa, ishami rizashobora kurangiza kubyakira muri iyo mpeta.",
+  "admin.rejectRequest": "Anga ubusabe",
+  "admin.rejectRequestConfirm": "Wanga ubusabe bwa \"{product}\"?",
+
+  // ── Admin portal — tax rate management ─────────────────────────────────────
+  "admin.addTaxRate": "Ongeraho igipimo cy'umusoro",
+  "admin.taxRateName": "Izina ry'igipimo cy'umusoro",
+  "admin.taxRateNamePlaceholder": "urugero: Igipimo Kigabanuka",
+  "admin.taxRatePercentage": "Ijanisha",
+  "admin.taxRateNameRequired": "Izina ry'igipimo cy'umusoro rirakenewe.",
+  "admin.taxRateInvalid": "Andika ijanisha riri hagati ya 0 na 100.",
+
+  // ── Admin portal — categories (system-wide) ─────────────────────────────────
+  "admin.navCategories": "Ubwoko",
+  "admin.categoriesSystemWide": "Ubwoko — Amashami Yose",
+  "admin.categoriesCount": "Ubwoko {count} muri buri ishami",
+  "admin.addCategory": "Ongeraho ubwoko",
+  "admin.categoryName": "Izina ry'ubwoko",
+  "admin.categoryDescription": "Ibisobanuro (Bitari ngombwa)",
+  "admin.categoryTarget": "Ongeraho kuri",
+  "admin.categoryAllBranches": "Amashami yose",
+  "admin.categoryNameRequired": "Izina ry'ubwoko rirakenewe.",
+  "admin.searchCategories": "Shakisha ukoresheje izina ry'ubwoko cyangwa ishami…",
+  "admin.colCategory": "Ubwoko",
+  "admin.colDescription": "Ibisobanuro",
+  "admin.noCategoriesFound": "Nta bwoko buhuye n'ubushakashatsi bwawe",
 };
 
 export default rw;

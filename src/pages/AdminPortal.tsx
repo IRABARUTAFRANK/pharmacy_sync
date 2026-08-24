@@ -3,9 +3,9 @@ import {
   LayoutDashboard, CheckSquare, Building2, ShieldAlert, Ticket,
   Phone, Mail, MapPin, Clock, AlertTriangle, CheckCircle2, XCircle,
   Lock, Unlock, RefreshCw, ChevronRight, Eye, Send, Bell, Activity,
-  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound,
+  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound, Package, Plus, Ban, Tag,
 } from "lucide-react";
-import { getTickets, saveTickets, type BranchRecord, type BranchStatus, type TicketRecord } from "../lib/store";
+import type { BranchRecord, BranchStatus } from "../lib/store";
 import {
   approvePharmacyApplication,
   deleteBranch,
@@ -19,12 +19,36 @@ import {
   signOutAdmin,
   verifyAdminOtp,
 } from "../lib/onboarding";
+import {
+  adminListSupportTickets,
+  adminUpdateTicketStatus,
+  type AdminTicketRow,
+  type TicketStatus,
+} from "../lib/tickets";
+import {
+  adminApproveProductRequest,
+  adminCreateCategory,
+  adminCreateProduct,
+  adminCreateTaxRate,
+  adminListCategories,
+  adminListProductRequests,
+  adminListProducts,
+  adminRejectProductRequest,
+  adminSetProductTax,
+  listTaxRates,
+  productRequestImageUrl,
+  type AdminCategoryRow,
+  type AdminProduct,
+  type AdminProductRequestRow,
+  type ProductVariantInput,
+  type TaxRate,
+} from "../lib/products";
 import { useTranslation, LanguageSwitcher } from "../lib/i18n";
 import type { TranslationKey } from "../lib/i18n/en";
 
-type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets";
+type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets" | "products" | "categories" | "productRequests";
 
-function statusLabelKey(status: BranchStatus | TicketRecord["status"]): TranslationKey {
+function statusLabelKey(status: BranchStatus | TicketStatus): TranslationKey {
   const map: Record<string, TranslationKey> = {
     pending: "admin.statusPending",
     approved: "admin.statusApproved",
@@ -35,6 +59,7 @@ function statusLabelKey(status: BranchStatus | TicketRecord["status"]): Translat
     open: "admin.statusOpen",
     in_progress: "admin.statusInProgress",
     resolved: "admin.statusResolved",
+    closed: "admin.statusClosed",
   };
   return map[status] ?? "admin.statusPending";
 }
@@ -46,7 +71,7 @@ function backToHome() {
 
 // ── Small reusable pieces ─────────────────────────────────────────────────────
 
-function Badge({ status }: { status: BranchStatus | TicketRecord["status"] }) {
+function Badge({ status }: { status: BranchStatus | TicketStatus }) {
   const { t } = useTranslation();
   const map: Record<string, string> = {
     pending:     "bg-amber-100 text-amber-700 border-amber-200",
@@ -58,6 +83,7 @@ function Badge({ status }: { status: BranchStatus | TicketRecord["status"] }) {
     open:        "bg-red-100 text-red-700 border-red-200",
     in_progress: "bg-blue-100 text-blue-700 border-blue-200",
     resolved:    "bg-green-100 text-green-700 border-green-200",
+    closed:      "bg-slate-100 text-slate-600 border-slate-200",
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wide ${map[status] ?? ""}`}>
@@ -115,7 +141,7 @@ function fmt(iso: string) {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: TicketRecord[] }) {
+function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: AdminTicketRow[] }) {
   const { t } = useTranslation();
   const pending = branches.filter((b) => b.status === "pending").length;
   const active  = branches.filter((b) => b.status === "active").length;
@@ -129,9 +155,9 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: T
       text: `${b.pharmacyName} — ${t(statusLabelKey(b.status))}`,
     })),
     ...tickets.map((tk) => ({
-      time: tk.submittedAt,
+      time: tk.created_at,
       icon: <Ticket className="w-3.5 h-3.5 text-violet-500" />,
-      text: `[Ticket] ${tk.branchName}: "${tk.subject}"`,
+      text: `[Ticket] ${tk.branch_name}: "${tk.subject}"`,
     })),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 8);
 
@@ -865,18 +891,25 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
 
 // ── Tickets ───────────────────────────────────────────────────────────────────
 
-function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange: () => void }) {
+function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChange: () => void }) {
   const { t } = useTranslation();
-  const [detail, setDetail] = useState<TicketRecord | null>(null);
+  const [detail, setDetail] = useState<AdminTicketRow | null>(null);
+  const [updating, setUpdating] = useState(false);
 
   const priorityOrder = { high: 0, medium: 1, low: 2 };
   const sorted = [...tickets].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
-  function updateStatus(id: string, status: TicketRecord["status"]) {
-    const all = getTickets();
-    saveTickets(all.map((t) => (t.id === id ? { ...t, status } : t)));
-    onChange();
-    if (detail?.id === id) setDetail((p) => p ? { ...p, status } : p);
+  async function updateStatus(id: string, status: TicketStatus) {
+    setUpdating(true);
+    try {
+      await adminUpdateTicketStatus(id, status);
+      onChange();
+      if (detail?.id === id) setDetail((p) => p ? { ...p, status } : p);
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Could not update this ticket.");
+    } finally {
+      setUpdating(false);
+    }
   }
 
   const priorityStyles = {
@@ -884,11 +917,11 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
     medium: "bg-amber-100 text-amber-700 border-amber-200",
     low:    "bg-slate-100 text-slate-600 border-slate-200",
   };
-  const priorityLabelKey: Record<TicketRecord["priority"], TranslationKey> = {
+  const priorityLabelKey: Record<AdminTicketRow["priority"], TranslationKey> = {
     high: "admin.priorityHigh", medium: "admin.priorityMedium", low: "admin.priorityLow",
   };
 
-  const open = tickets.filter((t) => t.status === "open").length;
+  const open = tickets.filter((tk) => tk.status === "open").length;
 
   return (
     <div className="space-y-6">
@@ -920,8 +953,8 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
                   </span>
                 </div>
                 <p className="font-bold text-slate-800 truncate">{tk.subject}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{tk.branchName} · {timeAgo(tk.submittedAt)}</p>
-                <p className="text-xs text-slate-400 mt-1.5 line-clamp-1">{tk.message}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{tk.branch_name} · {tk.raised_by_name} · {timeAgo(tk.created_at)}</p>
+                <p className="text-xs text-slate-400 mt-1.5 line-clamp-1">{tk.description}</p>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-300 shrink-0 mt-1" />
             </div>
@@ -943,21 +976,21 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
               <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${
                 { high: "bg-red-100 text-red-700 border-red-200", medium: "bg-amber-100 text-amber-700 border-amber-200", low: "bg-slate-100 text-slate-600 border-slate-200" }[detail.priority]
               }`}>{t(priorityLabelKey[detail.priority])}</span>
-              <span className="font-mono text-[10px] text-slate-400">{fmt(detail.submittedAt)}</span>
+              <span className="font-mono text-[10px] text-slate-400">{fmt(detail.created_at)}</span>
             </div>
             <div>
               <p className="font-bold text-slate-800">{detail.subject}</p>
-              <p className="text-xs text-green-700 font-semibold mt-0.5">{detail.branchName}</p>
+              <p className="text-xs text-green-700 font-semibold mt-0.5">{detail.branch_name} · {detail.raised_by_name}</p>
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-              <p className="text-xs text-slate-600 leading-relaxed">{detail.message}</p>
+              <p className="text-xs text-slate-600 leading-relaxed">{detail.description || "—"}</p>
             </div>
             <div>
               <label className="text-[10px] font-mono uppercase tracking-widest text-slate-400 block mb-2">{t("admin.updateStatus")}</label>
               <div className="flex gap-2 flex-wrap">
-                {(["open","in_progress","resolved"] as TicketRecord["status"][]).map((s) => (
-                  <button key={s} onClick={() => updateStatus(detail.id, s)}
-                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                {(["open","in_progress","resolved","closed"] as TicketStatus[]).map((s) => (
+                  <button key={s} disabled={updating} onClick={() => void updateStatus(detail.id, s)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors disabled:opacity-50 ${
                       detail.status === s
                         ? "border-green-500 bg-green-50 text-green-700"
                         : "border-slate-200 text-slate-500 hover:border-green-300"
@@ -969,6 +1002,687 @@ function TicketsView({ tickets, onChange }: { tickets: TicketRecord[]; onChange:
             </div>
           </div>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+// ── Products & Tax ───────────────────────────────────────────────────────────
+// Products are super-admin managed only -- branches can no longer create one
+// while receiving stock (see StockReceivingPage.tsx / product_requests
+// below). Tax is set here, per product, never per category, and defaults to
+// Exempt (0%) until an admin changes it.
+
+function VariantRow({ variant, onChange, onRemove, canRemove }: {
+  variant: ProductVariantInput; onChange: (v: ProductVariantInput) => void; onRemove: () => void; canRemove: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-2">
+      <input value={variant.dosage ?? ""} onChange={(e) => onChange({ ...variant, dosage: e.target.value })}
+        placeholder={t("admin.dosagePlaceholder")}
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+      <input value={variant.form ?? ""} onChange={(e) => onChange({ ...variant, form: e.target.value })}
+        placeholder={t("admin.formPlaceholder")}
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+      <input value={variant.unit ?? ""} onChange={(e) => onChange({ ...variant, unit: e.target.value })}
+        placeholder={t("admin.unitPlaceholder")}
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+      {canRemove && (
+        <button type="button" onClick={onRemove} className="text-slate-400 hover:text-red-600 transition-colors shrink-0">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function VariantEditor({ variants, onChange }: { variants: ProductVariantInput[]; onChange: (v: ProductVariantInput[]) => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <label className="text-xs font-semibold text-slate-600 block">{t("admin.variants")}</label>
+      {variants.map((variant, i) => (
+        <VariantRow key={i} variant={variant}
+          onChange={(v) => onChange(variants.map((item, idx) => (idx === i ? v : item)))}
+          onRemove={() => onChange(variants.filter((_, idx) => idx !== i))}
+          canRemove={variants.length > 1}
+        />
+      ))}
+      <button type="button" onClick={() => onChange([...variants, {}])}
+        className="text-xs font-semibold text-green-700 hover:text-green-800 transition-colors">+ {t("admin.addVariant")}</button>
+    </div>
+  );
+}
+
+function AddProductModal({ taxRates, onClose, onCreated }: { taxRates: TaxRate[]; onClose: () => void; onCreated: () => void }) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [genericName, setGenericName] = useState("");
+  const [productType, setProductType] = useState("medicine");
+  const [taxRateId, setTaxRateId] = useState(taxRates.find((r) => r.rate_percentage === 0)?.id ?? taxRates[0]?.id ?? "");
+  const [variants, setVariants] = useState<ProductVariantInput[]>([{}]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) { setError(t("admin.productNameRequired")); return; }
+    if (!taxRateId) { setError(t("admin.selectTaxRate")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminCreateProduct({ name: name.trim(), genericName: genericName.trim() || undefined, productType, taxRateId, variants });
+      onCreated();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not create this product.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.addProduct")} onClose={onClose}>
+      <div className="space-y-3">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productName")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amoxicillin"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.genericName")}</label>
+            <input value={genericName} onChange={(e) => setGenericName(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productType")}</label>
+            <select value={productType} onChange={(e) => setProductType(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+              <option value="medicine">{t("admin.productTypeMedicine")}</option>
+              <option value="supply">{t("admin.productTypeSupply")}</option>
+              <option value="other">{t("admin.productTypeOther")}</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRate")}</label>
+          <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+            {taxRates.map((rate) => (
+              <option key={rate.id} value={rate.id}>{rate.name} ({rate.rate_percentage}%)</option>
+            ))}
+          </select>
+        </div>
+        <VariantEditor variants={variants} onChange={setVariants} />
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            {t("admin.addProduct")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AddTaxRateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [rate, setRate] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const parsed = Number(rate);
+    if (!name.trim()) { setError(t("admin.taxRateNameRequired")); return; }
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) { setError(t("admin.taxRateInvalid")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminCreateTaxRate(name.trim(), parsed);
+      onCreated();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not create this tax rate.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.addTaxRate")} onClose={onClose}>
+      <div className="space-y-3">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRateName")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("admin.taxRateNamePlaceholder")}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRatePercentage")}</label>
+          <input type="number" min="0" max="100" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            {t("admin.addTaxRate")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ProductsView() {
+  const { t } = useTranslation();
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [showAddTax, setShowAddTax] = useState(false);
+  const [savingTaxFor, setSavingTaxFor] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [productList, rates] = await Promise.all([adminListProducts(), listTaxRates()]);
+      setProducts(productList);
+      setTaxRates(rates);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load products.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function changeTax(productId: string, taxRateId: string) {
+    setSavingTaxFor(productId);
+    try {
+      await adminSetProductTax(productId, taxRateId);
+      setProducts((current) => current.map((p) => {
+        if (p.id !== productId) return p;
+        const rate = taxRates.find((r) => r.id === taxRateId);
+        return { ...p, taxRateId, taxRateName: rate?.name ?? p.taxRateName, taxRatePercentage: rate?.rate_percentage ?? p.taxRatePercentage };
+      }));
+    } catch (reason) {
+      window.alert(reason instanceof Error ? reason.message : "Could not update the tax rate.");
+    } finally {
+      setSavingTaxFor(null);
+    }
+  }
+
+  const needle = query.trim().toLowerCase();
+  const shown = products.filter((p) => !needle || p.name.toLowerCase().includes(needle) || (p.genericName ?? "").toLowerCase().includes(needle));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">{t("admin.productsAndTax")}</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{t("admin.productsCount", { count: products.length })}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowAddTax(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
+            <Tag className="w-3.5 h-3.5" /> {t("admin.addTaxRate")}
+          </button>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+            <Plus className="w-3.5 h-3.5" /> {t("admin.addProduct")}
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
+
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.searchProducts")}
+        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+
+      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                {[t("admin.colPharmacy"), t("admin.colProductType"), t("admin.colVariants"), t("admin.colTaxRate")].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {shown.map((p) => (
+                <tr key={p.id} className="hover:bg-green-50/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-slate-700">{p.name}</p>
+                    {p.genericName && <p className="text-[10px] text-slate-400">{p.genericName}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500 capitalize">{p.productType}</td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {p.variants.length === 0 ? "—" : p.variants.map((v) => [v.dosage, v.form, v.unit].filter(Boolean).join(" · ") || "—").join(", ")}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={p.taxRateId}
+                      disabled={savingTaxFor === p.id}
+                      onChange={(e) => void changeTax(p.id, e.target.value)}
+                      className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors disabled:opacity-50"
+                    >
+                      {taxRates.map((rate) => (
+                        <option key={rate.id} value={rate.id}>{rate.name} ({rate.rate_percentage}%)</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!loading && shown.length === 0 && (
+            <p className="text-center py-10 text-xs text-slate-400">{t("admin.noProductsFound")}</p>
+          )}
+        </div>
+      </div>
+
+      {showAdd && (
+        <AddProductModal taxRates={taxRates} onClose={() => setShowAdd(false)} onCreated={() => { setShowAdd(false); void refresh(); }} />
+      )}
+      {showAddTax && (
+        <AddTaxRateModal onClose={() => setShowAddTax(false)} onCreated={() => { setShowAddTax(false); void refresh(); }} />
+      )}
+    </div>
+  );
+}
+
+// ── Categories ───────────────────────────────────────────────────────────────
+// Categories are still branch-owned (private lists a branch files its own
+// products under), but the super admin gets a system-wide view across every
+// branch here, plus the ability to push a new one out -- to one branch, or
+// every branch at once (e.g. a Ministry of Health mandated category).
+
+function AddCategoryModal({ branches, onClose, onCreated }: {
+  branches: { id: string; name: string }[]; onClose: () => void; onCreated: () => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) { setError(t("admin.categoryNameRequired")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminCreateCategory(name.trim(), description.trim(), branchId || null);
+      onCreated();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not create this category.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.addCategory")} onClose={onClose}>
+      <div className="space-y-3">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.categoryName")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.categoryDescription")}</label>
+          <input value={description} onChange={(e) => setDescription(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.categoryTarget")}</label>
+          <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+            <option value="">{t("admin.categoryAllBranches")}</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            {t("admin.addCategory")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CategoriesView({ branches }: { branches: BranchRecord[] }) {
+  const { t } = useTranslation();
+  const [categories, setCategories] = useState<AdminCategoryRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setCategories(await adminListCategories());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load categories.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const needle = query.trim().toLowerCase();
+  const shown = categories.filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.branch_name.toLowerCase().includes(needle));
+  const activeBranches = branches.filter((b) => b.branchId).map((b) => ({ id: b.branchId!, name: b.pharmacyName }));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">{t("admin.categoriesSystemWide")}</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{t("admin.categoriesCount", { count: categories.length })}</p>
+        </div>
+        <button onClick={() => setShowAdd(true)}
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          <Plus className="w-3.5 h-3.5" /> {t("admin.addCategory")}
+        </button>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
+
+      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.searchCategories")}
+        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+
+      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                {[t("admin.colCategory"), t("admin.colDescription"), t("admin.colPharmacy")].map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {shown.map((c) => (
+                <tr key={c.id} className="hover:bg-green-50/30 transition-colors">
+                  <td className="px-4 py-3 font-semibold text-slate-700">{c.name}</td>
+                  <td className="px-4 py-3 text-slate-500">{c.description ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{c.branch_name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!loading && shown.length === 0 && (
+            <p className="text-center py-10 text-xs text-slate-400">{t("admin.noCategoriesFound")}</p>
+          )}
+        </div>
+      </div>
+
+      {showAdd && (
+        <AddCategoryModal branches={activeBranches} onClose={() => setShowAdd(false)} onCreated={() => { setShowAdd(false); void refresh(); }} />
+      )}
+    </div>
+  );
+}
+
+// ── Product Requests ────────────────────────────────────────────────────────
+// A branch that can't find a product while receiving stock sends a free-text
+// message (with an optional photo) instead of filling in a structured form
+// (see StockReceivingPage.tsx's "Request a new product"). Approving here is
+// where the admin turns that message into a real, structured catalogue
+// entry — name, variants, tax — using the message/photo as their reference.
+
+function ApproveRequestModal({ request, taxRates, onClose, onApproved }: {
+  request: AdminProductRequestRow; taxRates: TaxRate[]; onClose: () => void; onApproved: () => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState("");
+  const [genericName, setGenericName] = useState("");
+  const [productType, setProductType] = useState("medicine");
+  const [taxRateId, setTaxRateId] = useState(taxRates.find((r) => r.rate_percentage === 0)?.id ?? taxRates[0]?.id ?? "");
+  const [variants, setVariants] = useState<ProductVariantInput[]>([{}]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) { setError(t("admin.productNameRequired")); return; }
+    if (!taxRateId) { setError(t("admin.selectTaxRate")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminApproveProductRequest({
+        requestId: request.id, productName: name.trim(), genericName: genericName.trim() || undefined,
+        productType, taxRateId, variants,
+      });
+      onApproved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not approve this request.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.approveRequest")} onClose={onClose}>
+      <div className="space-y-3">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <p className="text-xs text-slate-500">{t("admin.approveRequestIntro", { branch: request.branch_name })}</p>
+        <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex gap-3">
+          {request.image_path && (
+            <img src={productRequestImageUrl(request.image_path)} alt="" className="w-16 h-16 rounded-lg object-cover shrink-0" />
+          )}
+          <p className="text-xs text-slate-600 leading-relaxed">{request.message}</p>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productName")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.genericName")}</label>
+            <input value={genericName} onChange={(e) => setGenericName(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productType")}</label>
+            <select value={productType} onChange={(e) => setProductType(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+              <option value="medicine">{t("admin.productTypeMedicine")}</option>
+              <option value="supply">{t("admin.productTypeSupply")}</option>
+              <option value="other">{t("admin.productTypeOther")}</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRate")}</label>
+          <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+            {taxRates.map((rate) => (
+              <option key={rate.id} value={rate.id}>{rate.name} ({rate.rate_percentage}%)</option>
+            ))}
+          </select>
+        </div>
+        <VariantEditor variants={variants} onChange={setVariants} />
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+            {t("admin.approveRequest")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RejectRequestModal({ request, onClose, onRejected }: { request: AdminProductRequestRow; onClose: () => void; onRejected: () => void }) {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true);
+    try {
+      await adminRejectProductRequest(request.id, reason);
+      onRejected();
+    } catch (caught) {
+      window.alert(caught instanceof Error ? caught.message : "Could not reject this request.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.rejectRequest")} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">{t("admin.rejectRequestConfirm", { product: request.message.length > 60 ? `${request.message.slice(0, 60)}…` : request.message })}</p>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.reasonOptional")}</label>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 resize-none focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        </div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
+            <Ban className="w-3.5 h-3.5" /> {t("admin.rejectRequest")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ProductRequestsView() {
+  const { t } = useTranslation();
+  const [requests, setRequests] = useState<AdminProductRequestRow[]>([]);
+  const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [approveTarget, setApproveTarget] = useState<AdminProductRequestRow | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<AdminProductRequestRow | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [list, rates] = await Promise.all([adminListProductRequests(), listTaxRates()]);
+      setRequests(list);
+      setTaxRates(rates);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not load product requests.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const pending = requests.filter((r) => r.status === "pending");
+  const resolved = requests.filter((r) => r.status !== "pending");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.productRequests")}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">{t(pending.length !== 1 ? "admin.requestsAwaitingPlural" : "admin.requestsAwaitingSingular", { count: pending.length })}</p>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
+
+      {pending.length === 0 && !loading ? (
+        <div className="bg-white rounded-xl border border-green-100 p-12 text-center">
+          <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
+          <p className="text-sm text-slate-500">{t("admin.allCaughtUp")}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {pending.map((r) => (
+            <div key={r.id} className="bg-white rounded-xl border border-green-100 shadow-sm p-5 hover:border-green-300 transition-colors">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div className="flex gap-3 min-w-0 flex-1">
+                  {r.image_path && (
+                    <img src={productRequestImageUrl(r.image_path)} alt="" className="w-14 h-14 rounded-lg object-cover shrink-0 border border-slate-100" />
+                  )}
+                  <div className="space-y-1 min-w-0">
+                    <span className="font-mono text-[10px] text-slate-400">{timeAgo(r.created_at)}</span>
+                    <p className="text-sm text-slate-800 leading-relaxed">{r.message}</p>
+                    <p className="text-[11px] text-slate-400">{r.branch_name} · {r.requested_by_name}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => setRejectTarget(r)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+                    <Ban className="w-3.5 h-3.5" /> {t("admin.deny")}
+                  </button>
+                  <button onClick={() => setApproveTarget(r)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> {t("admin.approveRequest")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {resolved.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-3">{t("admin.processed")}</p>
+          <div className="space-y-2">
+            {resolved.map((r) => (
+              <div key={r.id} className="bg-white rounded-lg border border-slate-100 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-700 truncate max-w-md">{r.message}</p>
+                  <p className="text-[10px] text-slate-400">{r.branch_name}</p>
+                </div>
+                <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${
+                  r.status === "approved" ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"
+                }`}>
+                  {r.status === "approved" ? t("admin.statusApproved") : t("admin.statusDenied")}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {approveTarget && (
+        <ApproveRequestModal
+          request={approveTarget}
+          taxRates={taxRates}
+          onClose={() => setApproveTarget(null)}
+          onApproved={() => { setApproveTarget(null); void refresh(); }}
+        />
+      )}
+      {rejectTarget && (
+        <RejectRequestModal
+          request={rejectTarget}
+          onClose={() => setRejectTarget(null)}
+          onRejected={() => { setRejectTarget(null); void refresh(); }}
+        />
       )}
     </div>
   );
@@ -1090,6 +1804,9 @@ const NAV: { id: NavId; labelKey: TranslationKey; icon: React.ReactNode }[] = [
   { id: "dashboard", labelKey: "admin.navDashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
   { id: "approvals", labelKey: "admin.navApprovals", icon: <CheckSquare className="w-4 h-4" /> },
   { id: "branches",  labelKey: "admin.navBranches",  icon: <Users className="w-4 h-4" /> },
+  { id: "products",  labelKey: "admin.navProducts",  icon: <Package className="w-4 h-4" /> },
+  { id: "categories", labelKey: "admin.navCategories", icon: <Tag className="w-4 h-4" /> },
+  { id: "productRequests", labelKey: "admin.navProductRequests", icon: <Plus className="w-4 h-4" /> },
   { id: "security",  labelKey: "admin.navSecurity",  icon: <ShieldAlert className="w-4 h-4" /> },
   { id: "tickets",   labelKey: "admin.navTickets",   icon: <Ticket className="w-4 h-4" /> },
 ];
@@ -1101,7 +1818,8 @@ export default function AdminPortal() {
   const [adminEmail, setAdminEmail]   = useState("");
   const [nav, setNav]             = useState<NavId>("dashboard");
   const [branches, setBranches]   = useState<BranchRecord[]>([]);
-  const [tickets, setTickets]     = useState<TicketRecord[]>([]);
+  const [tickets, setTickets]     = useState<AdminTicketRow[]>([]);
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -1110,9 +1828,14 @@ export default function AdminPortal() {
 
   const refresh = useCallback(async () => {
     try {
-      const apps = await listPharmacyApplications();
+      const [apps, ticketRows, requestRows] = await Promise.all([
+        listPharmacyApplications(),
+        adminListSupportTickets(),
+        adminListProductRequests(),
+      ]);
       setBranches(apps);
-      setTickets(getTickets());
+      setTickets(ticketRows);
+      setPendingRequestCount(requestRows.filter((r) => r.status === "pending").length);
     } catch (reason) {
       // Session expired or was never a real admin session — drop back to the gate.
       if (reason instanceof Error && /admin/i.test(reason.message)) setAuthed(false);
@@ -1144,8 +1867,10 @@ export default function AdminPortal() {
 
   const pending   = branches.filter((b) => b.status === "pending").length;
   const locked    = branches.filter((b) => b.status === "locked").length;
-  const openTix   = tickets.filter((t) => t.status === "open").length;
-  const badges: Partial<Record<NavId, number>> = { approvals: pending, security: locked, tickets: openTix };
+  const openTix   = tickets.filter((tk) => tk.status === "open").length;
+  const badges: Partial<Record<NavId, number>> = {
+    approvals: pending, security: locked, tickets: openTix, productRequests: pendingRequestCount,
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg)]">
@@ -1242,6 +1967,9 @@ export default function AdminPortal() {
           {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
           {nav === "approvals" && <Approvals branches={branches} onChange={refresh} />}
           {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
+          {nav === "products"  && <ProductsView />}
+          {nav === "categories" && <CategoriesView branches={branches} />}
+          {nav === "productRequests" && <ProductRequestsView />}
           {nav === "security"  && <Security branches={branches} onChange={refresh} />}
           {nav === "tickets"   && <TicketsView tickets={tickets} onChange={refresh} />}
         </main>
