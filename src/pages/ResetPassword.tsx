@@ -83,8 +83,8 @@ export default function ResetPassword() {
           </div>
         ) : done ? (
           <div className="text-center py-4">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(13,148,136,0.1)" }}>
-              <CheckCircle2 className="w-7 h-7" style={{ color: "#0d9488" }} />
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(30,95,168,0.1)" }}>
+              <CheckCircle2 className="w-7 h-7" style={{ color: "#1e5fa8" }} />
             </div>
             <h1 className="text-xl font-extrabold" style={authCardHeading}>Password updated</h1>
             <p className="text-sm mt-2" style={authBody}>Taking you to your dashboard…</p>
@@ -92,7 +92,7 @@ export default function ResetPassword() {
         ) : (
           <>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(30,95,168,0.1)" }}>
-              <Lock className="w-6 h-6" style={{ color: "#1e5fa8" }} />
+              <Lock className="w-6 h-6" style={{ color: "var(--primary)" }} />
             </div>
             <h1 className="text-2xl font-extrabold" style={authCardHeading}>Set a new password</h1>
             <p className="text-sm mt-2 mb-7" style={authBody}>This resets the password for the account this link was emailed to.</p>

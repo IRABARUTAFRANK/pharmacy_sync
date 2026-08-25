@@ -52,7 +52,7 @@ export default function TransactionsPage() {
               { key: "total", label: "Total" },
             ]}
             rows={rows.map(r => ({
-              receipt: <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{r.receiptNumber}</span>,
+              receipt: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r.receiptNumber}</span>,
               when: new Date(r.soldAt).toLocaleString(),
               items: r.itemCount,
               cashier: r.cashierName,

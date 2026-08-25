@@ -177,7 +177,7 @@ export default function HelpPage() {
           return (
             <div key={k} onClick={() => setStatusFilter(statusFilter === k ? 'all' : k)}
               style={{ background: statusFilter === k ? c.bg : '#fff', border: `1.5px solid ${statusFilter === k ? c.c + '60' : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: c.c, fontFamily: 'DM Sans' }}>{loading ? '—' : counts[k]}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: c.c, fontFamily: 'var(--font-display)' }}>{loading ? '—' : counts[k]}</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{l}</div>
             </div>
           )

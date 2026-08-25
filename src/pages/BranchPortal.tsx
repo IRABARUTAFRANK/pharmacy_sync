@@ -307,14 +307,14 @@ export default function BranchPortal() {
               <div className="flex flex-col items-center">
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
-                  style={{ background: s.done ? "#0d9488" : "#e2e8f0", color: s.done ? "#fff" : "#94a3b8" }}
+                  style={{ background: s.done ? "#1e5fa8" : "#e2e8f0", color: s.done ? "#fff" : "#94a3b8" }}
                 >
                   {s.done ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </div>
                 <p className="text-[10px] mt-1" style={{ fontFamily: "var(--font-body)", color: "#94a3b8" }}>{s.label}</p>
               </div>
               {i < 2 && (
-                <div className="flex-1 h-0.5 mx-1 mb-4" style={{ background: s.done ? "#0d9488" : "#e2e8f0" }} />
+                <div className="flex-1 h-0.5 mx-1 mb-4" style={{ background: s.done ? "#1e5fa8" : "#e2e8f0" }} />
               )}
             </div>
           ))}
@@ -400,7 +400,7 @@ export default function BranchPortal() {
         <div className="rounded-2xl p-5 mt-4 text-center" style={{ background: "#f8fafb", border: "1px solid #e2e8f0" }}>
           {!checkStatusOpen ? (
             <button type="button" onClick={() => setCheckStatusOpen(true)}
-              className="text-sm font-semibold" style={{ color: "#1e5fa8", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+              className="text-sm font-semibold" style={{ color: "var(--primary)", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
               Already applied? Check your application status
             </button>
           ) : (
@@ -440,7 +440,7 @@ export default function BranchPortal() {
           <div>
             <h2 className="text-xl font-extrabold" style={authCardHeading}>Application under review</h2>
             <p className="text-sm mt-2 leading-relaxed" style={authBody}>
-              Your registration for <span className="font-semibold" style={{ color: "#0d9488" }}>{shownBranch.pharmacyName}</span> has
+              Your registration for <span className="font-semibold" style={{ color: "#1e5fa8" }}>{shownBranch.pharmacyName}</span> has
               been received. Our admin team will call <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.phone}</span> to
               verify your identity.
             </p>
@@ -448,12 +448,12 @@ export default function BranchPortal() {
 
           <div className="rounded-xl p-4 text-left space-y-1" style={{ background: "#f8fafb", border: "1px solid #e2e8f0" }}>
             <p className="text-[10px] uppercase tracking-widest" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>Your Application ID</p>
-            <p className="font-mono text-base font-bold" style={{ color: "#0d9488" }}>{shownBranch.applicationCode ?? shownBranch.id}</p>
+            <p className="font-mono text-base font-bold" style={{ color: "#1e5fa8" }}>{shownBranch.applicationCode ?? shownBranch.id}</p>
             <p className="text-xs" style={{ color: "#6b7280" }}>Save this ID — you may need it if you contact support.</p>
           </div>
 
           <div className="rounded-xl p-4 text-left" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.18)" }}>
-            <p className="text-xs font-semibold" style={{ color: "#1e5fa8" }}>You can close this page now.</p>
+            <p className="text-xs font-semibold" style={{ color: "var(--primary)" }}>You can close this page now.</p>
             <p className="text-xs mt-1" style={{ color: "#334155" }}>
               Once approved, we'll email <span className="font-semibold">{shownBranch.email}</span> an activation
               link and a 6-digit code. The link takes you straight to the code entry screen — it (and the code)
@@ -494,13 +494,13 @@ export default function BranchPortal() {
       {/* ── STEP: OTP ── */}
       {step === "otp" && application && (
         <div className="rounded-2xl p-8 text-center space-y-6" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto" style={{ background: "rgba(13,148,136,0.1)" }}>
-            <KeyRound className="w-7 h-7" style={{ color: "#0d9488" }} />
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto" style={{ background: "rgba(30,95,168,0.1)" }}>
+            <KeyRound className="w-7 h-7" style={{ color: "#1e5fa8" }} />
           </div>
           <div>
             <h2 className="text-xl font-extrabold" style={authCardHeading}>Enter verification code</h2>
             <p className="text-sm mt-2" style={authBody}>
-              An activation link and 6-digit code were sent to <span className="font-semibold" style={{ color: "#0d9488" }}>{application.email}</span>.
+              An activation link and 6-digit code were sent to <span className="font-semibold" style={{ color: "#1e5fa8" }}>{application.email}</span>.
               Enter the code below — it expires 3 hours after it was sent.
             </p>
           </div>
@@ -519,8 +519,8 @@ export default function BranchPortal() {
                 className="w-11 h-14 text-center text-xl font-bold rounded-xl outline-none transition-colors"
                 style={{
                   fontFamily: "var(--font-display)",
-                  border: `2px solid ${otpError ? "#fca5a5" : digit ? "#0d9488" : "#e2e8f0"}`,
-                  background: otpError ? "#fef2f2" : digit ? "rgba(13,148,136,0.06)" : "#f8fafb",
+                  border: `2px solid ${otpError ? "#fca5a5" : digit ? "#1e5fa8" : "#e2e8f0"}`,
+                  background: otpError ? "#fef2f2" : digit ? "rgba(30,95,168,0.06)" : "#f8fafb",
                   color: otpError ? "#dc2626" : "#0f172a",
                 }}
               />
@@ -558,7 +558,7 @@ export default function BranchPortal() {
       {step === "password" && (
         <div className="rounded-2xl p-8 text-center space-y-6" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto" style={{ background: "rgba(30,95,168,0.1)" }}>
-            <Lock className="w-7 h-7" style={{ color: "#1e5fa8" }} />
+            <Lock className="w-7 h-7" style={{ color: "var(--primary)" }} />
           </div>
           <div>
             <h2 className="text-xl font-extrabold" style={authCardHeading}>Set your password</h2>
@@ -607,7 +607,7 @@ export default function BranchPortal() {
       {/* ── STEP: Success ── */}
       {step === "success" && shownBranch && (
         <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
-          <div className="p-6 text-center" style={{ background: "linear-gradient(135deg, #0d9488, #1e5fa8)" }}>
+          <div className="p-6 text-center" style={{ background: "linear-gradient(135deg, #1e5fa8, #1a4f8f)" }}>
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(255,255,255,0.2)" }}>
               <CheckCircle2 className="w-8 h-8 text-white" />
             </div>
@@ -631,14 +631,14 @@ export default function BranchPortal() {
               onCopy={() => copyToClipboard(shownBranch.activationCode ?? "")}
             />
 
-            <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(13,148,136,0.06)", border: "1px solid rgba(13,148,136,0.2)", color: "#0f766e" }}>
+            <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.2)", color: "#1a4f8f" }}>
               <p className="font-semibold">Your account is now active</p>
               <p>• Pharmacy: <span className="font-medium">{shownBranch.pharmacyName}</span></p>
               {shownBranch.location && <p>• Location: <span className="font-medium">{shownBranch.location}</span></p>}
               <p>• Email: <span className="font-medium">{application?.email}</span></p>
             </div>
 
-            <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.2)", color: "#1e40af" }}>
+            <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.2)", color: "var(--primary-dark)" }}>
               <p className="font-semibold">Next: open your operations dashboard</p>
               <p>Go to the PharmSync dashboard and sign in with this email and the password you just set.</p>
             </div>
@@ -701,7 +701,7 @@ function CodeDisplay({
     <div className="rounded-xl p-4" style={{ background: "#f8fafb", border: "1px solid #e2e8f0" }}>
       <p className="text-[10px] uppercase tracking-widest mb-1" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>{label}</p>
       <div className="flex items-center justify-between gap-2">
-        <p className="font-mono text-xl font-bold" style={{ color: "#0d9488" }}>{value}</p>
+        <p className="font-mono text-xl font-bold" style={{ color: "#1e5fa8" }}>{value}</p>
         <button
           onClick={onCopy}
           className="flex items-center gap-1 text-xs transition-colors"

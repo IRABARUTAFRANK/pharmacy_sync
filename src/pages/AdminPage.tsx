@@ -89,14 +89,14 @@ function BranchModal({ branch, onClose }: { branch: BranchRecord; onClose: () =>
           ) : (
             <div style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 4 }}>Current code:</div>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 16, fontWeight: 700, color: 'var(--primary)', letterSpacing: '0.08em' }}>{branch.accessCode ?? '—'}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 700, color: 'var(--primary)', letterSpacing: '0.08em' }}>{branch.accessCode ?? '—'}</div>
               <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 2 }}>Expires: {branch.accessCodeExpiry ?? 'N/A'}</div>
             </div>
           )}
           {newCode && (
             <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 8, padding: '12px 14px', marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 4 }}>New code generated:</div>
-              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, fontWeight: 800, color: '#16a34a', letterSpacing: '0.1em' }}>{newCode}</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 800, color: '#16a34a', letterSpacing: '0.1em' }}>{newCode}</div>
               <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 4 }}>Share this code securely with the branch manager. Expires in 12 months.</div>
             </div>
           )}
@@ -226,14 +226,14 @@ function RegisterBranchModal({ onClose }: { onClose: () => void }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '10px 0', textAlign: 'center' }}>
           <div style={{ fontSize: 48 }}>🎉</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)', fontFamily: 'DM Sans' }}>{form.name} Registered!</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>{form.name} Registered!</div>
           <div style={{ fontSize: 13, color: 'var(--ink-muted)' }}>Share this access code with the branch manager to allow sign-in:</div>
           <div style={{
             background: '#f0fdf4', border: '2px solid #86efac', borderRadius: 12,
             padding: '20px 32px', width: '100%',
           }}>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Branch Access Code</div>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 24, fontWeight: 800, color: '#16a34a', letterSpacing: '0.12em' }}>{code}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 800, color: '#16a34a', letterSpacing: '0.12em' }}>{code}</div>
             <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 6 }}>Valid for 12 months · Share securely</div>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -275,7 +275,7 @@ export default function AdminPage() {
       <div style={{ background: 'linear-gradient(135deg, #ecfdf5, #f0fdf4)', borderRadius: 14, padding: '18px 22px', border: '1.5px solid var(--border-strong)', display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ fontSize: 36 }}>🛡</div>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)', fontFamily: 'DM Sans' }}>Admin Control Panel</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>Admin Control Panel</div>
           <div style={{ fontSize: 13, color: 'var(--ink-mid)', marginTop: 3 }}>Manage all branches, generate access codes, and respond to branch requests.</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -302,7 +302,7 @@ export default function AdminPage() {
           {/* KPIs */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             {[
-              { label: 'Total Branches',  value: branchRegistry.length,                                  color: '#1e8a4a', icon: '🏪' },
+              { label: 'Total Branches',  value: branchRegistry.length,                                  color: '#1e5fa8', icon: '🏪' },
               { label: 'Active',          value: branchRegistry.filter(b => b.status === 'active').length,  color: '#16a34a', icon: '✅' },
               { label: 'Total Network Rev', value: fmtRWF(branchRegistry.reduce((s, b) => s + b.revenue, 0)), color: '#0284c7', icon: '💰' },
               { label: 'Pending Setup',   value: branchRegistry.filter(b => b.status === 'pending').length,  color: '#d97706', icon: '⏳' },
@@ -310,7 +310,7 @@ export default function AdminPage() {
               <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '14px 16px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ fontSize: 22 }}>{k.icon}</div>
                 <div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: k.color, fontFamily: 'DM Sans' }}>{k.value}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: k.color, fontFamily: 'var(--font-display)' }}>{k.value}</div>
                   <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500 }}>{k.label}</div>
                 </div>
               </div>
@@ -328,7 +328,7 @@ export default function AdminPage() {
                   <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
                   <Tooltip content={<ChartTooltip />} />
                   <Bar dataKey="revenue" name="Revenue" radius={[6, 6, 0, 0]}>
-                    {chartData.map((_, i) => <Cell key={i} fill={['#1e8a4a', '#34d399', '#059669', '#a7f3d0'][i % 4]} />)}
+                    {chartData.map((_, i) => <Cell key={i} fill={['#1e5fa8', '#60a5fa', '#3b82f6', '#a7f3d0'][i % 4]} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
@@ -371,7 +371,7 @@ export default function AdminPage() {
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                       onClick={() => setSelectedBranch(b)}
                     >
-                      <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--ink-faint)' }}>{b.id}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-faint)' }}>{b.id}</td>
                       <td style={{ padding: '9px 10px', fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{b.name}</td>
                       <td style={{ padding: '9px 10px', whiteSpace: 'nowrap', color: 'var(--ink-mid)' }}>{b.manager}</td>
                       <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-muted)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.address}</td>
@@ -382,9 +382,9 @@ export default function AdminPage() {
                           bg={b.status === 'active' ? '#d1fae5' : b.status === 'pending' ? '#fef3c7' : '#f3f4f6'}
                         />
                       </td>
-                      <td style={{ padding: '9px 10px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{b.staff}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>{b.staff}</td>
                       <td style={{ padding: '9px 10px', fontWeight: 700 }}>{b.revenue > 0 ? fmtRWF(b.revenue) : '—'}</td>
-                      <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: b.accessCode ? 'var(--primary)' : 'var(--ink-faint)', letterSpacing: '0.05em' }}>
+                      <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 10, color: b.accessCode ? 'var(--primary)' : 'var(--ink-faint)', letterSpacing: '0.05em' }}>
                         {b.accessCode ?? '—'}
                       </td>
                       <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-muted)' }}>{b.accessCodeExpiry ?? '—'}</td>
@@ -420,7 +420,7 @@ export default function AdminPage() {
                   borderRadius: 12, padding: '14px 18px', cursor: 'pointer',
                   display: 'flex', alignItems: 'center', gap: 12, transition: 'all 0.15s',
                 }}>
-                <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: 'DM Sans' }}>{k.count}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: 'var(--font-display)' }}>{k.count}</div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{k.label} Tickets</div>
               </div>
             ))}

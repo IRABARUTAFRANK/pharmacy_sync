@@ -82,8 +82,8 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
       <div className="rounded-2xl p-8" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
         {mode === "login" && (
           <>
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(13,148,136,0.1)" }}>
-              <Lock className="w-6 h-6" style={{ color: "#0d9488" }} />
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(30,95,168,0.1)" }}>
+              <Lock className="w-6 h-6" style={{ color: "#1e5fa8" }} />
             </div>
             <h1 className="text-2xl font-extrabold" style={authCardHeading}>Branch sign-in</h1>
             <p className="text-sm mt-2 mb-7" style={authBody}>
@@ -112,7 +112,7 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
                     Password
                   </label>
                   <button type="button" onClick={() => { setMode("forgot"); setError(null) }}
-                    className="text-xs font-semibold" style={{ color: "#1e5fa8", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+                    className="text-xs font-semibold" style={{ color: "var(--primary)", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
                     Forgot password?
                   </button>
                 </div>
@@ -143,7 +143,7 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
 
             <p className="text-sm mt-6 text-center" style={authBody}>
               No account yet?{" "}
-              <a href={REGISTER_URL} style={{ color: "#0d9488", fontWeight: 700, textDecoration: "none" }}>
+              <a href={REGISTER_URL} style={{ color: "#1e5fa8", fontWeight: 700, textDecoration: "none" }}>
                 Register your pharmacy ↗
               </a>
             </p>
@@ -153,7 +153,7 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
         {mode === "forgot" && (
           <>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(30,95,168,0.1)" }}>
-              <Mail className="w-6 h-6" style={{ color: "#1e5fa8" }} />
+              <Mail className="w-6 h-6" style={{ color: "var(--primary)" }} />
             </div>
             <h1 className="text-2xl font-extrabold" style={authCardHeading}>Reset your password</h1>
             <p className="text-sm mt-2 mb-7" style={authBody}>
@@ -198,8 +198,8 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
 
         {mode === "forgot-sent" && (
           <div className="text-center py-2">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(13,148,136,0.1)" }}>
-              <CheckCircle2 className="w-7 h-7" style={{ color: "#0d9488" }} />
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(30,95,168,0.1)" }}>
+              <CheckCircle2 className="w-7 h-7" style={{ color: "#1e5fa8" }} />
             </div>
             <h1 className="text-xl font-extrabold" style={authCardHeading}>Check your email</h1>
             <p className="text-sm mt-2" style={authBody}>
@@ -207,7 +207,7 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
               activated branch account, a reset link is on its way.
             </p>
             <button type="button" onClick={() => { setMode("login"); setError(null) }}
-              className="text-sm font-semibold mt-6" style={{ color: "#1e5fa8", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
+              className="text-sm font-semibold mt-6" style={{ color: "var(--primary)", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
               ← Back to sign in
             </button>
           </div>

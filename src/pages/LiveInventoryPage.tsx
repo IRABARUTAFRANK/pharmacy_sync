@@ -101,8 +101,8 @@ export default function LiveInventoryPage() {
       </button>)}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-      <Card><SectionHeader title="Inventory Value by Category" subtitle="Calculated from live batches and available barcodes" /><ResponsiveContainer width="100%" height={200}><BarChart data={categoryData} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="sales" name="Inventory value" fill="#1e8a4a" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
-      <Card><SectionHeader title="Units Received by Supplier" subtitle="Live stock-batch records" /><ResponsiveContainer width="100%" height={200}><BarChart data={dataset.supplierUnits} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="units" name="Units received" fill="#34d399" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
+      <Card><SectionHeader title="Inventory Value by Category" subtitle="Calculated from live batches and available barcodes" /><ResponsiveContainer width="100%" height={200}><BarChart data={categoryData} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="sales" name="Inventory value" fill="#1e5fa8" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
+      <Card><SectionHeader title="Units Received by Supplier" subtitle="Live stock-batch records" /><ResponsiveContainer width="100%" height={200}><BarChart data={dataset.supplierUnits} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="units" name="Units received" fill="#60a5fa" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
     </div>
     <Card>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: 14 }}>Stock Batches Inventory</h2><p style={{ margin: '3px 0 0', color: 'var(--ink-muted)', fontSize: 11 }}>Live data from Supabase — no demo records are used on this screen.</p></div><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search product, batch, supplier…" style={{ width: 240, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12 }} /><Btn variant="secondary" small onClick={() => void refresh()}>Refresh</Btn></div>
@@ -114,7 +114,7 @@ export default function LiveInventoryPage() {
               const meta = statusMeta[row.stock_status]
               return <tr key={row.batch_id} style={{ borderBottom: '1px solid var(--bg-alt)' }}>
                 <td style={{ padding: '10px', fontWeight: 600 }}>{row.name}<div style={{ color: 'var(--ink-muted)', fontWeight: 400, fontSize: 10 }}>{row.category}</div></td>
-                <td style={{ padding: '10px', fontFamily: 'monospace' }}>{row.batch_number}</td>
+                <td style={{ padding: '10px', fontFamily: 'var(--font-mono)' }}>{row.batch_number}</td>
                 <td style={{ padding: '10px' }}>{row.expiry_date}</td>
                 <td style={{ padding: '10px' }}>{row.supplier_name}</td>
                 <td style={{ padding: '10px', fontWeight: 700 }}>{row.quantity_available}</td>

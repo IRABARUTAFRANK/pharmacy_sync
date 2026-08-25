@@ -8,7 +8,7 @@ import { Card, SectionHeader, ChartTooltip, Btn } from '../components'
 
 const SCENARIOS = [
   { id: 'conservative', label: 'Conservative', growth: 8,   revenue: 6912000,  confidence: 92, color: '#16a34a', desc: 'Based on historical averages with no seasonal adjustments.' },
-  { id: 'base',         label: 'Base Case',    growth: 12.5, revenue: 7200000, confidence: 78, color: '#059669', desc: 'AI model using 8-month trends + seasonal patterns.' },
+  { id: 'base',         label: 'Base Case',    growth: 12.5, revenue: 7200000, confidence: 78, color: '#3b82f6', desc: 'AI model using 8-month trends + seasonal patterns.' },
   { id: 'optimistic',   label: 'Optimistic',   growth: 18,  revenue: 7552000,  confidence: 54, color: '#d97706', desc: 'Assumes successful campaigns + supplier discount negotiations.' },
 ]
 
@@ -73,8 +73,8 @@ export default function AnalyticsPage() {
           <AreaChart data={forecastData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id="gActual" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#1e8a4a" stopOpacity={0.18} />
-                <stop offset="95%" stopColor="#1e8a4a" stopOpacity={0} />
+                <stop offset="5%" stopColor="#1e5fa8" stopOpacity={0.18} />
+                <stop offset="95%" stopColor="#1e5fa8" stopOpacity={0} />
               </linearGradient>
               <linearGradient id="gUpper" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#a7f3d0" stopOpacity={0.35} />
@@ -88,8 +88,8 @@ export default function AnalyticsPage() {
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
             <ReferenceLine x="Sep" stroke="#d1d5db" strokeDasharray="4 4" label={{ value: 'Forecast →', position: 'top', fontSize: 10, fill: '#9ab8a0' }} />
             <Area type="monotone" dataKey="upper" name="Upper bound" stroke="none" fill="url(#gUpper)" />
-            <Area type="monotone" dataKey="actual" name="Actual Revenue" stroke="#1e8a4a" fill="url(#gActual)" strokeWidth={2.5} dot={{ r: 4, fill: '#1e8a4a' }} connectNulls />
-            <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#059669" strokeDasharray="7 4" strokeWidth={2} dot={{ r: 4, fill: '#059669' }} connectNulls />
+            <Area type="monotone" dataKey="actual" name="Actual Revenue" stroke="#1e5fa8" fill="url(#gActual)" strokeWidth={2.5} dot={{ r: 4, fill: '#1e5fa8' }} connectNulls />
+            <Line type="monotone" dataKey="forecast" name="Forecast" stroke="#3b82f6" strokeDasharray="7 4" strokeWidth={2} dot={{ r: 4, fill: '#3b82f6' }} connectNulls />
           </AreaChart>
         </ResponsiveContainer>
       </Card>
@@ -119,8 +119,8 @@ export default function AnalyticsPage() {
               <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
               <Tooltip content={<ChartTooltip />} />
-              {activeMetric === 'revenue' && <Bar dataKey="revenue" name="Revenue" fill="#1e8a4a" radius={[4, 4, 0, 0]} />}
-              {activeMetric === 'profit' && <Bar dataKey="profit" name="Net Profit" fill="#34d399" radius={[4, 4, 0, 0]} />}
+              {activeMetric === 'revenue' && <Bar dataKey="revenue" name="Revenue" fill="#1e5fa8" radius={[4, 4, 0, 0]} />}
+              {activeMetric === 'profit' && <Bar dataKey="profit" name="Net Profit" fill="#60a5fa" radius={[4, 4, 0, 0]} />}
               {activeMetric === 'expenses' && <Bar dataKey="expenses" name="Expenses" fill="#fca5a5" radius={[4, 4, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
@@ -134,7 +134,7 @@ export default function AnalyticsPage() {
               <XAxis type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 45]} tickFormatter={v => `${v}%`} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={70} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="margin" name="Margin %" fill="#1e8a4a" radius={[0, 5, 5, 0]} barSize={13} />
+              <Bar dataKey="margin" name="Margin %" fill="#1e5fa8" radius={[0, 5, 5, 0]} barSize={13} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -154,7 +154,7 @@ export default function AnalyticsPage() {
                 cursor: 'pointer', transition: 'all 0.18s',
               }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: 'DM Sans', letterSpacing: '-0.02em' }}>{pct(s.growth)}</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em' }}>{pct(s.growth)}</div>
               <div style={{ fontSize: 13, color: 'var(--ink)', fontWeight: 600, marginTop: 2 }}>{fmtRWF(s.revenue)}</div>
               <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 6, lineHeight: 1.5 }}>{s.desc}</div>
               <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -176,19 +176,19 @@ export default function AnalyticsPage() {
         }}>
           <div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', marginBottom: 3 }}>Projected Revenue</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: scenario.color, fontFamily: 'DM Sans' }}>{fmtRWF(scenario.revenue)}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: scenario.color, fontFamily: 'var(--font-display)' }}>{fmtRWF(scenario.revenue)}</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', marginBottom: 3 }}>Growth Rate</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: scenario.color, fontFamily: 'DM Sans' }}>{pct(scenario.growth)}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: scenario.color, fontFamily: 'var(--font-display)' }}>{pct(scenario.growth)}</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', marginBottom: 3 }}>Est. Profit</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'DM Sans' }}>{fmtRWF(scenario.revenue * 0.27)}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>{fmtRWF(scenario.revenue * 0.27)}</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', marginBottom: 3 }}>Confidence</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: scenario.color, fontFamily: 'DM Sans' }}>{scenario.confidence}%</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: scenario.color, fontFamily: 'var(--font-display)' }}>{scenario.confidence}%</div>
           </div>
           <div>
             <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', marginBottom: 3 }}>Key Driver</div>

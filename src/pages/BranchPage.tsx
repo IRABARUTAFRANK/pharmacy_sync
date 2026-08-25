@@ -15,14 +15,14 @@ export default function BranchPage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
         {[
-          { label: 'Active Branches',  value: '4', icon: '🏪', color: '#1e8a4a' },
+          { label: 'Active Branches',  value: '4', icon: '🏪', color: '#1e5fa8' },
           { label: 'Total Staff',      value: '18', icon: '👥', color: '#0284c7' },
           { label: 'Opening Soon',     value: '1', icon: '🔜', color: '#d97706' },
         ].map(k => (
           <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '16px 18px', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ fontSize: 24 }}>{k.icon}</div>
             <div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: k.color, fontFamily: 'DM Sans' }}>{k.value}</div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: k.color, fontFamily: 'var(--font-display)' }}>{k.value}</div>
               <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontWeight: 500 }}>{k.label}</div>
             </div>
           </div>
@@ -91,7 +91,7 @@ export default function BranchPage() {
               <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--bg-alt)' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)' }}>{s.label}</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontFamily: 'JetBrains Mono, monospace' }}>{s.value}</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)' }}>{s.value}</div>
                 </div>
                 {s.editable && <Btn variant="ghost" small>Edit</Btn>}
               </div>
@@ -103,7 +103,7 @@ export default function BranchPage() {
           <SectionHeader title="Role & Access Management" />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {[
-              { role: 'Owner',      access: 'All modules + branch settings', count: 1, color: '#1e8a4a' },
+              { role: 'Owner',      access: 'All modules + branch settings', count: 1, color: '#1e5fa8' },
               { role: 'Manager',    access: 'All except branch settings',    count: 4, color: '#0284c7' },
               { role: 'Pharmacist', access: 'Inventory, POS, alerts',        count: 12, color: '#7c3aed' },
               { role: 'Auditor',    access: 'Read-only — all reports',       count: 1, color: '#d97706' },

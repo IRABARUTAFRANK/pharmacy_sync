@@ -18,15 +18,15 @@ export default function CompliancePage() {
       {/* Summary KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         {[
-          { label: 'Tax Deducted (Aug)',  value: 'RWF 252,000', sub: `${taxRate}% VAT applied`,     color: '#1e8a4a', icon: '🏛️' },
-          { label: 'YTD Tax (8 months)',  value: fmtRWF(totalTax),  sub: 'Submitted to RRA',        color: '#059669', icon: '📊' },
+          { label: 'Tax Deducted (Aug)',  value: 'RWF 252,000', sub: `${taxRate}% VAT applied`,     color: '#1e5fa8', icon: '🏛️' },
+          { label: 'YTD Tax (8 months)',  value: fmtRWF(totalTax),  sub: 'Submitted to RRA',        color: '#3b82f6', icon: '📊' },
           { label: 'RRA Compliance',      value: '100%',             sub: 'All receipts compliant', color: '#16a34a', icon: '✅' },
           { label: 'Next Filing Date',    value: 'Sep 15, 2026',     sub: 'Monthly VAT return',     color: '#d97706', icon: '📅' },
         ].map(k => (
           <div key={k.label} style={{ background: '#fff', borderRadius: 12, padding: '16px 18px', border: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: k.color, fontFamily: 'DM Sans' }}>{k.value}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: k.color, fontFamily: 'var(--font-display)' }}>{k.value}</div>
                 <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink)', marginTop: 2 }}>{k.label}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 1 }}>{k.sub}</div>
               </div>
@@ -46,7 +46,7 @@ export default function CompliancePage() {
               <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${v / 1000}K`} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="tax" name="VAT (RWF)" fill="#1e8a4a" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="tax" name="VAT (RWF)" fill="#1e5fa8" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -107,10 +107,10 @@ export default function CompliancePage() {
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>{t.id}</td>
+                    <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--primary)', fontWeight: 600 }}>{t.id}</td>
                     <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-muted)', whiteSpace: 'nowrap' }}>{t.date}</td>
                     <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{t.patient}</td>
-                    <td style={{ padding: '9px 10px', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace' }}>{t.items.length}</td>
+                    <td style={{ padding: '9px 10px', textAlign: 'center', fontFamily: 'var(--font-mono)' }}>{t.items.length}</td>
                     <td style={{ padding: '9px 10px' }}>{fmtRWF(sub)}</td>
                     <td style={{ padding: '9px 10px', color: 'var(--ink-muted)' }}>{fmtRWF(vat)}</td>
                     <td style={{ padding: '9px 10px', fontWeight: 700 }}>{fmtRWF(t.total)}</td>

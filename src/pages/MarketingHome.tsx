@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
-import logoImg from "../assets/logo.png";
+import { Logo } from "../components";
 import heroImg from "../assets/stock.jpg";
 import stockImg from "../assets/stock2.jpg";
 import productsImg from "../assets/products.jpg";
@@ -140,7 +140,7 @@ function StatBubble({ value, label, color, delay = 0, className = "" }: {
 }
 
 // ─── Mini sparkline ───────────────────────────────────────────────────────────
-function Sparkline({ color = "#0d9488" }: { color?: string }) {
+function Sparkline({ color = "#1e5fa8" }: { color?: string }) {
   const pts = "0,40 20,32 40,38 60,20 80,24 100,12 120,18 140,8 160,14 180,4";
   return (
     <svg width="180" height="44" viewBox="0 0 180 44" fill="none">
@@ -174,14 +174,14 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
     image: string; alt: string; bulletKeys: TranslationKey[]; statValue: string; statLabelKey: TranslationKey;
   }[] = [
     {
-      key: "stock", icon: icons.stock, color: "#0d9488", bg: "rgba(13,148,136,0.1)",
+      key: "stock", icon: icons.stock, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)",
       titleKey: "home.featureStockTitle", taglineKey: "home.featureStockTagline", bodyKey: "home.featureStockBody",
       image: stockImg, alt: "Dense pharmacy medicine shelves with organized stock",
       bulletKeys: ["home.featureStockBullet1", "home.featureStockBullet2", "home.featureStockBullet3", "home.featureStockBullet4"],
       statValue: "1,284", statLabelKey: "home.featureStockStatLabel",
     },
     {
-      key: "barcode", icon: icons.barcode, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)",
+      key: "barcode", icon: icons.barcode, color: "#0d9488", bg: "rgba(13,148,136,0.1)",
       titleKey: "home.featureBarcodeTitle", taglineKey: "home.featureBarcodeTagline", bodyKey: "home.featureBarcodeBody",
       image: productsImg, alt: "Pharmacist scanning medicine barcode with tablet device",
       bulletKeys: ["home.featureBarcodeBullet1", "home.featureBarcodeBullet2", "home.featureBarcodeBullet3", "home.featureBarcodeBullet4"],
@@ -202,7 +202,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
       statValue: "34%", statLabelKey: "home.featureAiStatLabel",
     },
     {
-      key: "distribution", icon: icons.truck, color: "#059669", bg: "rgba(5,150,105,0.1)",
+      key: "distribution", icon: icons.truck, color: "#3b82f6", bg: "rgba(5,150,105,0.1)",
       titleKey: "home.featureDistributionTitle", taglineKey: "home.featureDistributionTagline", bodyKey: "home.featureDistributionBody",
       image: operationsImg, alt: "Pharmacy distribution and delivery network coordination across branches",
       bulletKeys: ["home.featureDistributionBullet1", "home.featureDistributionBullet2", "home.featureDistributionBullet3", "home.featureDistributionBullet4"],
@@ -213,15 +213,15 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
   const current = features[activeFeature];
 
   const realityBullets: [TranslationKey, string][] = [
-    ["home.realityBullet1", "#0d9488"],
-    ["home.realityBullet2", "#1e5fa8"],
+    ["home.realityBullet1", "#1e5fa8"],
+    ["home.realityBullet2", "#0d9488"],
     ["home.realityBullet3", "#7c3aed"],
-    ["home.realityBullet4", "#059669"],
+    ["home.realityBullet4", "#3b82f6"],
   ];
 
   const howSteps: { n: string; icon: ReactNode; color: string; bg: string; titleKey: TranslationKey; bodyKey: TranslationKey; badgeKey?: TranslationKey }[] = [
-    { n: "01", icon: icons.stock, color: "#0d9488", bg: "rgba(13,148,136,0.1)", titleKey: "home.howStep1Title", bodyKey: "home.howStep1Body" },
-    { n: "02", icon: icons.phone, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)", titleKey: "home.howStep2Title", bodyKey: "home.howStep2Body", badgeKey: "home.howStep2Badge" },
+    { n: "01", icon: icons.stock, color: "#1e5fa8", bg: "rgba(30,95,168,0.1)", titleKey: "home.howStep1Title", bodyKey: "home.howStep1Body" },
+    { n: "02", icon: icons.phone, color: "#0d9488", bg: "rgba(13,148,136,0.1)", titleKey: "home.howStep2Title", bodyKey: "home.howStep2Body", badgeKey: "home.howStep2Badge" },
     { n: "03", icon: icons.key, color: "#7c3aed", bg: "rgba(124,58,237,0.1)", titleKey: "home.howStep3Title", bodyKey: "home.howStep3Body" },
   ];
 
@@ -243,11 +243,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
 
           {/* Logo */}
           <a href="#" className="flex items-center gap-3 shrink-0">
-            <img src={logoImg} alt="PharmSync logo" className="w-9 h-9 object-contain" />
-            <span className="text-xl font-bold tracking-tight hidden sm:block"
-              style={{ fontFamily: "var(--font-display)", color: "#0f172a" }}>
-              Pharm<span style={{ color: "#0d9488" }}>Sync</span>
-            </span>
+            <Logo size={36} />
           </a>
 
           {/* Desktop nav */}
@@ -324,7 +320,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
       <section className="relative overflow-hidden pt-10 pb-0 md:pt-16">
         {/* Subtle background gradient */}
         <div className="absolute inset-0 pointer-events-none" style={{
-          background: "radial-gradient(ellipse 80% 60% at 60% 40%, rgba(13,148,136,0.07) 0%, transparent 70%)",
+          background: "radial-gradient(ellipse 80% 60% at 60% 40%, rgba(30,95,168,0.07) 0%, transparent 70%)",
         }} />
 
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
@@ -333,7 +329,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
             {/* Copy */}
             <div className="py-6 md:py-12">
               <div className="animate-fade-up inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-semibold mb-7"
-                style={{ background: "rgba(13,148,136,0.09)", color: "#0f766e", border: "1px solid rgba(13,148,136,0.18)" }}>
+                style={{ background: "rgba(30,95,168,0.09)", color: "#1a4f8f", border: "1px solid rgba(30,95,168,0.18)" }}>
                 <span className="live-dot" />
                 <span style={{ marginLeft: 6 }}>{t("home.heroBadge")}</span>
               </div>
@@ -359,7 +355,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 <button type="button" onClick={onLogin}
                   className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-base transition-all"
                   style={{ color: "#374151", border: "1px solid #d1d5db", fontFamily: "var(--font-display)", background: "#fff" }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = "#0d9488")}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = "#1e5fa8")}
                   onMouseLeave={e => (e.currentTarget.style.borderColor = "#d1d5db")}>
                   {t("home.heroAlreadyRegistered")}
                 </button>
@@ -368,8 +364,8 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
               {/* Trust stats — real counts from the database, not the design's template numbers */}
               <div className="animate-fade-up delay-400 flex items-center gap-6">
                 {[
-                  { n: stats.activeBranches, label: t("home.statPharmacies"), color: "#0d9488" },
-                  { n: stats.trackedSkus, label: t("home.statSkus"), color: "#1e5fa8" },
+                  { n: stats.activeBranches, label: t("home.statPharmacies"), color: "#1e5fa8" },
+                  { n: stats.trackedSkus, label: t("home.statSkus"), color: "#0d9488" },
                   { n: stats.cities, label: t("home.statCities"), color: "#7c3aed" },
                 ].map(item => (
                   <div key={item.label}>
@@ -394,7 +390,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 {/* overlay label */}
                 <div className="absolute bottom-5 left-5 right-5">
                   <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-semibold"
-                    style={{ background: "rgba(13,148,136,0.9)", color: "#fff", fontFamily: "var(--font-display)" }}>
+                    style={{ background: "rgba(30,95,168,0.9)", color: "#fff", fontFamily: "var(--font-display)" }}>
                     <span className="live-dot" style={{ background: "#fff" }} />
                     <span style={{ marginLeft: 6 }}>{t("home.heroLiveLabel")}</span>
                   </div>
@@ -402,9 +398,9 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
               </div>
 
               {/* Floating stat bubbles */}
-              <StatBubble value="1,284 SKUs" label={t("home.statSkusInStock")} color="#0d9488" delay={0}
+              <StatBubble value="1,284 SKUs" label={t("home.statSkusInStock")} color="#1e5fa8" delay={0}
                 className="absolute -left-8 top-16 z-10" />
-              <StatBubble value="RWF 842k" label={t("home.statRevenueToday")} color="#1e5fa8" delay={0.8}
+              <StatBubble value="RWF 842k" label={t("home.statRevenueToday")} color="#0d9488" delay={0.8}
                 className="absolute -right-6 top-44 z-10" />
               <StatBubble value="3 expiring" label={t("home.statExpiring")} color="#b45309" delay={1.6}
                 className="absolute -left-4 bottom-20 z-10" />
@@ -425,7 +421,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div className="reveal-left">
-              <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#0d9488", fontFamily: "var(--font-display)" }}>
+              <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#1e5fa8", fontFamily: "var(--font-display)" }}>
                 {t("home.realityEyebrow")}
               </p>
               <h2 className="text-3xl md:text-4xl font-extrabold mb-5"
@@ -476,7 +472,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
 
           {/* Section header */}
           <div className="reveal text-center mb-14">
-            <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#0d9488", fontFamily: "var(--font-display)" }}>
+            <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#1e5fa8", fontFamily: "var(--font-display)" }}>
               {t("home.featuresEyebrow")}
             </p>
             <h2 className="text-3xl md:text-[2.6rem] font-extrabold mb-4"
@@ -626,7 +622,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
             <div className="absolute inset-0 flex items-center">
               <div className="px-8 md:px-14 max-w-xl">
                 <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold mb-5"
-                  style={{ background: "rgba(13,148,136,0.85)", color: "#fff", fontFamily: "var(--font-display)" }}>
+                  style={{ background: "rgba(30,95,168,0.85)", color: "#fff", fontFamily: "var(--font-display)" }}>
                   <span className="live-dot" style={{ background: "#fff" }} />
                   <span style={{ marginLeft: 6 }}>{t("home.productsBadge")}</span>
                 </div>
@@ -653,7 +649,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
       <section id="how-it-works" className="py-20 md:py-28" style={{ background: "#f8fafb" }}>
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="reveal text-center mb-16">
-            <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#0d9488", fontFamily: "var(--font-display)" }}>
+            <p className="text-sm font-bold uppercase tracking-widest mb-3" style={{ color: "#1e5fa8", fontFamily: "var(--font-display)" }}>
               {t("home.howEyebrow")}
             </p>
             <h2 className="text-3xl md:text-4xl font-extrabold"
@@ -665,7 +661,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
           <div className="relative grid md:grid-cols-3 gap-6">
             {/* connector */}
             <div className="hidden md:block absolute top-12 left-1/6 right-1/6 h-px"
-              style={{ background: "linear-gradient(90deg, #0d9488, #1e5fa8, #7c3aed)", opacity: 0.3, zIndex: 0 }} />
+              style={{ background: "linear-gradient(90deg, #1e5fa8, #0d9488, #7c3aed)", opacity: 0.3, zIndex: 0 }} />
 
             {howSteps.map(({ n, icon, color, bg, titleKey, bodyKey, badgeKey }, i) => (
               <div key={n} className="reveal relative z-10 rounded-2xl p-7 flex flex-col items-center text-center"
@@ -682,7 +678,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 <p className="text-sm" style={{ color: "#6b7280", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>{t(bodyKey)}</p>
                 {badgeKey && (
                   <span className="inline-block mt-4 px-3 py-1.5 rounded-full text-xs font-semibold"
-                    style={{ background: "rgba(30,95,168,0.08)", color: "#1e5fa8", fontFamily: "var(--font-body)" }}>
+                    style={{ background: "rgba(13,148,136,0.08)", color: "#0d9488", fontFamily: "var(--font-body)" }}>
                     {t(badgeKey)}
                   </span>
                 )}
@@ -699,18 +695,18 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
         <div className="absolute inset-0 opacity-20">
           <img src={heroImg} alt="" className="w-full h-full object-cover" aria-hidden="true" />
         </div>
-        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(13,148,136,0.3) 0%, rgba(30,95,168,0.3) 100%)" }} />
+        <div className="absolute inset-0" style={{ background: "linear-gradient(135deg, rgba(30,95,168,0.3) 0%, rgba(13,148,136,0.3) 100%)" }} />
 
         <div className="relative max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <div className="reveal w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-7"
-            style={{ background: "rgba(13,148,136,0.2)", border: "1px solid rgba(13,148,136,0.3)" }}>
-            <div className="w-8 h-8" style={{ color: "#2dd4bf" }}>{icons.shield}</div>
+            style={{ background: "rgba(30,95,168,0.2)", border: "1px solid rgba(30,95,168,0.3)" }}>
+            <div className="w-8 h-8" style={{ color: "var(--primary-on-dark)" }}>{icons.shield}</div>
           </div>
 
           <h2 className="reveal text-3xl md:text-5xl font-extrabold text-white mb-5"
             style={{ fontFamily: "var(--font-display)", letterSpacing: "-0.03em", lineHeight: 1.1 }}>
             {t("home.finalHeadingLine1")}<br />
-            <span style={{ color: "#2dd4bf" }}>{t("home.finalHeadingLine2")}</span>
+            <span style={{ color: "var(--primary-on-dark)" }}>{t("home.finalHeadingLine2")}</span>
           </h2>
           <p className="reveal delay-100 text-lg mb-10" style={{ color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
             {t("home.finalBody")}
@@ -732,7 +728,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
             {finalPoints.map(key => (
               <div key={key} className="flex items-center gap-2 text-sm"
                 style={{ color: "rgba(255,255,255,0.55)", fontFamily: "var(--font-body)" }}>
-                <div className="w-4 h-4" style={{ color: "#2dd4bf" }}>{icons.check}</div>
+                <div className="w-4 h-4" style={{ color: "var(--primary-on-dark)" }}>{icons.check}</div>
                 {t(key)}
               </div>
             ))}
@@ -747,10 +743,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
             {/* Brand */}
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <img src={logoImg} alt="PharmSync" className="w-9 h-9 object-contain" />
-                <span className="text-lg font-bold" style={{ fontFamily: "var(--font-display)", color: "#f1f5f9" }}>
-                  Pharm<span style={{ color: "#2dd4bf" }}>Sync</span>
-                </span>
+                <Logo size={36} tone="dark" />
               </div>
               <p className="text-sm" style={{ color: "#475569", fontFamily: "var(--font-body)", lineHeight: 1.7 }}>
                 {t("home.footerTagline")}
@@ -764,7 +757,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 <a key={key} href="#features"
                   className="block text-sm py-1.5 transition-colors"
                   style={{ color: "#475569", fontFamily: "var(--font-body)" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#2dd4bf")}
+                  onMouseEnter={e => (e.currentTarget.style.color = "var(--primary-on-dark)")}
                   onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
                   {t(key)}
                 </a>
@@ -778,7 +771,7 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
                 <a key={key} href="#"
                   className="block text-sm py-1.5 transition-colors"
                   style={{ color: "#475569", fontFamily: "var(--font-body)" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#2dd4bf")}
+                  onMouseEnter={e => (e.currentTarget.style.color = "var(--primary-on-dark)")}
                   onMouseLeave={e => (e.currentTarget.style.color = "#475569")}>
                   {t(key)}
                 </a>
@@ -795,9 +788,9 @@ export default function MarketingHome({ onLogin }: { onLogin: () => void }) {
               </div>
               <button type="button" onClick={onLogin}
                 className="inline-block mt-5 text-sm font-bold px-4 py-2.5 rounded-xl transition-all"
-                style={{ background: "rgba(13,148,136,0.15)", color: "#2dd4bf", fontFamily: "var(--font-display)", border: "1px solid rgba(13,148,136,0.2)" }}
-                onMouseEnter={e => (e.currentTarget.style.background = "rgba(13,148,136,0.25)")}
-                onMouseLeave={e => (e.currentTarget.style.background = "rgba(13,148,136,0.15)")}>
+                style={{ background: "rgba(30,95,168,0.15)", color: "var(--primary-on-dark)", fontFamily: "var(--font-display)", border: "1px solid rgba(30,95,168,0.2)" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(30,95,168,0.25)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "rgba(30,95,168,0.15)")}>
                 {t("home.footerExistingBranch")}
               </button>
             </div>

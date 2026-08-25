@@ -53,6 +53,7 @@ import {
   type CoverageOverrideRow,
   type InsuranceProvider,
 } from "../lib/sales";
+import { Logo } from "../components";
 import { useTranslation, LanguageSwitcher } from "../lib/i18n";
 import type { TranslationKey } from "../lib/i18n/en";
 
@@ -2022,8 +2023,10 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
           <LanguageSwitcher />
         </div>
       <div className="w-full bg-white rounded-2xl border border-green-100 shadow-sm p-7">
-        <div className="w-11 h-11 bg-green-600 rounded-xl flex items-center justify-center mb-5 shadow-sm shadow-green-200">
-          <ShieldAlert className="w-5 h-5 text-white" />
+        {/* Same mark the branch sign-in shows, so both doors into the product
+            look like the same product. */}
+        <div className="mb-5">
+          <Logo size={40} />
         </div>
         <h1 className="font-bold text-slate-800 text-lg mb-1">{t("admin.gateTitle")}</h1>
         <p className="text-xs text-slate-500 mb-5">{t("admin.gateSubtitle")}</p>
@@ -2155,13 +2158,16 @@ export default function AdminPortal() {
       {/* Sidebar */}
       <aside className={`fixed lg:static z-30 flex flex-col w-60 h-full bg-white border-r border-green-100 shadow-sm transition-transform lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="px-5 py-5 border-b border-green-100">
+          {/* Shared brand mark. This used to be a ShieldAlert glyph beside the
+              name "PharmacySync" -- a third logo AND a third spelling, against
+              "PharmSync" on the home page and in the pharmacy dashboard. */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center">
-              <ShieldAlert className="w-5 h-5 text-white" />
-            </div>
+            <Logo size={36} showWordmark={false} />
             <div>
-              <p className="font-bold text-green-900 text-sm">PharmacySync</p>
-              <p className="text-[10px] text-green-600 font-mono">{t("admin.brandSuperAdmin")}</p>
+              <p className="font-bold text-sm" style={{ fontFamily: "var(--font-display)", color: "var(--ink)" }}>
+                Pharm<span style={{ color: "var(--primary)" }}>Sync</span>
+              </p>
+              <p className="text-[10px]" style={{ fontFamily: "var(--font-mono)", color: "var(--primary)" }}>{t("admin.brandSuperAdmin")}</p>
             </div>
           </div>
         </div>

@@ -229,12 +229,12 @@ export const NAV_ITEMS: NavItem[] = [
 export const KPIS: KPIData[] = [
   {
     id: 'revenue', label: 'Total Revenue', value: 'RWF 6.40M', rawValue: 6400000,
-    change: 10.3, sub: 'vs last month', icon: '💰', color: '#1e8a4a', unit: 'RWF',
+    change: 10.3, sub: 'vs last month', icon: '💰', color: '#1e5fa8', unit: 'RWF',
     sparkline: [4200000, 3800000, 5100000, 4700000, 5600000, 6100000, 5800000, 6400000],
   },
   {
     id: 'profit', label: 'Net Profit', value: 'RWF 1.75M', rawValue: 1750000,
-    change: 17.4, sub: 'vs last month', icon: '📈', color: '#059669', unit: 'RWF',
+    change: 17.4, sub: 'vs last month', icon: '📈', color: '#3b82f6', unit: 'RWF',
     sparkline: [980000, 820000, 1240000, 1100000, 1380000, 1620000, 1490000, 1750000],
   },
   {
@@ -254,7 +254,7 @@ export const KPIS: KPIData[] = [
   },
   {
     id: 'growth', label: 'Revenue Growth', value: '+10.3%', rawValue: 10.3,
-    change: 2.4, sub: 'MoM improvement', icon: '🚀', color: '#1e8a4a', unit: '%',
+    change: 2.4, sub: 'MoM improvement', icon: '🚀', color: '#1e5fa8', unit: '%',
     sparkline: [6.2, 7.1, 8.4, 7.8, 9.1, 8.9, 9.7, 10.3],
   },
 ]
@@ -297,9 +297,9 @@ export const dailySales = [
 ]
 
 export const paymentMethodData = [
-  { name: 'Cash',         value: 42, color: '#1e8a4a' },
-  { name: 'Mobile Money', value: 31, color: '#34d399' },
-  { name: 'Insurance',    value: 18, color: '#059669' },
+  { name: 'Cash',         value: 42, color: '#1e5fa8' },
+  { name: 'Mobile Money', value: 31, color: '#60a5fa' },
+  { name: 'Insurance',    value: 18, color: '#3b82f6' },
   { name: 'Card',         value: 9,  color: '#a7f3d0' },
 ]
 

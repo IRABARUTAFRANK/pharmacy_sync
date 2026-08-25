@@ -36,7 +36,7 @@ export function ReceiptView({ data, onClose, closeLabel = "New Sale" }: { data: 
         <Btn variant="primary" onClick={() => window.print()}>🖨 Print Receipt</Btn>
         {onClose && <Btn variant="ghost" onClick={onClose}>{closeLabel}</Btn>}
       </div>
-      <div style={{ maxWidth: 420, margin: "0 auto", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "24px 22px", fontFamily: "monospace" }}>
+      <div style={{ maxWidth: 420, margin: "0 auto", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "24px 22px", fontFamily: 'var(--font-mono)' }}>
         <div style={{ textAlign: "center", marginBottom: 14 }}>
           <div style={{ fontWeight: 800, fontSize: 15, letterSpacing: "0.02em" }}>PharmSync</div>
           <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>{data.branchName}</div>
@@ -204,7 +204,7 @@ export default function SalesPage() {
                       <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {line.productName}{line.dosage ? ` · ${line.dosage}` : ""}{line.form ? ` · ${line.form}` : ""}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: "monospace" }}>{line.code} · {line.piecesPerPack ?? 1} pcs · tax {line.taxRatePercentage}%</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: 'var(--font-mono)' }}>{line.code} · {line.piecesPerPack ?? 1} pcs · tax {line.taxRatePercentage}%</div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{fmtRWFExact(line.lineTotal)}</div>

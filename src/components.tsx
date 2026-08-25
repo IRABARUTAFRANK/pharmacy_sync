@@ -2,6 +2,39 @@ import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import Barcode from 'react-barcode'
 import { fmtRWF, fmtRWFExact, alertColors, type AlertSeverity } from './data'
+import logoImg from './assets/logo.png'
+
+// ─── Brand mark ───────────────────────────────────────────────────────────────
+// One logo for the whole product. The marketing home page and the sign-in
+// screens already rendered assets/logo.png with a "Pharm" + accented "Sync"
+// wordmark, while the pharmacy dashboard drew its own green "Rx" square and
+// the admin portal showed no mark at all -- three different identities across
+// one system. Everything renders this now.
+//
+// `tone="dark"` is for placement on a dark photo panel (AuthShell's left
+// column), where --primary is too deep to read and --primary-on-dark is the
+// legible end of the same green.
+
+export function Logo({ size = 32, showWordmark = true, tone = 'light' }: {
+  size?: number
+  showWordmark?: boolean
+  tone?: 'light' | 'dark'
+}) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+      <img src={logoImg} alt="PharmSync" width={size} height={size} style={{ objectFit: 'contain', flexShrink: 0 }} />
+      {showWordmark && (
+        <span style={{
+          fontFamily: 'var(--font-display)', fontWeight: 700, letterSpacing: '-0.01em',
+          fontSize: Math.round(size * 0.44), color: tone === 'dark' ? '#fff' : 'var(--ink)',
+          whiteSpace: 'nowrap',
+        }}>
+          Pharm<span style={{ color: tone === 'dark' ? 'var(--primary-on-dark)' : 'var(--primary)' }}>Sync</span>
+        </span>
+      )}
+    </span>
+  )
+}
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
@@ -18,7 +51,7 @@ export function Card({ children, style = {}, onClick }: { children: ReactNode; s
         transition: 'box-shadow 0.2s',
         ...style,
       }}
-      onMouseEnter={onClick ? e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(30,138,74,0.10)' } : undefined}
+      onMouseEnter={onClick ? e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(30,95,168,0.10)' } : undefined}
       onMouseLeave={onClick ? e => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' } : undefined}
     >
       {children}
@@ -550,7 +583,7 @@ export function BarcodeLabel({ label }: { label: PrintableBarcode }) {
     <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.25, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
     {label.variant_label && <div style={{ fontSize: 8, color: 'var(--ink-muted)' }}>{label.variant_label}</div>}
     <Barcode value={label.code} width={1.2} height={36} fontSize={9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
-    {label.price != null && <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--primary, #1e8a4a)' }}>Sell: {fmtRWFExact(label.price)}</div>}
+    {label.price != null && <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--primary, #1e5fa8)' }}>Sell: {fmtRWFExact(label.price)}</div>}
     <div style={{ fontSize: 7, color: isBox ? 'var(--primary)' : 'var(--ink-muted)', textAlign: 'center', fontWeight: isBox ? 700 : 400 }}>
       {isBox ? `Carton · ${label.child_count ?? 0} packs` : `Pack · ${label.pieces_per_pack ?? 0} pcs`}
     </div>

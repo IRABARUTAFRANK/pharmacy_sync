@@ -159,7 +159,7 @@ function RowDetailModal({ row, onClose }: { row: InventoryRow; onClose: () => vo
             { label: 'Reorder Min/Max',  value: `${row.min_quantity}${row.max_quantity ? ' / ' + row.max_quantity : ''}`, color: '#d97706' },
           ].map(k => (
             <div key={k.label} style={{ background: 'var(--bg)', borderRadius: 7, padding: '10px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: k.color, fontFamily: 'DM Sans' }}>{k.value}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: k.color, fontFamily: 'var(--font-display)' }}>{k.value}</div>
               <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 2 }}>{k.label}</div>
             </div>
           ))}
@@ -181,7 +181,7 @@ function RowDetailModal({ row, onClose }: { row: InventoryRow; onClose: () => vo
             const bsc = barcodeStatusColors[bc.status] ?? barcodeStatusColors.active
             return (
               <div key={bc.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 10px', borderRadius: 7, background: 'var(--bg)', marginBottom: 6, fontSize: 12 }}>
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 10, fontWeight: 700, color: 'var(--primary)', flex: 1 }}>{bc.code}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, color: 'var(--primary)', flex: 1 }}>{bc.code}</span>
                 <span style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{bc.barcode_type === 'box' ? `Box · ${bc.child_count} packs` : `Pack · ${bc.pieces_per_pack ?? 1} pcs`}</span>
                 <span style={{ fontSize: 10, color: 'var(--ink-muted)', textTransform: 'capitalize' }}>{bc.code_source}</span>
                 <StatusBadge label={bc.status} color={bsc.c} bg={bsc.bg} />
@@ -309,7 +309,7 @@ export default function InventoryPage() {
           return (
             <div key={k} onClick={() => setStatusFilter(statusFilter === f ? 'all' : f)}
               style={{ background: statusFilter === f ? s.bg : '#fff', border: `1.5px solid ${statusFilter === f ? s.c + '60' : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s' }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: s.c, fontFamily: 'DM Sans' }}>{count}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: s.c, fontFamily: 'var(--font-display)' }}>{count}</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{s.label}</div>
             </div>
           )
@@ -327,7 +327,7 @@ export default function InventoryPage() {
               <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={90} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="sales" name="Revenue" radius={[0, 5, 5, 0]} barSize={12}>
-                {categoryData.map((_, i) => <Cell key={i} fill={['#1e8a4a', '#34d399', '#059669', '#a7f3d0', '#6ee7b7', '#86efac', '#d1fae5'][i % 7]} />)}
+                {categoryData.map((_, i) => <Cell key={i} fill={['#1e5fa8', '#60a5fa', '#3b82f6', '#a7f3d0', '#93c5fd', '#86efac', '#d1fae5'][i % 7]} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -343,7 +343,7 @@ export default function InventoryPage() {
               <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="units" name="Units Received" fill="#1e8a4a" radius={[5, 5, 0, 0]} barSize={22} />
+              <Bar dataKey="units" name="Units Received" fill="#1e5fa8" radius={[5, 5, 0, 0]} barSize={22} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -415,22 +415,22 @@ export default function InventoryPage() {
                     <td style={{ padding: '9px 10px', fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{row.name}</td>
                     {visibleCols.has('product_type')       && <td style={{ padding: '9px 10px' }}><StatusBadge label={row.product_type} color={row.product_type === 'medicine' ? '#0284c7' : '#7c3aed'} bg={row.product_type === 'medicine' ? '#e0f2fe' : '#f5f3ff'} /></td>}
                     {visibleCols.has('generic_name')       && <td style={{ padding: '9px 10px', color: 'var(--ink-muted)', fontSize: 11 }}>{row.generic_name ?? '—'}</td>}
-                    {visibleCols.has('dosage')             && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>{row.dosage ?? '—'}</td>}
+                    {visibleCols.has('dosage')             && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{row.dosage ?? '—'}</td>}
                     {visibleCols.has('form')               && <td style={{ padding: '9px 10px', color: 'var(--ink-mid)' }}>{row.form ?? '—'}</td>}
                     {visibleCols.has('unit')               && <td style={{ padding: '9px 10px', color: 'var(--ink-muted)', fontSize: 11 }}>{row.unit ?? '—'}</td>}
                     {visibleCols.has('category')           && <td style={{ padding: '9px 10px' }}><StatusBadge label={row.category} color="var(--primary)" bg="var(--primary-light)" /></td>}
-                    {visibleCols.has('batch_number')       && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--ink-mid)', whiteSpace: 'nowrap' }}>{row.batch_number}</td>}
-                    {visibleCols.has('delivery_code')      && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10, color: 'var(--ink-faint)' }}>{row.delivery_code ?? '—'}</td>}
+                    {visibleCols.has('batch_number')       && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-mid)', whiteSpace: 'nowrap' }}>{row.batch_number}</td>}
+                    {visibleCols.has('delivery_code')      && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--ink-faint)' }}>{row.delivery_code ?? '—'}</td>}
                     {visibleCols.has('expiry_date')        && <td style={{ padding: '9px 10px', fontSize: 11, color: row.stock_status === 'expiry' ? '#9333ea' : 'var(--ink-mid)', fontWeight: row.stock_status === 'expiry' ? 700 : 400 }}>{row.expiry_date}</td>}
                     {visibleCols.has('cost_price')         && <td style={{ padding: '9px 10px', color: '#dc2626', fontWeight: 600 }}>{fmtRWF(row.cost_price)}</td>}
                     {visibleCols.has('selling_price')      && <td style={{ padding: '9px 10px', fontWeight: 700 }}>{fmtRWF(row.selling_price)}</td>}
-                    {visibleCols.has('quantity_received')  && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right' }}>{row.quantity_received}</td>}
-                    {visibleCols.has('quantity_available') && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', textAlign: 'right', fontWeight: 700, color: row.quantity_available === 0 ? '#dc2626' : row.quantity_available < row.min_quantity ? '#d97706' : 'var(--ink)' }}>{row.quantity_available}</td>}
-                    {visibleCols.has('min_quantity')       && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, textAlign: 'right' }}>{row.min_quantity}</td>}
-                    {visibleCols.has('max_quantity')       && <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, textAlign: 'right' }}>{row.max_quantity ?? '—'}</td>}
+                    {visibleCols.has('quantity_received')  && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', textAlign: 'right' }}>{row.quantity_received}</td>}
+                    {visibleCols.has('quantity_available') && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', textAlign: 'right', fontWeight: 700, color: row.quantity_available === 0 ? '#dc2626' : row.quantity_available < row.min_quantity ? '#d97706' : 'var(--ink)' }}>{row.quantity_available}</td>}
+                    {visibleCols.has('min_quantity')       && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 11, textAlign: 'right' }}>{row.min_quantity}</td>}
+                    {visibleCols.has('max_quantity')       && <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)', fontSize: 11, textAlign: 'right' }}>{row.max_quantity ?? '—'}</td>}
                     {visibleCols.has('manufacturer_name')  && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-muted)', whiteSpace: 'nowrap' }}>{row.manufacturer_name ?? '—'}</td>}
                     {visibleCols.has('supplier_name')      && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-mid)', whiteSpace: 'nowrap' }}>{row.supplier_name}</td>}
-                    {visibleCols.has('tax_rate')           && <td style={{ padding: '9px 10px', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }}>{row.tax_rate}</td>}
+                    {visibleCols.has('tax_rate')           && <td style={{ padding: '9px 10px', fontSize: 11, fontFamily: 'var(--font-mono)' }}>{row.tax_rate}</td>}
                     {visibleCols.has('received_at')        && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{row.received_at}</td>}
                     {visibleCols.has('status')             && <td style={{ padding: '9px 10px' }}>
                       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

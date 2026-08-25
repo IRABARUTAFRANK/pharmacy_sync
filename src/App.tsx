@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { NAV_ITEMS, type Role } from './data'
 import { useTranslation, LanguageSwitcher } from './lib/i18n'
 import type { TranslationKey } from './lib/i18n/en'
+import OverviewPage from './pages/OverviewPage'
 import LiveInventoryPage from './pages/LiveInventoryPage'
 import StockReceivingPage from './pages/StockReceivingPage'
 import BarcodeManagerPage from './pages/BarcodeManagerPage'
@@ -16,6 +17,7 @@ import BranchAccessPage from './pages/BranchAccessPage'
 import AdminPortal from './pages/AdminPortal'
 import BranchPortal from './pages/BranchPortal'
 import ResetPassword from './pages/ResetPassword'
+import { Logo } from './components'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { loadLiveAlerts, type LiveAlert } from './lib/alerts'
 
@@ -56,7 +58,7 @@ function useHashRoute(): HashRoute {
 // ─── Role Config ──────────────────────────────────────────────────────────────
 
 const ROLES: { id: Role; abbr: string; color: string }[] = [
-  { id: 'owner',      abbr: 'OW', color: '#1e8a4a' },
+  { id: 'owner',      abbr: 'OW', color: '#1e5fa8' },
   { id: 'manager',    abbr: 'MG', color: '#0284c7' },
   { id: 'pharmacist', abbr: 'PH', color: '#7c3aed' },
 ]
@@ -100,7 +102,7 @@ function ExportModal({ onClose }: { onClose: () => void }) {
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
               <input readOnly value="https://pharmsync.rw/share?token=ps_8f4a2c..." style={{
                 flex: 1, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6,
-                fontSize: 11, fontFamily: 'JetBrains Mono, monospace', background: '#fff', outline: 'none',
+                fontSize: 11, fontFamily: 'var(--font-mono)', background: '#fff', outline: 'none',
               }} />
               <button style={{ padding: '7px 12px', background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
             </div>
@@ -270,7 +272,7 @@ export default function App() {
   if (hashRoute === 'reset') return <ResetPassword />
 
   if (accessLoading) {
-    return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'Inter, sans-serif' }}>{t('shell.loadingWorkspace')}</main>
+    return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'var(--font-body)' }}>{t('shell.loadingWorkspace')}</main>
   }
 
   if (!access) {
@@ -286,7 +288,14 @@ export default function App() {
 
   function renderPage() {
     switch (page) {
-      case 'overview':      return <DatabaseBackedPage title="Dashboard" tables="sales · sale_items · stock_batches · notifications" />
+      case 'overview':      return <OverviewPage
+                                     role={role}
+                                     period={dateRange}
+                                     branchName={access!.branchName}
+                                     alerts={alerts}
+                                     onExport={() => setShowExport(true)}
+                                     onViewAlerts={() => setPage('alerts')}
+                                   />
       case 'inventory':     return <LiveInventoryPage />
       case 'receiving':     return <StockReceivingPage />
       case 'requestProduct': return <RequestProductPage />
@@ -306,7 +315,7 @@ export default function App() {
   const sidebarW = sidebarOpen ? 240 : 60
 
   return (
-    <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', fontFamily: 'Inter, sans-serif', fontSize: 13 }}>
+    <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
 
       {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
       <aside className="app-chrome" style={{
@@ -314,16 +323,14 @@ export default function App() {
         borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
         transition: 'width 0.22s, min-width 0.22s', overflow: 'hidden', flexShrink: 0, zIndex: 10,
       }}>
-        {/* Logo */}
+        {/* Logo — the shared <Logo /> mark, same as the home page and sign-in */}
         <div style={{ height: 60, padding: sidebarOpen ? '0 16px' : '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 9, background: 'var(--primary)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 800, fontSize: 13, color: '#fff', flexShrink: 0, fontFamily: 'DM Sans, sans-serif',
-          }}>Rx</div>
+          <Logo size={32} showWordmark={false} />
           {sidebarOpen && (
             <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'DM Sans, sans-serif', letterSpacing: '-0.01em' }}>PharmSync</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
+                Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
+              </div>
               <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>{t('shell.tagline')}</div>
             </div>
           )}
@@ -485,7 +492,7 @@ export default function App() {
             fontWeight: 600, flexShrink: 0,
           }}>
             {access.branchName}
-            {access.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'monospace', fontSize: 11 }}>{access.branchCode}</span>}
+            {access.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{access.branchCode}</span>}
           </div>
 
           {/* Offline indicator */}

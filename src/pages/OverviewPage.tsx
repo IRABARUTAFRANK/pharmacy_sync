@@ -1,261 +1,209 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ReferenceLine,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import {
-  KPIS, revenueData, categoryData, dailySales, paymentMethodData, topProducts,
-  alertsData, breakEvenData, BREAK_EVEN_REVENUE, generateSmartInsights,
-  fmtRWF, pct, type KPIData, type Role,
-} from '../data'
-import {
-  Card, SectionHeader, ChartTooltip, Sparkline, StatusBadge, AlertRow, Modal, Btn,
-} from '../components'
+import { fmtRWF, fmtRWFExact, pct, type Role } from '../data'
+import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn } from '../components'
+import { loadOverview, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
+import type { LiveAlert } from '../lib/alerts'
 
-// ─── KPI Card ─────────────────────────────────────────────────────────────────
+// Dashboard Overview for a pharmacy branch. Everything on this page is read
+// from the branch's own rows through lib/overview.ts -- there is no fixture
+// data left here. Three tiles the earlier mock version showed were removed
+// rather than reproduced, because the schema cannot produce them honestly:
+//
+//   Net Profit / Break-Even -- there is no expenses or fixed-cost table.
+//   Active Patients         -- there is no patients or customers table.
+//   Cash/MoMo/Card mix      -- public.sales has no payment_method column.
+//
+// The first two are gone. The third is replaced by the split that IS
+// recorded (insurance-covered vs patient-paid) and becomes a true payment
+// mix once payment_method lands with the RRA VSDC invoice work.
 
-function KPICard({ kpi, active, onClick }: { kpi: KPIData; active: boolean; onClick: () => void }) {
-  const pos = kpi.change >= 0
+// ─── KPI Card ────────────────────────────────────────────────────────────────
+
+interface Tile {
+  id: string
+  label: string
+  value: string
+  sub: string
+  icon: string
+  color: string
+  change?: number | null
+  spark?: number[]
+  muted?: boolean
+}
+
+function KPICard({ tile, active, onClick }: { tile: Tile; active: boolean; onClick?: () => void }) {
+  const positive = (tile.change ?? 0) >= 0
   return (
     <div
       onClick={onClick}
       style={{
-        background: active ? kpi.color + '08' : '#fff',
+        background: active ? tile.color + '08' : '#fff',
         borderRadius: 12, padding: '18px 20px',
-        border: `1.5px solid ${active ? kpi.color + '60' : 'var(--border)'}`,
+        border: `1.5px solid ${active ? tile.color + '60' : 'var(--border)'}`,
         display: 'flex', flexDirection: 'column', gap: 10,
-        cursor: 'pointer', transition: 'all 0.18s',
-        boxShadow: active ? `0 0 0 3px ${kpi.color}18` : 'none',
+        cursor: onClick ? 'pointer' : 'default', transition: 'all 0.18s',
+        boxShadow: active ? `0 0 0 3px ${tile.color}18` : 'none',
+        opacity: tile.muted ? 0.72 : 1,
       }}
-      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 18px rgba(30,138,74,0.09)' }}
-      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' }}
+      onMouseEnter={e => { if (!active && onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 18px rgba(30,95,168,0.09)' }}
+      onMouseLeave={e => { if (!active && onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            {kpi.label}
+            {tile.label}
           </div>
-          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--ink)', marginTop: 4, fontFamily: 'DM Sans, sans-serif', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-            {kpi.value}
+          <div style={{ fontSize: 24, fontWeight: 700, color: 'var(--ink)', marginTop: 4, fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
+            {tile.value}
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 9, background: kpi.color + '16', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>
-            {kpi.icon}
+          <div style={{ width: 36, height: 36, borderRadius: 9, background: tile.color + '16', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, flexShrink: 0 }}>
+            {tile.icon}
           </div>
-          <Sparkline data={kpi.sparkline} color={pos ? kpi.color : '#dc2626'} />
+          {tile.spark && tile.spark.length > 1 && (
+            <Sparkline data={tile.spark} color={positive ? tile.color : '#dc2626'} />
+          )}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{
-          fontSize: 11, fontWeight: 700, color: pos ? 'var(--positive)' : 'var(--negative)',
-          background: pos ? '#d1fae5' : '#fee2e2', borderRadius: 4, padding: '2px 7px',
-        }}>{pct(kpi.change)}</span>
-        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{kpi.sub}</span>
+        {/* A null change means there was no previous activity to compare with.
+            Showing "+100%" against a zero baseline would look impressive and
+            mean nothing, so the badge is simply omitted. */}
+        {tile.change != null && (
+          <span style={{
+            fontSize: 11, fontWeight: 700, color: positive ? 'var(--positive)' : 'var(--negative)',
+            background: positive ? '#d1fae5' : '#fee2e2', borderRadius: 4, padding: '2px 7px',
+          }}>{pct(tile.change)}</span>
+        )}
+        <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{tile.sub}</span>
       </div>
     </div>
   )
 }
 
-// ─── Drill-down Modal ─────────────────────────────────────────────────────────
+// ─── States ──────────────────────────────────────────────────────────────────
 
-function KPIDrillDown({ kpi, onClose }: { kpi: KPIData; onClose: () => void }) {
-  const chartData = revenueData.map((d, i) => ({
-    month: d.month,
-    value: kpi.sparkline[i] ?? 0,
-  }))
-
+function Panel({ icon, title, msg }: { icon: string; title: string; msg: string }) {
   return (
-    <Modal title={`Drill Down — ${kpi.label}`} onClose={onClose} width={680}>
-      <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-        <div style={{ flex: 1, background: 'var(--bg)', borderRadius: 10, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Current</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'DM Sans', color: 'var(--ink)' }}>{kpi.value}</div>
-        </div>
-        <div style={{ flex: 1, background: kpi.change >= 0 ? '#f0fdf4' : '#fef2f2', borderRadius: 10, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Change</div>
-          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'DM Sans', color: kpi.change >= 0 ? 'var(--positive)' : 'var(--negative)' }}>{pct(kpi.change)}</div>
-        </div>
-        <div style={{ flex: 1, background: 'var(--bg)', borderRadius: 10, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Period</div>
-          <div style={{ fontSize: 14, fontWeight: 600, fontFamily: 'DM Sans', color: 'var(--ink)', marginTop: 4 }}>{kpi.sub}</div>
-        </div>
-      </div>
-
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--ink)', marginBottom: 12 }}>8-Month Trend</div>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="kpiGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={kpi.color} stopOpacity={0.18} />
-                <stop offset="95%" stopColor={kpi.color} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-            <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
-              tickFormatter={v => kpi.unit === 'RWF' ? `${(v / 1000000).toFixed(1)}M` : v.toLocaleString()} />
-            <Tooltip content={<ChartTooltip />} />
-            <Area type="monotone" dataKey="value" name={kpi.label} stroke={kpi.color}
-              fill="url(#kpiGrad)" strokeWidth={2.5} dot={{ r: 4, fill: kpi.color }} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-        <Btn variant="secondary" small onClick={onClose}>Export CSV</Btn>
-        <Btn variant="primary" small onClick={onClose}>View Full Report</Btn>
-      </div>
-    </Modal>
-  )
-}
-
-// ─── Export Modal ─────────────────────────────────────────────────────────────
-
-function ExportModal({ onClose }: { onClose: () => void }) {
-  const [fmt, setFmt] = useState<'csv' | 'pdf' | 'excel'>('csv')
-  const [scope, setScope] = useState<'page' | 'all'>('page')
-
-  return (
-    <Modal title="Export / Share Dashboard" onClose={onClose} width={480}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Format</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(['csv', 'pdf', 'excel'] as const).map(f => (
-              <button key={f} onClick={() => setFmt(f)} style={{
-                flex: 1, padding: '10px', borderRadius: 8, border: `1.5px solid ${fmt === f ? 'var(--primary)' : 'var(--border)'}`,
-                background: fmt === f ? 'var(--primary-light)' : '#fff', color: fmt === f ? 'var(--primary)' : 'var(--ink-mid)',
-                fontWeight: fmt === f ? 600 : 400, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-              }}>{f.toUpperCase()}</button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Scope</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {([['page', 'Current View'], ['all', 'All Modules']] as const).map(([v, l]) => (
-              <button key={v} onClick={() => setScope(v)} style={{
-                flex: 1, padding: '10px', borderRadius: 8, border: `1.5px solid ${scope === v ? 'var(--primary)' : 'var(--border)'}`,
-                background: scope === v ? 'var(--primary-light)' : '#fff', color: scope === v ? 'var(--primary)' : 'var(--ink-mid)',
-                fontWeight: scope === v ? 600 : 400, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
-              }}>{l}</button>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', fontSize: 12, color: 'var(--ink-muted)' }}>
-          <strong style={{ color: 'var(--ink)' }}>Share Link</strong> — copy a read-only snapshot URL to share with your team
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <input readOnly value="https://pharmsync.rw/share/dashboard?token=ps_8f4a..." style={{
-              flex: 1, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6,
-              fontSize: 11, fontFamily: 'JetBrains Mono, monospace', background: '#fff', color: 'var(--ink-mid)',
-            }} />
-            <Btn variant="secondary" small>Copy</Btn>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 4 }}>
-          <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-          <Btn variant="primary" onClick={onClose}>⬇ Download {fmt.toUpperCase()}</Btn>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// ─── Builder Panel ────────────────────────────────────────────────────────────
-
-function BuilderPanel({ visible, onToggle, widgetState, onWidgetToggle }: {
-  visible: boolean; onToggle: () => void
-  widgetState: Record<string, boolean>; onWidgetToggle: (key: string) => void
-}) {
-  if (!visible) return null
-  const widgets = [
-    { key: 'kpis', label: 'KPI Cards' },
-    { key: 'revChart', label: 'Revenue Trend' },
-    { key: 'catChart', label: 'Category Sales' },
-    { key: 'daily', label: 'Daily Transactions' },
-    { key: 'payment', label: 'Payment Methods' },
-    { key: 'alertsFeed', label: 'Alerts Feed' },
-    { key: 'topProducts', label: 'Top Products Table' },
-  ]
-
-  return (
-    <div style={{
-      position: 'fixed', right: 0, top: 60, bottom: 0, width: 260, zIndex: 90,
-      background: '#fff', borderLeft: '1px solid var(--border)', padding: '16px',
-      overflowY: 'auto', boxShadow: '-4px 0 20px rgba(0,0,0,0.06)',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)' }}>Dashboard Builder</span>
-        <button onClick={onToggle} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: 'var(--ink-muted)' }}>×</button>
-      </div>
-      <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginBottom: 14 }}>Toggle widgets to customize your layout</div>
-      {widgets.map(w => (
-        <div key={w.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--bg-alt)' }}>
-          <span style={{ fontSize: 13, color: 'var(--ink)' }}>{w.label}</span>
-          <button onClick={() => onWidgetToggle(w.key)} style={{
-            width: 36, height: 20, borderRadius: 10, border: 'none', cursor: 'pointer',
-            background: widgetState[w.key] ? 'var(--primary)' : '#d1d5db',
-            position: 'relative', transition: 'background 0.2s',
-          }}>
-            <span style={{
-              position: 'absolute', top: 2, left: widgetState[w.key] ? 18 : 2,
-              width: 16, height: 16, borderRadius: '50%', background: '#fff',
-              transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-            }} />
-          </button>
-        </div>
-      ))}
+    <div style={{ maxWidth: 620, margin: '56px auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 32, textAlign: 'center' }}>
+      <div style={{ fontSize: 30, marginBottom: 12 }}>{icon}</div>
+      <h1 style={{ margin: 0, fontSize: 18, color: 'var(--ink)' }}>{title}</h1>
+      <p style={{ color: 'var(--ink-muted)', lineHeight: 1.6, margin: '10px auto 0', maxWidth: 460, fontSize: 13 }}>{msg}</p>
     </div>
   )
 }
 
-// ─── Overview Page ────────────────────────────────────────────────────────────
+function EmptyChart({ msg }: { msg: string }) {
+  return (
+    <div style={{ height: 180, display: 'grid', placeItems: 'center', color: 'var(--ink-faint)', fontSize: 12, textAlign: 'center', padding: '0 20px' }}>
+      {msg}
+    </div>
+  )
+}
+
+const INSIGHT_STYLE = {
+  good: { icon: '📈', color: 'var(--positive)' },
+  warn: { icon: '⚠️', color: 'var(--warning)' },
+  bad: { icon: '⛔', color: 'var(--negative)' },
+  info: { icon: '💡', color: 'var(--info)' },
+} as const
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage({
-  role, onExport, showBuilder, onToggleBuilder,
+  role, period, branchName, alerts, onExport, onViewAlerts,
 }: {
-  role: Role; onExport: () => void; showBuilder: boolean; onToggleBuilder: () => void
+  role: Role
+  period: OverviewPeriod
+  branchName: string
+  alerts: LiveAlert[]
+  onExport: () => void
+  onViewAlerts: () => void
 }) {
-  const [activeKPI, setActiveKPI] = useState<string | null>(null)
-  const [drillKPI, setDrillKPI] = useState<KPIData | null>(null)
+  const [data, setData] = useState<OverviewData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [widgets, setWidgets] = useState<Record<string, boolean>>({
-    kpis: true, revChart: true, catChart: true, daily: true,
-    payment: true, alertsFeed: true, topProducts: true,
-  })
 
-  const toggleWidget = (key: string) => setWidgets(p => ({ ...p, [key]: !p[key] }))
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setData(await loadOverview(period))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load the dashboard.')
+    } finally {
+      setLoading(false)
+    }
+  }, [period])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  // Changing the period must not leave a stale category filter applied to a
+  // category that no longer appears in the new window.
+  useEffect(() => { setActiveCategory(null) }, [period])
+
+  if (loading && !data) return <Panel icon="◴" title="Loading dashboard" msg={`Reading ${branchName} sales, stock and alerts from the pharmacy database.`} />
+  if (error) return <Panel icon="⚠" title="Could not load the dashboard" msg={error} />
+  if (!data) return null
 
   const isPharmacist = role === 'pharmacist'
-  const MY_BRANCH    = 'Kigali HQ'
+  const openAlerts = alerts.filter(a => !a.isRead)
 
-  const visibleKPIs = isPharmacist
-    ? KPIS.filter(k => ['transactions', 'inventory', 'alerts'].includes(k.id))
-    : KPIS
+  const revenueSpark = data.revenueTrend.map(p => p.revenue)
+  const periodSub = `vs previous ${data.periodLabel.toLowerCase()}`
 
-  // Branch isolation: pharmacist only sees their own branch
-  const ownBranchProducts = isPharmacist
-    ? topProducts.filter(p => p.branch === MY_BRANCH)
-    : topProducts
+  const hasSplit = data.paymentSplit.length > 0
+  const splitRows = hasSplit ? data.paymentSplit : [
+    { name: 'Patient paid', value: 0, amount: 0, color: '#1e5fa8' },
+    { name: 'Insurance', value: 0, amount: 0, color: '#60a5fa' },
+  ]
 
-  const filteredProducts = activeCategory
-    ? ownBranchProducts.filter(p => p.category === activeCategory)
-    : ownBranchProducts
+  // Money tiles are owner/manager only; a pharmacist on shift gets the
+  // operational half of the row. Matches how NAV_ITEMS already gates Analytics.
+  const tiles: Tile[] = [
+    ...(isPharmacist ? [] : [{
+      id: 'revenue', label: 'Total Revenue', value: fmtRWF(data.revenue.value),
+      sub: periodSub, icon: '💰', color: '#1e5fa8', change: data.revenue.changePct, spark: revenueSpark,
+    }]),
+    {
+      id: 'transactions', label: 'Transactions', value: data.transactions.value.toLocaleString(),
+      sub: periodSub, icon: '🧾', color: '#0284c7', change: data.transactions.changePct,
+    },
+    {
+      id: 'items', label: 'Items Dispensed', value: data.itemsDispensed.value.toLocaleString(),
+      sub: periodSub, icon: '💊', color: '#7c3aed', change: data.itemsDispensed.changePct,
+    },
+    ...(isPharmacist ? [] : [{
+      id: 'inventory', label: 'Inventory Value', value: fmtRWF(data.inventoryValue),
+      sub: 'stock on hand, at selling price', icon: '📦', color: '#d97706',
+    }]),
+    {
+      id: 'expiring', label: 'Expiring ≤ 90 Days', value: data.expiring.count.toLocaleString(),
+      sub: `${fmtRWF(data.expiring.value)} at risk`, icon: '⏳', color: '#dc2626',
+    },
+    {
+      // Deliberately honest rather than absent: the RRA VSDC integration is not
+      // built yet, and §10 of the certification checklist requires sync state to
+      // be visible to the person on shift. Claiming "compliant" here before the
+      // integration exists is exactly what an RRA technical review would catch.
+      id: 'vsdc', label: 'RRA / VSDC', value: 'Not configured',
+      sub: 'invoice sync pending', icon: '🏛️', color: '#587867', muted: true,
+    },
+  ]
 
-  // Smart insights
-  const revenueArr = revenueData.map(d => d.revenue)
-  const profitArr  = revenueData.map(d => d.profit)
-  const smartInsights = generateSmartInsights(revenueArr, profitArr)
+  const visibleCategories = activeCategory
+    ? data.categoryMix.filter(c => c.name === activeCategory)
+    : data.categoryMix
 
-  const filteredCategory = activeCategory
-    ? categoryData.filter(c => c.name === activeCategory)
-    : categoryData
+  const visibleProducts: TopProduct[] = activeCategory
+    ? data.topProducts.filter(p => p.category === activeCategory)
+    : data.topProducts
 
   return (
     <>
@@ -263,267 +211,221 @@ export default function OverviewPage({
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: 'var(--ink-muted)', flex: 1 }}>
           {activeCategory ? (
-            <span>Filtered by: <strong style={{ color: 'var(--primary)' }}>{activeCategory}</strong> &nbsp;
+            <span>
+              Filtered by: <strong style={{ color: 'var(--primary)' }}>{activeCategory}</strong>&nbsp;
               <button onClick={() => setActiveCategory(null)} style={{ fontSize: 11, color: 'var(--negative)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>✕ Clear</button>
             </span>
-          ) : 'Click any chart bar or KPI to filter and drill down'}
+          ) : (
+            <>{branchName} · {data.periodLabel} · click a category bar to cross-filter</>
+          )}
         </span>
+        <Btn variant="ghost" small onClick={() => void refresh()}>{loading ? '◴ Refreshing' : '↻ Refresh'}</Btn>
         <Btn variant="ghost" small onClick={onExport}>↗ Export</Btn>
-        <Btn variant={showBuilder ? 'primary' : 'ghost'} small onClick={onToggleBuilder}>⊞ Customize</Btn>
       </div>
 
       {/* KPI Grid */}
-      {widgets.kpis && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-          {visibleKPIs.map(k => (
-            <KPICard
-              key={k.id} kpi={k}
-              active={activeKPI === k.id}
-              onClick={() => {
-                setActiveKPI(activeKPI === k.id ? null : k.id)
-                setDrillKPI(k)
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+        {tiles.map(tile => <KPICard key={tile.id} tile={tile} active={false} />)}
+      </div>
 
-      {/* Revenue + Category */}
+      {/* Revenue Trend + Sales by Category */}
       <div style={{ display: 'grid', gridTemplateColumns: '1.65fr 1fr', gap: 14, marginBottom: 14 }}>
-        {widgets.revChart && (
-          <Card>
-            <SectionHeader
-              title="Revenue & Profit Trend"
-              subtitle="Monthly performance vs. target"
-              action="Full Report"
-              onAction={onExport}
-            />
-            <ResponsiveContainer width="100%" height={230}>
-              <AreaChart data={revenueData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+        <Card>
+          <SectionHeader
+            title="Revenue Trend"
+            subtitle={`${data.periodLabel} · ${data.bucket === 'month' ? 'by month' : 'by day'} · VAT shown separately`}
+          />
+          {/* Never gated on "are there sales": lib/overview.ts seeds every
+              bucket in the window, so a quiet period draws a real flat line at
+              zero instead of hiding the chart. */}
+          <ResponsiveContainer width="100%" height={230}>
+              <AreaChart data={data.revenueTrend} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1e8a4a" stopOpacity={0.16} />
-                    <stop offset="95%" stopColor="#1e8a4a" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#1e5fa8" stopOpacity={0.16} />
+                    <stop offset="95%" stopColor="#1e5fa8" stopOpacity={0} />
                   </linearGradient>
-                  <linearGradient id="gProf" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#34d399" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                  <linearGradient id="gVat" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={16} />
+                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                  tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${Math.round(v / 1000)}K`} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1e8a4a" fill="url(#gRev)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                <Area type="monotone" dataKey="profit"  name="Profit"  stroke="#34d399" fill="url(#gProf)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                <Line  type="monotone" dataKey="target"  name="Target"  stroke="#d1d5db" strokeDasharray="5 5" strokeWidth={1.5} dot={false} />
+                <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1e5fa8" fill="url(#gRev)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                <Area type="monotone" dataKey="vat" name="VAT collected" stroke="#60a5fa" fill="url(#gVat)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
               </AreaChart>
-            </ResponsiveContainer>
-          </Card>
-        )}
+          </ResponsiveContainer>
+        </Card>
 
-        {widgets.catChart && (
-          <Card>
-            <SectionHeader
-              title="Sales by Category"
-              subtitle={activeCategory ? `Showing: ${activeCategory}` : 'Click a bar to cross-filter'}
-            />
+        <Card>
+          <SectionHeader
+            title="Sales by Category"
+            subtitle={activeCategory ? `Showing: ${activeCategory}` : 'Click a bar to cross-filter'}
+          />
+          {visibleCategories.length > 0 ? (
             <ResponsiveContainer width="100%" height={230}>
-              <BarChart data={filteredCategory} layout="vertical" margin={{ left: 0, right: 8 }}>
+              <BarChart data={visibleCategories} layout="vertical" margin={{ left: 0, right: 8 }}>
                 <CartesianGrid strokeDasharray="4 4" stroke="#f0f0f0" horizontal={false} />
-                <XAxis type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
+                <XAxis type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false}
+                  tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${Math.round(v / 1000)}K`} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={88} />
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="sales" name="Revenue" radius={[0, 5, 5, 0]} barSize={13}
-                  onClick={(data: any) => setActiveCategory(activeCategory === data.name ? null : data.name)}
-                  cursor="pointer">
-                  {filteredCategory.map((c, i) => (
-                    <Cell key={i} fill={activeCategory === c.name ? '#1e8a4a' : '#a7f3d0'} />
+                <Bar dataKey="sales" name="Revenue" radius={[0, 5, 5, 0]} barSize={13} cursor="pointer"
+                  onClick={(bar: any) => setActiveCategory(activeCategory === bar.name ? null : bar.name)}>
+                  {visibleCategories.map((c, i) => (
+                    <Cell key={i} fill={activeCategory === c.name ? '#1e5fa8' : '#a7f3d0'} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </Card>
-        )}
+          ) : <EmptyChart msg="No categorised sales in this period. Products are grouped using each branch's own categories." />}
+        </Card>
       </div>
 
-      {/* Daily + Payment + Alerts */}
+      {/* Daily Transactions + Payment Split + Active Alerts */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.52fr 0.75fr', gap: 14, marginBottom: 14 }}>
-        {widgets.daily && (
-          <Card>
-            <SectionHeader title="Daily Transactions" subtitle="Volume and amount — this week" />
-            <ResponsiveContainer width="100%" height={185}>
-              <BarChart data={dailySales} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="txn" name="Transactions" fill="#1e8a4a" radius={[4, 4, 0, 0]} barSize={22} />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        )}
+        <Card>
+          <SectionHeader title="Daily Transactions" subtitle="Volume — this week, Monday to Sunday" />
+          <ResponsiveContainer width="100%" height={185}>
+            <BarChart data={data.dailyTransactions} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="txn" name="Transactions" fill="#1e5fa8" radius={[4, 4, 0, 0]} barSize={22} />
+            </BarChart>
+          </ResponsiveContainer>
+        </Card>
 
-        {widgets.payment && (
-          <Card>
-            <SectionHeader title="Payment Mix" />
-            <ResponsiveContainer width="100%" height={130}>
-              <PieChart>
-                <Pie data={paymentMethodData} cx="50%" cy="50%" innerRadius={38} outerRadius={58} paddingAngle={3} dataKey="value">
-                  {paymentMethodData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                </Pie>
-                <Tooltip formatter={(v) => `${v}%`} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
-              {paymentMethodData.map(p => (
-                <div key={p.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 2, background: p.color, flexShrink: 0 }} />
-                    <span style={{ color: 'var(--ink-muted)' }}>{p.name}</span>
-                  </div>
-                  <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{p.value}%</span>
+        <Card>
+          {/* Not a cash/mobile-money/card mix: public.sales has no payment_method
+              column yet. This shows the split the database really records. */}
+          <SectionHeader title="Payment Split" subtitle="Insurance vs patient" />
+          {/* With no sales the ring renders as an empty track and both rows read
+              0% — the split is reported as zero, not hidden. */}
+          <ResponsiveContainer width="100%" height={130}>
+            <PieChart>
+              <Pie
+                data={hasSplit ? data.paymentSplit : [{ name: 'No sales', value: 1, color: 'var(--bg-alt)' }]}
+                cx="50%" cy="50%" innerRadius={38} outerRadius={58} paddingAngle={hasSplit ? 3 : 0} dataKey="value"
+                isAnimationActive={hasSplit}
+              >
+                {(hasSplit ? data.paymentSplit : [{ color: '#eaf5eb' }]).map((slice: any, i: number) => <Cell key={i} fill={slice.color} />)}
+              </Pie>
+              {hasSplit && <Tooltip formatter={(v: any) => `${v}%`} />}
+            </PieChart>
+          </ResponsiveContainer>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+            {splitRows.map(slice => (
+              <div key={slice.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: slice.color, flexShrink: 0 }} />
+                  <span style={{ color: 'var(--ink-muted)' }}>{slice.name}</span>
                 </div>
-              ))}
+                <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{slice.value}%</span>
+              </div>
+            ))}
+            <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 4, lineHeight: 1.4 }}>
+              Cash / mobile money / card breakdown needs a payment method on each sale — added with the RRA invoice work.
             </div>
-          </Card>
-        )}
+          </div>
+        </Card>
 
-        {widgets.alertsFeed && (
-          <Card style={{ padding: '16px 14px' }}>
-            <SectionHeader title="Active Alerts" action={`View all (${alertsData.filter(a => !a.dismissed).length})`} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, overflowY: 'auto', maxHeight: 220 }}>
-              {alertsData.filter(a => !a.dismissed).slice(0, 4).map(a => (
-                <AlertRow key={a.id} title={a.title} msg={a.msg} time={a.time} type={a.type} />
-              ))}
-            </div>
-          </Card>
-        )}
+        <Card style={{ padding: '16px 14px' }}>
+          <SectionHeader title="Active Alerts" action={`View all (${openAlerts.length})`} onAction={onViewAlerts} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, overflowY: 'auto', maxHeight: 220 }}>
+            {openAlerts.length === 0 ? (
+              <div style={{ padding: '22px 8px', textAlign: 'center', color: 'var(--ink-faint)', fontSize: 12, lineHeight: 1.5 }}>
+                ✓ Nothing needs attention right now.
+              </div>
+            ) : openAlerts.slice(0, 4).map(alert => (
+              <AlertRow
+                key={alert.id} title={alert.title} msg={alert.msg} type={alert.type}
+                time={new Date(alert.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+              />
+            ))}
+          </div>
+        </Card>
       </div>
 
-      {/* Smart Insights */}
+      {/* Insights */}
       <div style={{ background: 'linear-gradient(135deg, #ecfdf5, #f0fdf4)', border: '1.5px solid var(--border-strong)', borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 18 }}>💡</span>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'DM Sans' }}>Smart Insights</span>
-          <span style={{ fontSize: 10, fontWeight: 600, background: 'var(--primary)', color: '#fff', borderRadius: 10, padding: '2px 7px', marginLeft: 2 }}>BETA</span>
-          <span style={{ fontSize: 11, color: 'var(--ink-muted)', marginLeft: 4 }}>Powered by moving average trend analysis</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>Insights</span>
+          <span style={{ fontSize: 11, color: 'var(--ink-muted)', marginLeft: 4 }}>Calculated from this branch's own sales and stock</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
-          {smartInsights.map((insight, i) => (
+          {data.insights.map((insight, i) => (
             <div key={i} style={{ background: '#fff', borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border)' }}>
-              <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{['📈', '💰', '⚠️', '🎯'][i % 4]}</span>
-              <span style={{ fontSize: 12, color: 'var(--ink-mid)', lineHeight: 1.5 }}>{insight}</span>
+              <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{INSIGHT_STYLE[insight.tone].icon}</span>
+              <span style={{ fontSize: 12, color: 'var(--ink-mid)', lineHeight: 1.5 }}>{insight.text}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Break-Even Analysis */}
-      <Card style={{ marginBottom: 14 }}>
-        <SectionHeader
-          title="Break-Even Analysis"
-          subtitle={`Break-even point: ${fmtRWF(BREAK_EVEN_REVENUE)} / month — Fixed Costs ÷ (1 − Variable Cost Ratio)`}
-        />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 20, alignItems: 'start' }}>
-          <ResponsiveContainer width="100%" height={210}>
-            <AreaChart data={breakEvenData} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="gRevBE" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#1e8a4a" stopOpacity={0.14} />
-                  <stop offset="95%" stopColor="#1e8a4a" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gCostBE" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#dc2626" stopOpacity={0.1} />
-                  <stop offset="95%" stopColor="#dc2626" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${(v / 1000000).toFixed(1)}M`} />
-              <Tooltip content={<ChartTooltip />} />
-              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-              <ReferenceLine y={BREAK_EVEN_REVENUE} stroke="#d97706" strokeDasharray="6 3" strokeWidth={1.5} label={{ value: 'Break-Even', fill: '#d97706', fontSize: 10, position: 'insideTopRight' }} />
-              <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1e8a4a" fill="url(#gRevBE)" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
-              <Area type="monotone" dataKey="totalCosts" name="Total Costs" stroke="#dc2626" fill="url(#gCostBE)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-              <Line type="monotone" dataKey="fixedCosts" name="Fixed Costs" stroke="#9ca3af" strokeDasharray="4 4" strokeWidth={1.5} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 180 }}>
-            {[
-              { label: 'Break-Even Revenue', value: fmtRWF(BREAK_EVEN_REVENUE), color: '#d97706', icon: '⚖️' },
-              { label: 'Fixed Costs/month',  value: fmtRWF(1800000),             color: '#6b7280', icon: '🏢' },
-              { label: 'Variable Cost Ratio', value: '45%',                      color: '#dc2626', icon: '📦' },
-              { label: 'Profit Zone',         value: breakEvenData.filter(d => d.revenue > BREAK_EVEN_REVENUE).length + ' of 8 months', color: '#16a34a', icon: '✅' },
-            ].map(stat => (
-              <div key={stat.label} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 2 }}>
-                  <span style={{ fontSize: 12 }}>{stat.icon}</span>
-                  <span style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{stat.label}</span>
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: stat.color, fontFamily: 'DM Sans' }}>{stat.value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-
       {/* Top Products */}
-      {widgets.topProducts && (
-        <Card>
-          <SectionHeader
-            title={activeCategory ? `Top Products — ${activeCategory}` : 'Top Products by Revenue'}
-            action="Export"
-            onAction={onExport}
-          />
+      <Card>
+        <SectionHeader
+          title={activeCategory ? `Top Products — ${activeCategory}` : 'Top Products by Revenue'}
+          subtitle={`${data.periodLabel} · stock column is live, not period-bound`}
+          action="Export"
+          onAction={onExport}
+        />
+        {visibleProducts.length === 0 ? (
+          <EmptyChart msg="No products sold in this period." />
+        ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['#', 'Product', 'Category', 'Units Sold', 'Revenue', 'Stock', ...(isPharmacist ? [] : ['Branch']), 'Trend'].map(h => (
+                  {['#', 'Product', 'Category', 'Units Sold', 'Revenue', 'Stock', 'Trend'].map(h => (
                     <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: 'var(--ink-muted)', fontWeight: 500, fontSize: 11, letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredProducts.map(p => (
-                  <tr key={p.rank}
-                    style={{ borderBottom: '1px solid var(--bg-alt)', cursor: 'pointer', transition: 'background 0.13s' }}
+                {visibleProducts.map(product => (
+                  <tr key={product.variantId}
+                    style={{ borderBottom: '1px solid var(--bg-alt)', transition: 'background 0.13s' }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    onClick={() => setActiveCategory(p.category)}
                   >
-                    <td style={{ padding: '9px 10px', color: 'var(--ink-faint)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>{p.rank}</td>
-                    <td style={{ padding: '9px 10px', fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap' }}>{p.name}</td>
+                    <td style={{ padding: '9px 10px', color: 'var(--ink-faint)', fontWeight: 600 }}>{product.rank}</td>
+                    <td style={{ padding: '9px 10px', color: 'var(--ink)', fontWeight: 500, whiteSpace: 'nowrap' }}>{product.name}</td>
                     <td style={{ padding: '9px 10px' }}>
-                      <StatusBadge label={p.category} color="var(--primary)" bg="var(--primary-light)" />
-                    </td>
-                    <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace' }}>{p.sold.toLocaleString()}</td>
-                    <td style={{ padding: '9px 10px', fontWeight: 600 }}>{fmtRWF(p.revenue)}</td>
-                    <td style={{ padding: '9px 10px', fontFamily: 'JetBrains Mono, monospace' }}>{p.stock.toLocaleString()}</td>
-                    {!isPharmacist && <td style={{ padding: '9px 10px', fontSize: 11, color: 'var(--ink-muted)' }}>{p.branch}</td>}
-                    <td style={{ padding: '9px 10px' }}>
-                      <span style={{ fontWeight: 700, fontSize: 12, color: p.trend >= 0 ? 'var(--positive)' : 'var(--negative)' }}>
-                        {p.trend >= 0 ? '↑' : '↓'} {Math.abs(p.trend)}%
+                      <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 5, padding: '3px 8px', background: 'var(--primary-light)', color: 'var(--primary)', whiteSpace: 'nowrap' }}>
+                        {product.category}
                       </span>
+                    </td>
+                    <td style={{ padding: '9px 10px', color: 'var(--ink-mid)' }}>{product.units.toLocaleString()}</td>
+                    <td style={{ padding: '9px 10px', color: 'var(--ink)', fontWeight: 600, whiteSpace: 'nowrap' }}>{fmtRWFExact(product.revenue)}</td>
+                    <td style={{ padding: '9px 10px', color: product.stock === 0 ? 'var(--negative)' : 'var(--ink-mid)', fontWeight: product.stock === 0 ? 600 : 400 }}>
+                      {product.stock === 0 ? 'Out of stock' : product.stock.toLocaleString()}
+                    </td>
+                    <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>
+                      {product.trendPct == null ? (
+                        <span style={{ color: 'var(--ink-faint)' }}>new</span>
+                      ) : (
+                        <span style={{ color: product.trendPct >= 0 ? 'var(--positive)' : 'var(--negative)', fontWeight: 600 }}>
+                          {product.trendPct >= 0 ? '↑' : '↓'} {Math.abs(product.trendPct).toFixed(1)}%
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </Card>
-      )}
-
-      {/* Drill-down modal */}
-      {drillKPI && activeKPI && (
-        <KPIDrillDown kpi={drillKPI} onClose={() => { setDrillKPI(null); setActiveKPI(null) }} />
-      )}
-
-      {/* Builder side panel */}
-      <BuilderPanel visible={showBuilder} onToggle={onToggleBuilder} widgetState={widgets} onWidgetToggle={toggleWidget} />
+        )}
+      </Card>
     </>
   )
 }

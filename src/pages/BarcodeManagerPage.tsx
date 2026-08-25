@@ -37,7 +37,7 @@ const statusMeta: Record<BarcodeStatus, { label: string; color: string; backgrou
 
 const typeMeta: Record<BarcodeType, { label: string; color: string; background: string }> = {
   box: { label: "Box / carton", color: "#0284c7", background: "#e0f2fe" },
-  pack: { label: "Pack", color: "#1e8a4a", background: "#d1fae5" },
+  pack: { label: "Pack", color: "#1e5fa8", background: "#d1fae5" },
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
@@ -220,8 +220,8 @@ export default function BarcodeManagerPage() {
                   {group.variantLabel && <span style={{ fontWeight: 400, color: "var(--ink-muted)" }}> · {group.variantLabel}</span>}
                 </div>
                 <div style={{ fontSize: 10, color: "var(--ink-muted)", marginTop: 2 }}>
-                  Batch <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{group.batchNumber}</span>
-                  {group.deliveryCode && <> · Delivery <span style={{ fontFamily: "JetBrains Mono, monospace" }}>{group.deliveryCode}</span></>}
+                  Batch <span style={{ fontFamily: 'var(--font-mono)' }}>{group.batchNumber}</span>
+                  {group.deliveryCode && <> · Delivery <span style={{ fontFamily: 'var(--font-mono)' }}>{group.deliveryCode}</span></>}
                   {" · "}{group.supplierName} · Expires {group.expiryDate}
                 </div>
               </div>
@@ -238,7 +238,7 @@ export default function BarcodeManagerPage() {
             </div>
 
             {group.parent && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px 8px 46px", borderTop: "1px solid var(--border)", opacity: parentMatch ? 1 : 0.5 }}>
-              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, fontWeight: 700, color: "var(--ink)" }}>{group.parent.code}</span>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700, color: "var(--ink)" }}>{group.parent.code}</span>
               <StatusBadge label={typeMeta.box.label} color={typeMeta.box.color} bg={typeMeta.box.background} />
               <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>holds {group.parent.child_count ?? 0} packs · {group.parent.code_source}</span>
               <div style={{ flex: 1 }} />
@@ -257,7 +257,7 @@ export default function BarcodeManagerPage() {
                 }}
               >
                 {group.kind === "carton" && <span style={{ color: "var(--border-strong)", fontSize: 11 }}>└</span>}
-                <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "var(--ink)" }}>{child.code}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: "var(--ink)" }}>{child.code}</span>
                 <StatusBadge label={typeMeta.pack.label} color={typeMeta.pack.color} bg={typeMeta.pack.background} />
                 <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>{child.pieces_per_pack ?? 0} pieces/pack · {child.quantity_available} available · Sell: {fmtRWFExact(child.selling_price)}</span>
                 <div style={{ flex: 1 }} />

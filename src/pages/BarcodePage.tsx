@@ -147,7 +147,7 @@ function BulkBarcodeLabel({ code, name, qty, expiry }: { code: string; name: str
         fontSize={11}
         margin={4}
         background="transparent"
-        lineColor="#1e8a4a"
+        lineColor="#1e5fa8"
         displayValue
       />
       <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>
@@ -239,15 +239,15 @@ function Step2({ session }: { session: BarcodeSession }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', textAlign: 'center' }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary)', fontFamily: 'DM Sans' }}>{session.quantity}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-display)' }}>{session.quantity}</div>
           <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500 }}>Total Pieces</div>
         </div>
         <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', textAlign: 'center' }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#059669', fontFamily: 'DM Sans' }}>{session.quantity}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#3b82f6', fontFamily: 'var(--font-display)' }}>{session.quantity}</div>
           <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500 }}>Barcodes Generated</div>
         </div>
         <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '14px 16px', textAlign: 'center' }}>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#0284c7', fontFamily: 'DM Sans' }}>1</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: '#0284c7', fontFamily: 'var(--font-display)' }}>1</div>
           <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500 }}>Bulk Barcode</div>
         </div>
       </div>
@@ -352,7 +352,7 @@ function Step4({ session, onComplete }: { session: BarcodeSession; onComplete: (
       {!added ? (
         <>
           <div style={{ fontSize: 48 }}>📦</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'DM Sans' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>
             Ready to Add to Stock
           </div>
           <div style={{ fontSize: 13, color: 'var(--ink-muted)', maxWidth: 420, lineHeight: 1.7 }}>
@@ -371,7 +371,7 @@ function Step4({ session, onComplete }: { session: BarcodeSession; onComplete: (
       ) : (
         <>
           <div style={{ fontSize: 56 }}>✅</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--positive)', fontFamily: 'DM Sans' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--positive)', fontFamily: 'var(--font-display)' }}>
             {session.quantity} Units Added to Stock!
           </div>
           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '16px 24px', fontSize: 13, color: 'var(--ink-mid)' }}>
@@ -486,7 +486,7 @@ function ScanSalePrompt({ productName, price, onAdd, onClose }: ScanSalePromptPr
         <div style={{ background: 'linear-gradient(135deg, #ecfdf5, #f0fdf4)', padding: '18px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 12, alignItems: 'center' }}>
           <div style={{ fontSize: 28 }}>🧾</div>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)', fontFamily: 'DM Sans' }}>{productName}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>{productName}</div>
             <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 2 }}>RWF {price.toLocaleString()} per unit</div>
           </div>
           <button onClick={onClose} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--ink-muted)', lineHeight: 1 }}>×</button>
@@ -500,7 +500,7 @@ function ScanSalePrompt({ productName, price, onAdd, onClose }: ScanSalePromptPr
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <button onClick={() => setQty(q => Math.max(1, q - 1))}
                 style={{ width: 36, height: 36, borderRadius: 9, border: '1.5px solid var(--border)', background: '#fff', cursor: 'pointer', fontSize: 18, fontWeight: 700, color: 'var(--ink)', lineHeight: 1 }}>−</button>
-              <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--ink)', fontFamily: 'DM Sans', minWidth: 32, textAlign: 'center' }}>{qty}</span>
+              <span style={{ fontSize: 26, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--font-display)', minWidth: 32, textAlign: 'center' }}>{qty}</span>
               <button onClick={() => setQty(q => q + 1)}
                 style={{ width: 36, height: 36, borderRadius: 9, border: '1.5px solid var(--primary)', background: 'var(--primary-light)', cursor: 'pointer', fontSize: 18, fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>+</button>
             </div>
@@ -524,7 +524,7 @@ function ScanSalePrompt({ productName, price, onAdd, onClose }: ScanSalePromptPr
           {/* Total */}
           <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ fontSize: 13, color: 'var(--ink-muted)', fontWeight: 500 }}>Total ({qty} × RWF {price.toLocaleString()})</span>
-            <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)', fontFamily: 'DM Sans' }}>RWF {(price * qty).toLocaleString()}</span>
+            <span style={{ fontSize: 20, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-display)' }}>RWF {(price * qty).toLocaleString()}</span>
           </div>
 
           {/* Actions */}
@@ -725,7 +725,7 @@ function ScannerTab() {
               placeholder="Point scanner here or type barcode code…"
               style={{
                 flex: 1, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 9,
-                fontSize: 14, fontFamily: 'JetBrains Mono, monospace', outline: 'none',
+                fontSize: 14, fontFamily: 'var(--font-mono)', outline: 'none',
                 background: 'var(--bg)', letterSpacing: '0.04em',
               }}
               onFocus={e => e.target.style.borderColor = 'var(--primary)'}
@@ -743,7 +743,7 @@ function ScannerTab() {
                 <button key={c} onClick={() => { setInputVal(c); setTimeout(handleScan, 50) }}
                   style={{
                     padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)',
-                    background: '#fff', fontSize: 10, fontFamily: 'JetBrains Mono, monospace',
+                    background: '#fff', fontSize: 10, fontFamily: 'var(--font-mono)',
                     cursor: 'pointer', color: 'var(--ink-mid)', transition: 'background 0.12s',
                   }}
                   onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--primary-light)' }}
@@ -792,7 +792,7 @@ function ScannerTab() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {events.slice(0, 10).map(ev => {
               const icons: Record<string, string> = { bulk_stock: '▦', piece_stock: '📦', sale: '🧾', unknown: '❓' }
-              const colors: Record<string, string> = { bulk_stock: '#1e8a4a', piece_stock: '#059669', sale: '#0284c7', unknown: '#dc2626' }
+              const colors: Record<string, string> = { bulk_stock: '#1e5fa8', piece_stock: '#3b82f6', sale: '#0284c7', unknown: '#dc2626' }
               return (
                 <div key={ev.id} style={{
                   display: 'flex', gap: 10, alignItems: 'flex-start', padding: '7px 0',
@@ -801,7 +801,7 @@ function ScannerTab() {
                   <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{icons[ev.resolvedType]}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.message}</div>
-                    <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 1, fontFamily: 'JetBrains Mono, monospace' }}>{ev.barcode} · {ev.timestamp}</div>
+                    <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 1, fontFamily: 'var(--font-mono)' }}>{ev.barcode} · {ev.timestamp}</div>
                   </div>
                   <span style={{ fontSize: 10, fontWeight: 700, color: colors[ev.resolvedType], flexShrink: 0 }}>
                     {ev.resolvedType.replace('_', ' ').toUpperCase()}
@@ -888,8 +888,8 @@ function ScannerTab() {
         <Card style={{ padding: '12px 14px' }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Scan Result Types</div>
           {[
-            { icon: '▦', label: 'Bulk Barcode', desc: 'Adds all N pieces at once', color: '#1e8a4a' },
-            { icon: '📦', label: 'Piece Barcode (Stock)', desc: 'Adds 1 unit to stock', color: '#059669' },
+            { icon: '▦', label: 'Bulk Barcode', desc: 'Adds all N pieces at once', color: '#1e5fa8' },
+            { icon: '📦', label: 'Piece Barcode (Stock)', desc: 'Adds 1 unit to stock', color: '#3b82f6' },
             { icon: '🧾', label: 'Piece Barcode (Sale)', desc: 'Adds 1 unit to cart', color: '#0284c7' },
             { icon: '❓', label: 'Unknown', desc: 'Prompts to register', color: '#dc2626' },
           ].map(l => (
@@ -923,12 +923,12 @@ function RegistryTab({ onViewSession }: { onViewSession: (s: BarcodeSession) => 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         {[
-          { label: 'Total Sessions',     value: barcodeSessions.length,                          color: '#1e8a4a' },
-          { label: 'Total Pieces Tagged', value: barcodeSessions.reduce((s, b) => s + b.quantity, 0), color: '#059669' },
+          { label: 'Total Sessions',     value: barcodeSessions.length,                          color: '#1e5fa8' },
+          { label: 'Total Pieces Tagged', value: barcodeSessions.reduce((s, b) => s + b.quantity, 0), color: '#3b82f6' },
           { label: 'Added to Stock',     value: barcodeSessions.filter(b => b.addedToStock).length, color: '#0284c7' },
         ].map(k => (
           <div key={k.label} style={{ background: '#fff', borderRadius: 10, padding: '14px 16px', border: '1px solid var(--border)', textAlign: 'center' }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: 'DM Sans' }}>{k.value}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: k.color, fontFamily: 'var(--font-display)' }}>{k.value}</div>
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', fontWeight: 500 }}>{k.label}</div>
           </div>
         ))}
@@ -966,7 +966,7 @@ function RegistryTab({ onViewSession }: { onViewSession: (s: BarcodeSession) => 
             >
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: 'var(--ink-faint)' }}>{session.id}</span>
+                  <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--ink-faint)' }}>{session.id}</span>
                   {session.product.prescription && <StatusBadge label="Rx" color="#7c3aed" bg="#ede9fe" />}
                   {session.addedToStock && <StatusBadge label="✓ In Stock" color="#16a34a" bg="#d1fae5" />}
                 </div>
@@ -978,7 +978,7 @@ function RegistryTab({ onViewSession }: { onViewSession: (s: BarcodeSession) => 
               </div>
 
               <div style={{ textAlign: 'center', minWidth: 80 }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'DM Sans' }}>{session.quantity}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-display)' }}>{session.quantity}</div>
                 <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>pieces</div>
                 <div style={{ marginTop: 4, fontSize: 10 }}>
                   <span style={{ color: '#16a34a', fontWeight: 600 }}>{inStock} stock</span>
@@ -1018,7 +1018,7 @@ function SessionModal({ session, onClose }: { session: BarcodeSession; onClose: 
             ['Unit Price',  `RWF ${session.product.unitPrice.toLocaleString()}`],
           ].map(([l, v]) => (
             <div key={l as string} style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 12px', textAlign: 'center' }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)', fontFamily: 'DM Sans' }}>{v}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--primary)', fontFamily: 'var(--font-display)' }}>{v}</div>
               <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500 }}>{l}</div>
             </div>
           ))}
@@ -1094,7 +1094,7 @@ export default function BarcodePage() {
         }}>
           <div style={{ fontSize: 48 }}>▦</div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ink)', fontFamily: 'DM Sans' }}>Barcode Generation Wizard</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>Barcode Generation Wizard</div>
             <div style={{ fontSize: 13, color: 'var(--ink-mid)', marginTop: 6, lineHeight: 1.7 }}>
               Purchased a new box of medicine? Follow the 4-step wizard:<br />
               <strong>1</strong> Enter medicine details →

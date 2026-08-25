@@ -111,7 +111,7 @@ export function LanguageSwitcher({ variant = "pill" }: { variant?: "pill" | "dar
               fontWeight: active ? 700 : 500,
               letterSpacing: "0.02em",
               background: active ? (dark ? "rgba(255,255,255,0.95)" : "#fff") : "transparent",
-              color: active ? (dark ? "#0f172a" : "#0d9488") : dark ? "rgba(255,255,255,0.85)" : "#64748b",
+              color: active ? (dark ? "#0f172a" : "#1e5fa8") : dark ? "rgba(255,255,255,0.85)" : "#64748b",
               boxShadow: active ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
               transition: "all 0.15s",
             }}

@@ -86,12 +86,12 @@ export default function AlertsPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
         {[
-          { label: 'Total Notifications', value: alerts.length, c: '#1e8a4a', bg: '#d1fae5' },
+          { label: 'Total Notifications', value: alerts.length, c: '#1e5fa8', bg: '#d1fae5' },
           { label: 'Unread',              value: unreadCount,   c: '#dc2626', bg: '#fef2f2' },
           { label: 'Batch Recalls',       value: recallCount,   c: '#d97706', bg: '#fef3c7' },
         ].map(k => (
           <div key={k.label} style={{ background: k.bg, border: `1px solid ${k.c}30`, borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ fontSize: 26, fontWeight: 800, color: k.c, fontFamily: 'DM Sans' }}>{loading ? '—' : k.value}</div>
+            <div style={{ fontSize: 26, fontWeight: 800, color: k.c, fontFamily: 'var(--font-display)' }}>{loading ? '—' : k.value}</div>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{k.label}</div>
           </div>
         ))}
