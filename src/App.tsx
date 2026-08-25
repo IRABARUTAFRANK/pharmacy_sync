@@ -17,7 +17,7 @@ import AdminPortal from './pages/AdminPortal'
 import BranchPortal from './pages/BranchPortal'
 import ResetPassword from './pages/ResetPassword'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
-import { loadLiveAlerts, type LiveAlert } from './lib/alerts'
+import { checkOutOfStockAlerts, loadLiveAlerts, type LiveAlert } from './lib/alerts'
 
 // ─── Top-level hash router ──────────────────────────────────────────────────────
 // #admin and #branch are the super-admin console and pharmacy registration —
@@ -244,6 +244,9 @@ export default function App() {
   }, [])
 
   const refreshAlerts = useCallback(async () => {
+    // Best-effort and silent: a missed check here just means an overdue
+    // out-of-stock reminder surfaces on the next poll instead of this one.
+    try { await checkOutOfStockAlerts() } catch { /* ignore */ }
     try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
   }, [])
 

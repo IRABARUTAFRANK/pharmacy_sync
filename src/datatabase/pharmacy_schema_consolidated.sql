@@ -3185,3 +3185,91 @@ $$;
 
 revoke all on function public.complete_sale(jsonb, uuid) from public, anon;
 grant execute on function public.complete_sale(jsonb, uuid) to authenticated;
+
+-- ============================================================================
+-- RECURRING OUT-OF-STOCK ALERTS
+-- ============================================================================
+-- Nothing in the app has ever alerted on stock levels -- notifications only
+-- ever recorded batch_recall/stock_adjustment/product_request events, each a
+-- one-off. This adds a genuinely different kind: one that keeps coming back
+-- on its own for as long as the underlying problem (a medicine sitting at
+-- zero available stock) is real, instead of firing once and being gone the
+-- moment someone dismisses it.
+
+alter table public.notifications drop constraint if exists notifications_source_type_check;
+alter table public.notifications add constraint notifications_source_type_check
+  check (source_type in ('batch_recall','stock_adjustment','product_request_approved','product_request_rejected','out_of_stock'));
+
+-- Re-fires an unread reminder for every product variant currently at zero
+-- available stock for the caller's branch, on a 6-hour cadence (the user's
+-- own choice -- "treat out-of-stock as urgent, hard to ignore"; change
+-- v_interval below to retune it). Zero stock is computed the way the live
+-- inventory dashboard does (sum of quantity_available * pieces_per_pack
+-- across 'pack'-type barcodes only -- a 'box' row's quantity_available just
+-- means "does this carton still exist", never a piece count) but aggregated
+-- across ALL of a variant's batches at this branch, not per single batch: a
+-- depleted old lot sitting next to a freshly-received one of the SAME
+-- medicine is not actually out of stock, and a per-batch check would wrongly
+-- say it is.
+--
+-- source_id is the product_variant_id, not the product_id -- two dosages of
+-- the same product are two independently stockable items and need
+-- independent alerts. Safe to call on every poll: a variant with an already-
+-- unread reminder is left alone (never duplicated); a read one only gets a
+-- fresh row once the interval has actually elapsed; a variant back in stock
+-- is simply skipped, same as any row that was never a problem.
+create or replace function public.check_out_of_stock_alerts()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_interval interval := interval '6 hours';
+  v_created integer := 0;
+  rec record;
+  v_last record;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  for rec in
+    select pv.id as variant_id, p.name as product_name, pv.dosage
+    from public.stock_batches sb
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    left join public.barcodes bc on bc.stock_batch_id = sb.id and bc.barcode_type = 'pack'
+    where sb.branch_id = v_branch
+    group by pv.id, p.name, pv.dosage
+    having coalesce(sum(bc.quantity_available * bc.pieces_per_pack), 0) = 0
+  loop
+    select id, is_read, created_at into v_last
+      from public.notifications
+      where branch_id = v_branch and source_type = 'out_of_stock' and source_id = rec.variant_id
+      order by created_at desc
+      limit 1;
+
+    -- `found` is checked in its own branch, never combined into one boolean
+    -- expression with a field read off v_last: PostgreSQL doesn't guarantee
+    -- short-circuit order in AND/OR, so `not found or v_last.is_read` could
+    -- evaluate the right-hand side even when v_last was never assigned,
+    -- raising "record is not assigned yet" on the very first-ever alert.
+    if not found then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (v_branch, 'out_of_stock', rec.variant_id, format('%s is out of stock.', concat_ws(' ', rec.product_name, rec.dosage)));
+      v_created := v_created + 1;
+    elsif v_last.is_read and v_last.created_at < now() - v_interval then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (v_branch, 'out_of_stock', rec.variant_id, format('%s is still out of stock.', concat_ws(' ', rec.product_name, rec.dosage)));
+      v_created := v_created + 1;
+    end if;
+  end loop;
+
+  return v_created;
+end;
+$$;
+
+revoke all on function public.check_out_of_stock_alerts() from public;
+grant execute on function public.check_out_of_stock_alerts() to authenticated;
