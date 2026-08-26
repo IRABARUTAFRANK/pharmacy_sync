@@ -27,6 +27,7 @@ const TITLES: Record<string, string> = {
   stock_adjustment: "Stock Adjustment",
   product_request_approved: "Product Request Approved",
   product_request_rejected: "Product Request Declined",
+  out_of_stock: "Out of Stock",
 }
 
 const SEVERITY: Record<string, AlertSeverity> = {
@@ -34,6 +35,7 @@ const SEVERITY: Record<string, AlertSeverity> = {
   stock_adjustment: "warning",
   product_request_approved: "info",
   product_request_rejected: "warning",
+  out_of_stock: "critical",
 }
 
 interface NotificationRow {
@@ -68,5 +70,16 @@ export async function markAlertRead(id: string): Promise<void> {
 export async function markAllAlertsRead(ids: string[]): Promise<void> {
   if (ids.length === 0) return
   const { error } = await supabase.from("notifications").update({ is_read: true }).in("id", ids)
+  if (error) throw error
+}
+
+// Re-fires an unread "out of stock" notification for any product still at
+// zero stock once the reminder interval (6h, set server-side in
+// check_out_of_stock_alerts()) has elapsed since the last one was read.
+// Idempotent and cheap to call often -- see loadLiveAlerts()'s call site in
+// App.tsx's existing poll, which is what actually makes this "recurring"
+// rather than a one-off check on page load.
+export async function checkOutOfStockAlerts(): Promise<void> {
+  const { error } = await supabase.rpc("check_out_of_stock_alerts")
   if (error) throw error
 }

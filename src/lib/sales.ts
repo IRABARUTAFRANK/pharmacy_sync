@@ -37,6 +37,35 @@ export function effectiveCoveragePercentage(provider: InsuranceProvider, overrid
   return override === undefined ? provider.defaultCoveragePercentage : override
 }
 
+// ── Branch-side claims (what each insurer owes this branch) ────────────────
+// insurance_claims is one row per sale that used insurance (see complete_sale()).
+// RLS already scopes a plain select to the caller's own branch (or super admin),
+// via the sales.branch_id join in the "insurance claims branch access" policy —
+// no branch_id filter needed here, same pattern as getSaleReceipt()/listSaleHistory().
+
+export type InsuranceClaimStatus = "submitted" | "approved" | "rejected" | "paid"
+
+export interface BranchInsuranceClaim {
+  id: string
+  providerId: string
+  coveragePercentageApplied: number
+  claimAmount: number
+  status: InsuranceClaimStatus
+  submittedAt: string
+}
+
+export async function loadBranchInsuranceClaims(): Promise<BranchInsuranceClaim[]> {
+  const { data, error } = await supabase
+    .from("insurance_claims")
+    .select("id, insurance_provider_id, coverage_percentage_applied, claim_amount, status, submitted_at")
+    .order("submitted_at", { ascending: false })
+  if (error) raise(error, "Could not load insurance claims.")
+  return (data ?? []).map(row => ({
+    id: row.id, providerId: row.insurance_provider_id, coveragePercentageApplied: Number(row.coverage_percentage_applied),
+    claimAmount: Number(row.claim_amount), status: row.status as InsuranceClaimStatus, submittedAt: row.submitted_at,
+  }))
+}
+
 export interface CoverageOverrideRow {
   productId: string
   productName: string
