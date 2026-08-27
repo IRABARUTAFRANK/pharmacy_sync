@@ -3,8 +3,9 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { fmtRWF, fmtRWFExact, pct, type Role } from '../data'
+import { fmtRWFExact, pct, type Role } from '../data'
 import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn } from '../components'
+import { useTranslation } from '../lib/i18n'
 import { loadOverview, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
 import type { LiveAlert } from '../lib/alerts'
 
@@ -125,6 +126,7 @@ export default function OverviewPage({
   onExport: () => void
   onViewAlerts: () => void
 }) {
+  const { t } = useTranslation()
   const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -168,7 +170,7 @@ export default function OverviewPage({
   // operational half of the row. Matches how NAV_ITEMS already gates Analytics.
   const tiles: Tile[] = [
     ...(isPharmacist ? [] : [{
-      id: 'revenue', label: 'Total Revenue', value: fmtRWF(data.revenue.value),
+      id: 'revenue', label: 'Total Revenue', value: fmtRWFExact(data.revenue.value),
       sub: periodSub, icon: '💰', color: '#1e5fa8', change: data.revenue.changePct, spark: revenueSpark,
     }]),
     {
@@ -180,12 +182,12 @@ export default function OverviewPage({
       sub: periodSub, icon: '💊', color: '#7c3aed', change: data.itemsDispensed.changePct,
     },
     ...(isPharmacist ? [] : [{
-      id: 'inventory', label: 'Inventory Value', value: fmtRWF(data.inventoryValue),
+      id: 'inventory', label: 'Inventory Value', value: fmtRWFExact(data.inventoryValue),
       sub: 'stock on hand, at selling price', icon: '📦', color: '#d97706',
     }]),
     {
       id: 'expiring', label: 'Expiring ≤ 90 Days', value: data.expiring.count.toLocaleString(),
-      sub: `${fmtRWF(data.expiring.value)} at risk`, icon: '⏳', color: '#dc2626',
+      sub: `${fmtRWFExact(data.expiring.value)} at risk`, icon: '⏳', color: '#dc2626',
     },
     {
       // Deliberately honest rather than absent: the RRA VSDC integration is not
@@ -253,7 +255,7 @@ export default function OverviewPage({
                 <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={16} />
                 <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
-                  tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${Math.round(v / 1000)}K`} />
+                  tickFormatter={v => Math.round(v).toLocaleString()} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 <Area type="monotone" dataKey="revenue" name="Revenue" stroke="#1e5fa8" fill="url(#gRev)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
@@ -272,7 +274,7 @@ export default function OverviewPage({
               <BarChart data={visibleCategories} layout="vertical" margin={{ left: 0, right: 8 }}>
                 <CartesianGrid strokeDasharray="4 4" stroke="#f0f0f0" horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false}
-                  tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${Math.round(v / 1000)}K`} />
+                  tickFormatter={v => Math.round(v).toLocaleString()} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={88} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="sales" name="Revenue" radius={[0, 5, 5, 0]} barSize={13} cursor="pointer"
@@ -346,7 +348,7 @@ export default function OverviewPage({
               </div>
             ) : openAlerts.slice(0, 4).map(alert => (
               <AlertRow
-                key={alert.id} title={alert.title} msg={alert.msg} type={alert.type}
+                key={alert.id} title={t(alert.titleKey)} msg={alert.msg} type={alert.type}
                 time={new Date(alert.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
               />
             ))}

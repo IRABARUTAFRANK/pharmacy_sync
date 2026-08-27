@@ -51,8 +51,11 @@
   -- A public user profile is linked to Supabase Auth. Never store password hashes
   -- or OTP values in public tables: Supabase Auth owns those securely.
   -- branch_id is not declared UNIQUE here (the base schema dropped that column
-  -- constraint). The onboarding migration below re-establishes 1 user per branch
-  -- with the `users_one_per_branch` unique index, so the live end state IS 1:1.
+  -- constraint). The onboarding migration below originally re-established 1
+  -- user per branch via the `users_one_per_branch` unique index; the "FIX —
+  -- relax 'one user per branch'" block near the end of this file replaces
+  -- that with a partial index so only one 'owner' per branch is unique,
+  -- since a branch now legitimately has any number of seller logins too.
   create table if not exists public.users (
     id uuid primary key references auth.users(id) on delete cascade,
     branch_id uuid not null references public.branches(id), full_name varchar(150) not null,
@@ -456,10 +459,28 @@
   create unique index if not exists branches_branch_code_unique
     on public.branches (branch_code) where branch_code is not null;
 
-  -- Branch <-> user is one-to-one for the MVP. The base schema left branch_id
-  -- non-unique; this index is what actually enforces the 1:1 rule in the live DB.
-  create unique index if not exists users_one_per_branch
-    on public.users (branch_id);
+  -- Branch <-> user was one-to-one for the MVP (a branch had only its owner
+  -- login). Superseded further down (see "FIX — relax 'one user per branch'"
+  -- near the end of this file) once the seller role shipped and a branch
+  -- legitimately gained more than one login: that block drops this index and
+  -- replaces it with a narrower one-owner-per-branch partial index instead.
+  --
+  -- Unlike every other "superseded later in this file" statement here, a
+  -- unique index is not safely re-runnable once live data has outgrown it:
+  -- on any database that has ever created a seller (more than one user for
+  -- the same branch_id), this create would fail with "could not create
+  -- unique index ... is duplicated" on every single re-run, forever, well
+  -- before the script ever reaches the later block that drops it. Wrapped
+  -- in its own block so that specific failure is swallowed here -- a fresh
+  -- database still gets the index (and the later block still narrows it),
+  -- while a database that already has sellers just skips straight to the
+  -- later, correct, partial index.
+  do $$
+  begin
+    create unique index if not exists users_one_per_branch on public.users (branch_id);
+  exception when unique_violation then
+    null;
+  end $$;
 
   -- ============================================================================
   -- ONBOARDING — public branch directory
@@ -1242,7 +1263,15 @@
   -- reconsolidated. Not yet called from any client code: sales/POS is still out
   -- of scope, but this is the RPC that scanning a pack barcode at sale time will
   -- call to resolve it back to product, batch, price and supplier info.
-  create or replace function public.lookup_barcode(p_code text)
+  --
+  -- Dropped first, unconditionally: a database this file has already been run
+  -- against in full has the later, wider redeclaration of this same function
+  -- installed (see "lookup_barcode(): add product_id and tax_rate_id" further
+  -- down) -- `create or replace` cannot narrow a function's OUT-parameter row
+  -- shape back down to this older one, only Postgres's own DROP can. Safe to
+  -- re-run: the wider version further down always recreates it either way.
+  drop function if exists public.lookup_barcode(text);
+  create function public.lookup_barcode(p_code text)
   returns table(
     barcode_id uuid, code text, barcode_type text, status text,
     quantity_available integer, pieces_per_pack integer, child_count integer,
@@ -1711,9 +1740,17 @@ alter table public.support_tickets add constraint support_tickets_priority_check
   check (priority in ('low','medium','high'));
 
 -- ── notifications — widen source_type for the new resolution events ──────
+-- Includes 'out_of_stock' here too, even though that source type isn't
+-- introduced until the "RECURRING OUT-OF-STOCK ALERTS" block further down:
+-- a database this file has already been run against in full already has
+-- 'out_of_stock' notification rows, and this statement would otherwise
+-- briefly re-narrow the constraint below what's already live, which Postgres
+-- rejects outright ("check constraint ... is violated by some row") rather
+-- than just failing the rows that don't fit. Keeping both alters in sync so
+-- neither one is ever narrower than the other, regardless of run order.
 alter table public.notifications drop constraint if exists notifications_source_type_check;
 alter table public.notifications add constraint notifications_source_type_check
-  check (source_type in ('batch_recall','stock_adjustment','product_request_approved','product_request_rejected'));
+  check (source_type in ('batch_recall','stock_adjustment','product_request_approved','product_request_rejected','out_of_stock'));
 
 -- ============================================================================
 -- PRODUCT REQUESTS
@@ -2162,6 +2199,14 @@ begin
 end;
 $$;
 
+-- Dropped first, unconditionally: same reasoning as lookup_barcode() above --
+-- a database this file has already been run against in full has the later,
+-- narrower redeclaration of this function installed (see "PRODUCT REQUESTS
+-- — simplified to a message + optional photo" further down), and
+-- `create or replace` cannot change a function's OUT-parameter row shape
+-- without an explicit DROP first. Safe to re-run either way: the narrower
+-- version further down always recreates it regardless of which one existed.
+drop function if exists public.admin_list_product_requests();
 create or replace function public.admin_list_product_requests()
 returns table(
   id uuid, branch_id uuid, branch_name text, requested_by_name text,
@@ -3050,7 +3095,14 @@ grant execute on function public.admin_clear_insurance_coverage(uuid, uuid) to a
 -- transaction: without it, two cashiers scanning the same physical pack in
 -- the same instant could both pass the "is it still available" check before
 -- either one's update lands, selling the same physical pack twice.
-create or replace function public.complete_sale(p_lines jsonb, p_insurance_provider_id uuid default null)
+-- Adding p_patient_id changes this function's parameter signature (jsonb,uuid)
+-- -> (jsonb,uuid,uuid) -- a different overload identity to Postgres even
+-- though the new param has a default, so `create or replace` alone would
+-- leave the OLD 2-arg version installed alongside this one instead of
+-- replacing it, and PostgREST would then refuse ambiguous overload calls.
+-- Dropped first so only one complete_sale() ever exists.
+drop function if exists public.complete_sale(jsonb, uuid);
+create or replace function public.complete_sale(p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null)
 returns table(
   sale_id uuid, receipt_number text, total_amount numeric,
   insurance_covered_total numeric, patient_owed_total numeric
@@ -3097,10 +3149,19 @@ begin
     if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
   end if;
 
+  -- Optional: a walk-in cash sale is legitimate and stays unlinked. Validated
+  -- against this branch when given so one branch can never attach a sale to
+  -- another branch's patient record.
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
   v_receipt_number := format('RCT-%s-%s', to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
 
-  insert into public.sales (id, branch_id, cashier_id, total_amount)
-  values (v_sale, v_branch, v_user, 0); -- patched below once the real total is known
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0); -- patched below once the real total is known
 
   for line in select * from jsonb_array_elements(p_lines) loop
     v_code := upper(btrim(coalesce(line->>'code', '')));
@@ -3183,8 +3244,8 @@ begin
 end;
 $$;
 
-revoke all on function public.complete_sale(jsonb, uuid) from public, anon;
-grant execute on function public.complete_sale(jsonb, uuid) to authenticated;
+revoke all on function public.complete_sale(jsonb, uuid, uuid) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid, uuid) to authenticated;
 
 -- ============================================================================
 -- RECURRING OUT-OF-STOCK ALERTS
@@ -3273,3 +3334,652 @@ $$;
 
 revoke all on function public.check_out_of_stock_alerts() from public;
 grant execute on function public.check_out_of_stock_alerts() to authenticated;
+
+-- ============================================================================
+-- STOCK ADJUSTMENTS
+-- ============================================================================
+-- public.stock_adjustments already existed (adjustment_type, stock_batch_id /
+-- barcode_id, quantity, reason, performed_by) but nothing ever wrote to it --
+-- the only UI trace was a dead, disconnected button in an unrouted legacy
+-- page. This adds the real read/write path: a branch manager or owner writes
+-- off damaged, lost, expired, recalled, or supplier-returned stock, or
+-- corrects a recount that found more or fewer pieces than the system shows.
+
+-- Removing stock (damage/loss/return/expired_writeoff/recalled, or a negative
+-- correction) consumes whole packs first, oldest first, and for whatever
+-- remainder doesn't fill a whole pack, shrinks ONE pack's own
+-- pieces_per_pack down instead -- e.g. "3 of the 10 tablets in this opened
+-- pack were damaged" leaves that same pack row active with
+-- pieces_per_pack = 7, rather than forcing every adjustment to consume in
+-- whole-pack multiples. Only 'active' packs with stock left are eligible,
+-- the same eligibility complete_sale() already enforces when selling one --
+-- `for update` row-locks them for the same double-booking reason complete_sale()
+-- documents at its own barcode lookup.
+--
+-- Adding stock (a positive correction only -- a recount found MORE pieces
+-- than recorded) inserts one new synthetic pack barcode, the same insert
+-- shape receive_stock_delivery() already uses when receiving real stock, so
+-- every place that already sums quantity_available * pieces_per_pack across
+-- pack barcodes (loadInventoryDataset(), loadBarcodeDataset()) picks the
+-- correction up with no new derived-quantity logic anywhere else.
+create or replace function public.adjust_stock(p_stock_batch_id uuid, p_adjustment_type text, p_delta integer, p_reason text)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_batch record;
+  v_remaining integer;
+  v_take integer;
+  v_new_status text;
+  v_pack record;
+  v_adjustment uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = v_user and u.is_active;
+
+  if v_branch is null or not exists (
+    select 1 from public.users u where u.id = v_user and u.role in ('owner','manager')
+  ) then
+    raise exception 'Only an active branch manager or owner may adjust stock';
+  end if;
+
+  if p_adjustment_type not in ('damage','loss','correction','return','expired_writeoff','recalled') then
+    raise exception 'Unknown adjustment type: %', p_adjustment_type;
+  end if;
+  if p_delta = 0 then
+    raise exception 'Adjustment quantity cannot be zero';
+  end if;
+  if p_adjustment_type <> 'correction' and p_delta > 0 then
+    raise exception '% must reduce stock, not add it', p_adjustment_type;
+  end if;
+  if nullif(btrim(coalesce(p_reason, '')), '') is null then
+    raise exception 'A reason is required for every stock adjustment';
+  end if;
+
+  select sb.*, p.name as product_name, pv.dosage
+    into v_batch
+    from public.stock_batches sb
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    where sb.id = p_stock_batch_id and sb.branch_id = v_branch;
+  if not found then
+    raise exception 'Stock batch not found for this branch';
+  end if;
+
+  v_new_status := case p_adjustment_type
+    when 'damage' then 'damaged'
+    when 'recalled' then 'recalled'
+    when 'expired_writeoff' then 'expired'
+    else 'sold_out'
+  end;
+
+  if p_delta < 0 then
+    v_remaining := abs(p_delta);
+    for v_pack in
+      select * from public.barcodes
+      where stock_batch_id = p_stock_batch_id and barcode_type = 'pack'
+        and status = 'active' and quantity_available > 0
+      order by created_at asc
+      for update
+    loop
+      exit when v_remaining <= 0;
+      v_take := least(v_remaining, coalesce(v_pack.pieces_per_pack, 0));
+      if v_take >= v_pack.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = v_new_status where id = v_pack.id;
+      else
+        update public.barcodes set pieces_per_pack = v_pack.pieces_per_pack - v_take where id = v_pack.id;
+      end if;
+      v_remaining := v_remaining - v_take;
+    end loop;
+
+    if v_remaining > 0 then
+      raise exception 'Only % piece(s) available in this batch -- cannot remove %', abs(p_delta) - v_remaining, abs(p_delta);
+    end if;
+  else
+    insert into public.barcodes (stock_batch_id, barcode_type, code, code_source, pieces_per_pack, quantity_available, status)
+    values (p_stock_batch_id, 'pack', public.generate_short_barcode_code(), 'generated', p_delta, 1, 'active');
+  end if;
+
+  insert into public.stock_adjustments (stock_batch_id, adjustment_type, quantity, reason, performed_by)
+  values (p_stock_batch_id, p_adjustment_type, abs(p_delta), btrim(p_reason), v_user)
+  returning id into v_adjustment;
+
+  insert into public.notifications (branch_id, source_type, source_id, message)
+  values (
+    v_branch, 'stock_adjustment', v_adjustment,
+    format('%s: %s %s piece(s) of %s (%s)',
+      initcap(p_adjustment_type), case when p_delta < 0 then 'removed' else 'added' end,
+      abs(p_delta), concat_ws(' ', v_batch.product_name, v_batch.dosage), btrim(p_reason))
+  );
+
+  return v_adjustment;
+end;
+$$;
+
+revoke all on function public.adjust_stock(uuid, text, integer, text) from public, anon;
+grant execute on function public.adjust_stock(uuid, text, integer, text) to authenticated;
+
+-- Branch-scoped audit trail for the Stock Adjustment page's "Recent
+-- adjustments" panel -- newest first, joined back to the product/variant/
+-- batch it targeted and the staff member who made it.
+create or replace function public.list_stock_adjustments()
+returns table(
+  id uuid, adjustment_type text, quantity integer, reason text, adjusted_at timestamptz,
+  product_name text, dosage text, batch_number text, performed_by_name text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    sa.id, sa.adjustment_type, sa.quantity, sa.reason, sa.adjusted_at,
+    p.name, pv.dosage, sb.batch_number, u.full_name
+  from public.stock_adjustments sa
+  join public.stock_batches sb on sb.id = sa.stock_batch_id
+  join public.product_variants pv on pv.id = sb.product_variant_id
+  join public.products p on p.id = pv.product_id
+  left join public.users u on u.id = sa.performed_by
+  where sb.branch_id = public.current_branch_id()
+  order by sa.adjusted_at desc
+  limit 200
+$$;
+
+revoke all on function public.list_stock_adjustments() from public, anon;
+grant execute on function public.list_stock_adjustments() to authenticated;
+
+-- ============================================================================
+-- PATIENTS
+-- ============================================================================
+-- A sale has never carried who it was for -- just barcodes and a total. This
+-- adds a real patient record, branch-owned like suppliers/categories, keyed
+-- so the same person can be found again by phone or TIN on their next visit
+-- without re-typing everything: unique(branch_id, tin_or_phone) is what makes
+-- that lookup exact and dedupe-safe, and what upsert_patient() below conflicts
+-- on to update rather than duplicate an existing patient.
+
+create table if not exists public.patients (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null references public.branches(id),
+  full_name varchar(150) not null,
+  gender varchar(10) check (gender is null or gender in ('male','female','other')),
+  age integer check (age is null or (age >= 0 and age <= 130)),
+  tin_or_phone varchar(50) not null,
+  created_by uuid references public.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(branch_id, tin_or_phone)
+);
+
+alter table public.patients enable row level security;
+drop policy if exists "branch access" on public.patients;
+create policy "branch access" on public.patients
+for all to authenticated
+using (public.is_super_admin() or branch_id = public.current_branch_id())
+with check (public.is_super_admin() or branch_id = public.current_branch_id());
+
+grant select, insert, update on public.patients to authenticated;
+
+-- Optional link from a sale to the patient it was for -- nullable, a walk-in
+-- cash sale with no name given is still a legitimate sale.
+alter table public.sales add column if not exists patient_id uuid references public.patients(id);
+
+-- The pharmacy's own tax ID, shown on every printed invoice from here on.
+alter table public.branches add column if not exists tin varchar(20);
+
+create or replace function public.find_patient_by_identifier(p_identifier text)
+returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.id, p.full_name::text, p.gender::text, p.age, p.tin_or_phone::text
+  from public.patients p
+  where p.branch_id = public.current_branch_id()
+    and p.tin_or_phone = btrim(p_identifier)
+  limit 1
+$$;
+
+-- Insert-or-update on the (branch_id, tin_or_phone) unique key -- this is the
+-- "found them, just change what's different" edit path from the sales
+-- screen, not a separate create-vs-edit flow. created_by is only ever set on
+-- the initial insert (left out of the do-update clause) so the original
+-- registrar is preserved even if a later visit edits their details.
+create or replace function public.upsert_patient(p_full_name text, p_gender text, p_age integer, p_tin_or_phone text)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid := (select auth.uid());
+  v_branch uuid;
+  v_id uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may record a patient'; end if;
+  if nullif(btrim(coalesce(p_full_name, '')), '') is null then raise exception 'A patient name is required'; end if;
+  if nullif(btrim(coalesce(p_tin_or_phone, '')), '') is null then raise exception 'A phone number or TIN is required'; end if;
+  if p_gender is not null and p_gender not in ('male','female','other') then raise exception 'Unknown gender'; end if;
+
+  insert into public.patients (branch_id, full_name, gender, age, tin_or_phone, created_by)
+  values (v_branch, btrim(p_full_name), p_gender, p_age, btrim(p_tin_or_phone), v_user)
+  on conflict (branch_id, tin_or_phone)
+  do update set full_name = excluded.full_name, gender = excluded.gender, age = excluded.age, updated_at = now()
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- Branch-scoped roster for the Patients page: each patient plus their most
+-- recent visit and lifetime spend, computed from sales rather than stored
+-- redundantly so it can never drift from the real sale history.
+create or replace function public.list_branch_patients()
+returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text, visit_count integer, last_visit_at timestamptz, lifetime_spend numeric)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    p.id, p.full_name::text, p.gender::text, p.age, p.tin_or_phone::text,
+    count(s.id)::integer, max(s.sold_at), coalesce(sum(s.total_amount), 0)
+  from public.patients p
+  left join public.sales s on s.patient_id = p.id
+  where p.branch_id = public.current_branch_id()
+  group by p.id, p.full_name, p.gender, p.age, p.tin_or_phone
+  order by max(s.sold_at) desc nulls last, p.full_name
+$$;
+
+revoke all on function public.find_patient_by_identifier(text) from public, anon;
+grant execute on function public.find_patient_by_identifier(text) to authenticated;
+
+revoke all on function public.upsert_patient(text, text, integer, text) from public, anon;
+grant execute on function public.upsert_patient(text, text, integer, text) to authenticated;
+
+revoke all on function public.list_branch_patients() from public, anon;
+grant execute on function public.list_branch_patients() to authenticated;
+
+-- ============================================================================
+-- SELLER ROLE
+-- ============================================================================
+-- A second real role: a branch's owner/manager can now create a limited
+-- "seller" login (Sales + Patients + Help only in the UI, and enforced
+-- server-side on every RPC that mutates something a seller should not
+-- touch). The actual auth.users row + matching public.users row are created
+-- by supabase/functions/create-branch-seller (a Supabase Edge Function) --
+-- that part needs the service-role Admin API to set a real password for
+-- someone else, which a plain RPC running as the calling user can never do.
+
+alter table public.users drop constraint if exists users_role_check;
+alter table public.users add constraint users_role_check
+  check (role in ('owner','manager','pharmacist','staff','seller'));
+
+-- users has never had an UPDATE policy (only the SELECT-only "users read own
+-- branch" one) -- a small security-definer RPC here is safer than adding a
+-- broad UPDATE policy that could let a manager edit a role, or a row outside
+-- their own branch, that this narrow RPC deliberately can't touch.
+create or replace function public.admin_set_seller_active(p_user_id uuid, p_is_active boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller uuid := (select auth.uid());
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = v_caller and u.is_active and u.role in ('owner','manager');
+  if v_branch is null then raise exception 'Only an active branch manager or owner may manage staff'; end if;
+
+  update public.users
+  set is_active = p_is_active
+  where id = p_user_id and branch_id = v_branch and role = 'seller';
+  if not found then raise exception 'Seller not found for this branch'; end if;
+end;
+$$;
+
+revoke all on function public.admin_set_seller_active(uuid, boolean) from public, anon;
+grant execute on function public.admin_set_seller_active(uuid, boolean) to authenticated;
+
+-- Per-seller "what did they do today" rollup for the Team page -- a live
+-- summary rather than a notification fired on every single sale, which would
+-- bury a busy manager in noise. patients_registered_today is attributed by
+-- created_by, not just branch + today's date, so it is a per-seller count
+-- and not the same branch-wide total repeated on every row.
+create or replace function public.list_seller_activity_today()
+returns table(user_id uuid, full_name text, sales_count integer, revenue_today numeric, patients_registered_today integer)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller uuid := (select auth.uid());
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = v_caller and u.is_active and u.role in ('owner','manager');
+  if v_branch is null then raise exception 'Only an active branch manager or owner may view staff activity'; end if;
+
+  return query
+    select
+      u.id, u.full_name::text,
+      count(distinct s.id) filter (where s.sold_at >= date_trunc('day', now()))::integer,
+      coalesce(sum(s.total_amount) filter (where s.sold_at >= date_trunc('day', now())), 0),
+      count(distinct p.id) filter (where p.created_at >= date_trunc('day', now()))::integer
+    from public.users u
+    left join public.sales s on s.cashier_id = u.id and s.branch_id = v_branch
+    left join public.patients p on p.created_by = u.id and p.branch_id = v_branch
+    where u.branch_id = v_branch and u.role = 'seller'
+    group by u.id, u.full_name
+    order by u.full_name;
+end;
+$$;
+
+revoke all on function public.list_seller_activity_today() from public, anon;
+grant execute on function public.list_seller_activity_today() to authenticated;
+
+-- ============================================================================
+-- BRANCH SETTINGS — owner-editable pharmacy identity, shown on every invoice
+-- ============================================================================
+-- public.branches only ever had a SELECT policy (see "branch access" in the
+-- RLS section near the top of this file) -- nothing has ever let a branch
+-- update its own row. The TIN/address/phone this RPC sets are exactly what
+-- ReceiptView now prints on every invoice, so without this the new fields
+-- on the receipt would just stay permanently blank.
+
+-- Full pharmacy profile: logo (printed at the top of every invoice, replacing
+-- the plain text header) and payment-collection details (bank account, momo
+-- pay) that a real Rwandan invoice carries alongside TIN/address/phone.
+alter table public.branches
+  add column if not exists logo_path text,
+  add column if not exists bank_account_number varchar(50),
+  add column if not exists bank_account_name varchar(150),
+  add column if not exists momo_pay_number varchar(50);
+
+-- Dropped first: adding four new params changes this function's argument
+-- signature ((text,text,text) -> (text,text,text,text,text,text,text)), a
+-- different overload identity to Postgres, so a plain `create or replace`
+-- would leave the old 3-arg version installed alongside this one.
+drop function if exists public.update_branch_details(text, text, text);
+create or replace function public.update_branch_details(
+  p_address text, p_phone text, p_tin text, p_logo_path text default null,
+  p_bank_account_number text default null, p_bank_account_name text default null, p_momo_pay_number text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then raise exception 'Only the branch owner may update branch settings'; end if;
+
+  update public.branches
+  set address = nullif(btrim(coalesce(p_address, '')), ''),
+      phone = nullif(btrim(coalesce(p_phone, '')), ''),
+      tin = nullif(btrim(coalesce(p_tin, '')), ''),
+      logo_path = nullif(btrim(coalesce(p_logo_path, '')), ''),
+      bank_account_number = nullif(btrim(coalesce(p_bank_account_number, '')), ''),
+      bank_account_name = nullif(btrim(coalesce(p_bank_account_name, '')), ''),
+      momo_pay_number = nullif(btrim(coalesce(p_momo_pay_number, '')), '')
+  where id = v_branch;
+end;
+$$;
+
+revoke all on function public.update_branch_details(text, text, text, text, text, text, text) from public, anon;
+grant execute on function public.update_branch_details(text, text, text, text, text, text, text) to authenticated;
+
+-- Dropped first: the return shape grew (name,address,phone,tin) -> (+logo_path,
+-- +bank_account_number,+bank_account_name,+momo_pay_number) -- a zero-arg
+-- function has no signature to overload on, so without this drop the
+-- create-or-replace just below would fail immediately on a single top-to-
+-- bottom run of this file, the same "cannot change return type" error as
+-- lookup_barcode()/admin_list_product_requests() above, just triggered
+-- within one run instead of across a re-run.
+drop function if exists public.get_my_branch_details();
+create or replace function public.get_my_branch_details()
+returns table(name text, address text, phone text, tin text, logo_path text, bank_account_number text, bank_account_name text, momo_pay_number text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select b.name::text, b.address, b.phone, b.tin, b.logo_path, b.bank_account_number, b.bank_account_name, b.momo_pay_number
+  from public.branches b
+  where b.id = public.current_branch_id()
+$$;
+
+revoke all on function public.get_my_branch_details() from public, anon;
+grant execute on function public.get_my_branch_details() to authenticated;
+
+-- ── Storage — pharmacy logo ─────────────────────────────────────────────
+-- Same public-read/authenticated-insert shape as the product-request photos
+-- bucket, plus UPDATE: a branch replaces its logo over time (product-request
+-- photos never get overwritten in place, but a logo naturally does), so
+-- authenticated users can also update objects they've already inserted here.
+
+insert into storage.buckets (id, name, public)
+values ('branch-logos', 'branch-logos', true)
+on conflict (id) do nothing;
+
+drop policy if exists "branch logos are publicly readable" on storage.objects;
+create policy "branch logos are publicly readable"
+on storage.objects for select
+to public
+using (bucket_id = 'branch-logos');
+
+drop policy if exists "authenticated users can upload branch logos" on storage.objects;
+create policy "authenticated users can upload branch logos"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'branch-logos');
+
+drop policy if exists "authenticated users can replace branch logos" on storage.objects;
+create policy "authenticated users can replace branch logos"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'branch-logos')
+with check (bucket_id = 'branch-logos');
+
+-- ============================================================================
+-- FIX — relax "one user per branch" now that a branch legitimately has more
+-- than one login (owner + any number of sellers, and managers in future).
+-- ============================================================================
+-- users_one_per_branch (declared near the top of this file, in the ONBOARDING
+-- section) was correct back when a branch had exactly one login -- the owner
+-- created by activate_pharmacy_account(). Once the seller role and
+-- create-branch-seller shipped, every second insert with the same branch_id
+-- (i.e. every seller after the owner) started failing with "duplicate key
+-- value violates unique constraint users_one_per_branch", which is exactly
+-- the bug this block fixes. The one-owner-per-branch invariant is still
+-- worth keeping (activate_pharmacy_account() already enforces it in
+-- application logic too), so it is narrowed to a partial index on
+-- role = 'owner' rather than removed outright -- sellers/managers are free
+-- to be as many as the branch creates.
+
+drop index if exists public.users_one_per_branch;
+
+create unique index if not exists users_one_owner_per_branch
+  on public.users (branch_id)
+  where role = 'owner';
+
+-- ============================================================================
+-- FIX — sell a partial quantity from a pack, not only the whole pack
+-- ============================================================================
+-- complete_sale() always sold every piece in a scanned pack at once
+-- (quantity = pieces_per_pack). A pharmacy regularly needs to sell fewer --
+-- e.g. a pack of 20 tablets where the patient only needs 5. Each line in
+-- p_lines may now carry an optional "quantity"; omitted or >= the pack's own
+-- pieces_per_pack still sells the whole pack exactly as before (and marks it
+-- sold_out). A smaller quantity uses the same partial-shrink technique
+-- adjust_stock() already uses for a partial removal: the SAME barcode row
+-- stays 'active' with quantity_available = 1, just with pieces_per_pack
+-- reduced by however many pieces were sold, so the remainder is still a real,
+-- scannable pack for the next sale. Same parameter signature as before
+-- (jsonb, uuid, uuid) -- create or replace is enough, no drop needed.
+create or replace function public.complete_sale(p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  line jsonb;
+  v_code text;
+  v_qty integer;
+  v_barcode record;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  v_receipt_number := format('RCT-%s-%s', to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0); -- patched below once the real total is known
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.barcode_type <> 'pack' then
+      raise exception 'Barcode % is a carton, not a sellable pack -- scan an individual pack instead', v_code;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+    if coalesce(v_barcode.quantity_available, 0) < 1 then
+      raise exception 'Barcode % has already been sold', v_code;
+    end if;
+
+    v_qty := coalesce((line->>'quantity')::integer, v_barcode.pieces_per_pack);
+    if v_qty is null or v_qty < 1 then
+      raise exception 'Barcode %: quantity to sell must be at least 1', v_code;
+    end if;
+    if v_qty > v_barcode.pieces_per_pack then
+      raise exception 'Barcode % only has % piece(s) left in this pack', v_code, v_barcode.pieces_per_pack;
+    end if;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    v_subtotal := v_barcode.selling_price * v_qty;
+    v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+    v_line_total := v_subtotal + v_tax_amount;
+    v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+    insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+    values (v_sale, v_barcode.id, v_tax_rate_id, v_qty, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+    if v_qty >= v_barcode.pieces_per_pack then
+      update public.barcodes
+      set quantity_available = 0, status = 'sold_out'
+      where id = v_barcode.id;
+    else
+      -- Same pack, same barcode -- still scannable, just fewer pieces left.
+      update public.barcodes
+      set pieces_per_pack = v_barcode.pieces_per_pack - v_qty
+      where id = v_barcode.id;
+    end if;
+
+    v_total := v_total + v_line_total;
+    v_covered_total := v_covered_total + v_line_covered;
+  end loop;
+
+  update public.sales set total_amount = v_total where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total, v_covered_total, v_total - v_covered_total;
+end;
+$$;

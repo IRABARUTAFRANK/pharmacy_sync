@@ -1,6 +1,6 @@
 import { supabase } from "./supabase"
 
-export type AppRole = "owner" | "manager" | "pharmacist" | "staff"
+export type AppRole = "owner" | "manager" | "pharmacist" | "staff" | "seller"
 
 export interface BranchDirectoryEntry { id: string; name: string }
 export interface BranchAccess {

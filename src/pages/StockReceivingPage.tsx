@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { Btn, Card, CenterAlert, Modal, SearchSelect, StatusBadge, BarcodeLabelSheet, type ComboOption, type PrintableBarcode } from "../components"
 import { fmtRWFExact } from "../data"
+import { useTranslation } from "../lib/i18n"
 import {
   loadProductDefaults,
   loadReceivingReference,
@@ -67,9 +68,6 @@ const packBarcodesFor = (line: LineForm) => {
   return line.packaging === "cartons" ? Math.max(toInt(line.cartons), 0) * packs : packs
 }
 
-const variantLabel = (variant: { dosage: string | null; form: string | null; unit: string | null }) =>
-  [variant.dosage, variant.form, variant.unit].filter(Boolean).join(" · ") || "Standard (no dosage or form recorded)"
-
 const inputStyle: CSSProperties = {
   width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7,
   font: "inherit", boxSizing: "border-box", background: "#fff", color: "var(--ink)",
@@ -119,6 +117,7 @@ function deliveryLabelsToPrintable(labels: DeliveryBarcodeLabel[]): PrintableBar
 // The branch describes what's missing in their own words; the super admin
 // turns it into a real catalogue entry (name, variants, tax) when approving.
 function RequestProductModal({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }) {
+  const { t } = useTranslation()
   const [message, setMessage] = useState("")
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -131,7 +130,7 @@ function RequestProductModal({ onClose, onSubmitted }: { onClose: () => void; on
   }
 
   async function submit() {
-    if (!message.trim()) { setError("Describe the product you need."); return }
+    if (!message.trim()) { setError(t("requestProduct.describeRequired")); return }
     setBusy(true)
     setError(null)
     try {
@@ -139,56 +138,56 @@ function RequestProductModal({ onClose, onSubmitted }: { onClose: () => void; on
       await submitProductRequest(message.trim(), imagePath)
       onSubmitted()
     } catch (reason) {
-      setError(errorMessage(reason, "Could not send this request."))
+      setError(errorMessage(reason, t("requestProduct.submitError")))
     } finally {
       setBusy(false)
     }
   }
 
-  return <Modal title="Request a new product" onClose={onClose} width={480}>
+  return <Modal title={t("receiving.requestModalTitle")} onClose={onClose} width={480}>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>
-        Can't find a product in the catalogue? Describe what you need and the super admin will add it. You'll see the status below once it's reviewed.
+        {t("receiving.requestModalIntro")}
       </p>
       {error && <p style={{ margin: 0, fontSize: 12, color: "#dc2626" }}>{error}</p>}
       <div>
-        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", display: "block", marginBottom: 4 }}>What do you need?</label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", display: "block", marginBottom: 4 }}>{t("requestProduct.describeLabel")}</label>
         <textarea
           value={message} onChange={event => setMessage(event.target.value)} rows={5}
-          placeholder="e.g. Amoxicillin 500mg capsules — our usual supplier delivered these but they're not in the system yet."
+          placeholder={t("requestProduct.describePlaceholder")}
           style={{ ...inputStyle, resize: "vertical" }}
         />
       </div>
       <div>
-        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", display: "block", marginBottom: 4 }}>Photo (optional)</label>
+        <label style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-mid)", display: "block", marginBottom: 4 }}>{t("requestProduct.photoLabel")}</label>
         <input type="file" accept="image/*" onChange={event => pickFile(event.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
-        {preview && <img src={preview} alt="Preview" style={{ marginTop: 8, maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid var(--border)" }} />}
+        {preview && <img src={preview} alt={t("requestProduct.photoPreviewAlt")} style={{ marginTop: 8, maxWidth: "100%", maxHeight: 160, borderRadius: 8, border: "1px solid var(--border)" }} />}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-        <Btn variant="ghost" onClick={onClose}>Cancel</Btn>
-        <Btn variant="primary" onClick={() => void submit()} style={busy ? { opacity: 0.6, pointerEvents: "none" } : undefined}>{busy ? "Sending…" : "Send request"}</Btn>
+        <Btn variant="ghost" onClick={onClose}>{t("receiving.cancelAction")}</Btn>
+        <Btn variant="primary" onClick={() => void submit()} style={busy ? { opacity: 0.6, pointerEvents: "none" } : undefined}>{busy ? t("requestProduct.sending") : t("requestProduct.sendButton")}</Btn>
       </div>
     </div>
   </Modal>
-}
-
-const requestStatusMeta: Record<ProductRequestRow["status"], { label: string; color: string; bg: string }> = {
-  pending: { label: "Awaiting admin review", color: "#b45309", bg: "#fef3c7" },
-  approved: { label: "Approved — now in the catalogue", color: "#16a34a", bg: "#dcfce7" },
-  rejected: { label: "Declined", color: "#b91c1c", bg: "#fef2f2" },
 }
 
 // Every product request this branch has filed. Once approved, the product
 // is simply selectable under "Product" below on the next delivery -- there
 // is no separate "finish" step.
 function MyRequestsPanel({ requests, loading }: { requests: ProductRequestRow[]; loading: boolean }) {
+  const { t } = useTranslation()
+  const requestStatusMeta: Record<ProductRequestRow["status"], { label: string; color: string; bg: string }> = {
+    pending: { label: t("requestProduct.statusPending"), color: "#b45309", bg: "#fef3c7" },
+    approved: { label: t("requestProduct.statusApproved"), color: "#16a34a", bg: "#dcfce7" },
+    rejected: { label: t("requestProduct.statusRejected"), color: "#b91c1c", bg: "#fef2f2" },
+  }
   if (!loading && requests.length === 0) return null
   return <Card>
     <div style={{ marginBottom: 10 }}>
-      <h2 style={{ margin: 0, fontSize: 14 }}>Your product requests</h2>
-      <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>Products you've asked the super admin to add to the catalogue.</p>
+      <h2 style={{ margin: 0, fontSize: 14 }}>{t("receiving.myRequestsTitle")}</h2>
+      <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>{t("receiving.myRequestsSubtitle")}</p>
     </div>
-    {loading ? <p style={{ fontSize: 11, color: "var(--ink-muted)" }}>Loading…</p> : (
+    {loading ? <p style={{ fontSize: 11, color: "var(--ink-muted)" }}>{t("receiving.loading")}</p> : (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {requests.map(request => {
           const meta = requestStatusMeta[request.status]
@@ -199,7 +198,7 @@ function MyRequestsPanel({ requests, loading }: { requests: ProductRequestRow[];
             <div style={{ flex: 1, minWidth: 160 }}>
               <div style={{ fontSize: 12, color: "var(--ink)", lineHeight: 1.4 }}>{request.message}</div>
               {request.status === "rejected" && request.rejection_reason && (
-                <div style={{ fontSize: 10, color: "#b91c1c", marginTop: 2 }}>Reason: {request.rejection_reason}</div>
+                <div style={{ fontSize: 10, color: "#b91c1c", marginTop: 2 }}>{t("requestProduct.reasonPrefix")}: {request.rejection_reason}</div>
               )}
             </div>
             <StatusBadge label={meta.label} color={meta.color} bg={meta.bg} />
@@ -211,6 +210,10 @@ function MyRequestsPanel({ requests, loading }: { requests: ProductRequestRow[];
 }
 
 export default function StockReceivingPage() {
+  const { t } = useTranslation()
+  const variantLabel = (variant: { dosage: string | null; form: string | null; unit: string | null }) =>
+    [variant.dosage, variant.form, variant.unit].filter(Boolean).join(" · ") || t("receiving.variantStandardFallback")
+
   const [reference, setReference] = useState<ReceivingReference>({ products: [], variants: [], categories: [], suppliers: [] })
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -244,11 +247,11 @@ export default function StockReceivingPage() {
     try {
       setReference(await loadReceivingReference())
     } catch (reason) {
-      setLoadError(errorMessage(reason, "Unable to load the product catalogue from the database."))
+      setLoadError(errorMessage(reason, t("receiving.loadError")))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   const refreshRequests = useCallback(async () => {
     setRequestsLoading(true)
@@ -275,21 +278,21 @@ export default function StockReceivingPage() {
 
   const problemsFor = useCallback((candidate: LineForm) => {
     const problems: string[] = []
-    if (!candidate.productId) problems.push("a product")
+    if (!candidate.productId) problems.push(t("receiving.problemProduct"))
     // A product with zero variants can no longer be received here -- the
     // server no longer creates variants inline. The admin adds a variant
     // when approving a product request.
-    else if (!candidate.variantId) problems.push("a variant")
-    if (!candidate.categoryName.trim()) problems.push("a product category")
-    if (!candidate.batchNumber.trim()) problems.push("a batch number")
-    if (!candidate.expiryDate) problems.push("an expiry date")
-    if (!(toMoney(candidate.costPrice) >= 0)) problems.push("a cost price")
-    if (!(toMoney(candidate.sellingPrice) >= 0)) problems.push("a selling price")
-    if (toInt(candidate.packs) < 1) problems.push("at least 1 pack")
-    if (toInt(candidate.piecesPerPack) < 1) problems.push("at least 1 piece per pack")
-    if (candidate.packaging === "cartons" && toInt(candidate.cartons) < 1) problems.push("at least 1 carton")
+    else if (!candidate.variantId) problems.push(t("receiving.problemVariant"))
+    if (!candidate.categoryName.trim()) problems.push(t("receiving.problemCategory"))
+    if (!candidate.batchNumber.trim()) problems.push(t("receiving.problemBatchNumber"))
+    if (!candidate.expiryDate) problems.push(t("receiving.problemExpiryDate"))
+    if (!(toMoney(candidate.costPrice) >= 0)) problems.push(t("receiving.problemCostPrice"))
+    if (!(toMoney(candidate.sellingPrice) >= 0)) problems.push(t("receiving.problemSellingPrice"))
+    if (toInt(candidate.packs) < 1) problems.push(t("receiving.problemMinPacks"))
+    if (toInt(candidate.piecesPerPack) < 1) problems.push(t("receiving.problemMinPieces"))
+    if (candidate.packaging === "cartons" && toInt(candidate.cartons) < 1) problems.push(t("receiving.problemMinCartons"))
     return problems
-  }, [])
+  }, [t])
 
   const buildLine = useCallback((candidate: LineForm): DeliveryLine => {
     const packs = Math.max(toInt(candidate.packs, 1), 1)
@@ -428,11 +431,11 @@ export default function StockReceivingPage() {
   const lineProblems = lines.map(problemsFor)
   const firstIncomplete = lineProblems.findIndex(problems => problems.length > 0)
   const disabledReason = submitting
-    ? "Saving the delivery…"
+    ? t("receiving.disabledSaving")
     : !supplier.trim()
-      ? "Enter the supplier for this delivery"
+      ? t("receiving.disabledSupplier")
       : firstIncomplete >= 0
-        ? `Product ${firstIncomplete + 1} still needs ${lineProblems[firstIncomplete].join(", ")}`
+        ? t("receiving.disabledLineIncomplete", { n: firstIncomplete + 1, list: lineProblems[firstIncomplete].join(", ") })
         : null
 
   async function submit() {
@@ -460,31 +463,31 @@ export default function StockReceivingPage() {
   }
 
   if (receipt) {
-    return <div style={{ maxWidth: 900, margin: "40px auto" }}>
+    return <div className="animate-fade-in" style={{ maxWidth: 900, margin: "40px auto" }}>
       <Card style={{ textAlign: "center", padding: "34px 30px" }}>
         <div className="no-print" style={{ width: 52, height: 52, borderRadius: "50%", background: "#dcfce7", color: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, margin: "0 auto 14px" }}>✓</div>
-        <h1 style={{ margin: 0, fontSize: 19, color: "var(--ink)" }}>Delivery received and barcodes generated</h1>
+        <h1 style={{ margin: 0, fontSize: 19, color: "var(--ink)" }}>{t("receiving.receiptTitle")}</h1>
         <p style={{ color: "var(--ink-muted)", fontSize: 12, margin: "8px 0 18px" }}>
-          The server created the delivery code below, one stock batch per product line, and the carton/pack barcode tree for each batch.
+          {t("receiving.receiptBody")}
         </p>
         <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
-          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ink-muted)", fontWeight: 700 }}>Delivery code</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>{receipt.delivery_code}</div>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ink-muted)", fontWeight: 700 }}>{t("receiving.deliveryCodeLabel")}</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>{receipt.delivery_code}</div>
         </div>
         <div className="no-print" style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 20 }}>
-          <Btn onClick={startNewDelivery}>Start a new delivery</Btn>
+          <Btn onClick={startNewDelivery}>{t("receiving.startNewDelivery")}</Btn>
         </div>
-        <BarcodeLabelSheet title={`Delivery ${receipt.delivery_code}`} labels={deliveryLabelsToPrintable(barcodeLabels)} loading={labelsLoading} error={labelsError} />
+        <BarcodeLabelSheet title={t("barcodeManager.printDeliveryTitle", { code: receipt.delivery_code })} labels={deliveryLabelsToPrintable(barcodeLabels)} loading={labelsLoading} error={labelsError} />
       </Card>
     </div>
   }
 
-  return <div style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+  return <div className="animate-fade-in" style={{ maxWidth: 1000, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
     {loadError && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>
-      Could not load the product catalogue: {loadError}. Sign in with a provisioned pharmacy account and confirm its branch permissions, then try again.
+      {t("receiving.catalogueLoadErrorPrefix")}: {loadError}. {t("receiving.catalogueLoadErrorHint")}
     </div>}
     {submitError && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>
-      <strong>The delivery was not saved.</strong> {submitError}
+      <strong>{t("receiving.deliveryNotSaved")}</strong> {submitError}
     </div>}
     {submitError && <CenterAlert key={submitError} message={submitError} />}
 
@@ -493,28 +496,28 @@ export default function StockReceivingPage() {
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 17 }}>Receive delivery</h1>
+          <h1 style={{ margin: 0, fontSize: 17 }}>{t("receiving.heading")}</h1>
           <p style={{ color: "var(--ink-muted)", margin: "4px 0 0", fontSize: 11 }}>
-            One supplier per delivery. Each product below becomes its own stock batch with its own barcode tree. Live data from Supabase — no demo records.
+            {t("receiving.headingSubtitle")}
           </p>
         </div>
-        <Btn variant="secondary" small onClick={() => void refresh()}>{loading ? "Loading…" : "Refresh catalogue"}</Btn>
+        <Btn variant="secondary" small onClick={() => void refresh()}>{loading ? t("receiving.loading") : t("receiving.refreshCatalogue")}</Btn>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr)", gap: 12 }}>
-        <Field label="Supplier" hint="Private to this branch — the server creates a new one for you on save.">
+        <Field label={t("receiving.supplierLabel")} hint={t("receiving.supplierHint")}>
           <SearchSelect
             options={supplierOptions}
             value={supplier}
             onSelect={setSupplier}
             allowFreeText
-            createLabel="New supplier"
-            placeholder="Search or type a supplier name…"
+            createLabel={t("receiving.newSupplierLabel")}
+            placeholder={t("receiving.supplierPlaceholder")}
             invalid={!supplier.trim()}
-            emptyMessage="No suppliers saved yet — type the name to create one."
+            emptyMessage={t("receiving.noSuppliersYet")}
           />
         </Field>
-        <Field label="Delivery notes (optional)">
-          <input value={notes} onChange={event => setNotes(event.target.value)} placeholder="Waybill reference, condition on arrival…" style={inputStyle} />
+        <Field label={t("receiving.notesLabel")}>
+          <input value={notes} onChange={event => setNotes(event.target.value)} placeholder={t("receiving.notesPlaceholder")} style={inputStyle} />
         </Field>
       </div>
     </Card>
@@ -522,12 +525,12 @@ export default function StockReceivingPage() {
     {/* Live summary — visible for the whole wizard, not just at the end. */}
     <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
       {[
-        { label: "Product lines", value: lines.length.toLocaleString() },
-        { label: "Total pieces", value: totals.pieces.toLocaleString() },
-        { label: "Carton barcodes", value: totals.boxes.toLocaleString() },
-        { label: "Pack barcodes", value: totals.packs.toLocaleString() },
-        { label: "Cost value", value: fmtRWFExact(totals.cost) },
-      ].map(stat => <div key={stat.label}>
+        { label: t("receiving.statProductLines"), value: lines.length.toLocaleString() },
+        { label: t("receiving.statTotalPieces"), value: totals.pieces.toLocaleString() },
+        { label: t("receiving.statCartonBarcodes"), value: totals.boxes.toLocaleString() },
+        { label: t("receiving.statPackBarcodes"), value: totals.packs.toLocaleString() },
+        { label: t("receiving.statCostValue"), value: fmtRWFExact(totals.cost) },
+      ].map((stat, i) => <div key={stat.label} className="animate-fade-up" style={{ animationDelay: `${i * 50}ms` }}>
         <div style={{ fontSize: 17, fontWeight: 800, color: "var(--primary)" }}>{stat.value}</div>
         <div style={{ fontSize: 10, color: "var(--ink-muted)", fontWeight: 600 }}>{stat.label}</div>
       </div>)}
@@ -540,7 +543,7 @@ export default function StockReceivingPage() {
             key={item.key}
             type="button"
             onClick={() => goTo(position)}
-            title={complete ? "Complete" : `Needs ${lineProblems[position].join(", ")}`}
+            title={complete ? t("receiving.lineDotComplete") : t("receiving.lineDotNeeds", { list: lineProblems[position].join(", ") })}
             style={{
               width: 28, height: 28, borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
               fontSize: 11, fontWeight: 700, transition: "all 0.15s",
@@ -560,49 +563,49 @@ export default function StockReceivingPage() {
       <div style={{ animation: `${motion} ${motion.startsWith("slide-out") ? 150 : 220}ms ease both` }}>
         <Card>
           <div style={{ marginBottom: 14 }}>
-            <h2 style={{ margin: 0, fontSize: 14 }}>Product {safeIndex + 1} of {lines.length}</h2>
+            <h2 style={{ margin: 0, fontSize: 14 }}>{t("receiving.productOfTotal", { current: safeIndex + 1, total: lines.length })}</h2>
             <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>
-              {piecesFor(line).toLocaleString()} pieces · {boxBarcodesFor(line)} carton barcode{boxBarcodesFor(line) === 1 ? "" : "s"} · {packBarcodesFor(line)} pack barcode{packBarcodesFor(line) === 1 ? "" : "s"}. Individual pieces never get a barcode.
+              {t("receiving.lineSummary", { pieces: piecesFor(line).toLocaleString(), boxes: boxBarcodesFor(line), packs: packBarcodesFor(line) })}
             </p>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <Field label="Product" hint={loading ? "Loading the catalogue…" : `${reference.products.length} products in the shared catalogue`}>
+            <Field label={t("receiving.productFieldLabel")} hint={loading ? t("receiving.catalogueLoadingHint") : t("receiving.catalogueCountHint", { count: reference.products.length })}>
               <SearchSelect
                 options={productOptions}
                 value={line.productId}
                 onSelect={productId => { updateLine({ productId, variantId: "" }); void applyProductDefaults(productId, "") }}
-                placeholder="Search by product or generic name…"
+                placeholder={t("receiving.productSearchPlaceholder")}
                 invalid={!line.productId}
-                emptyMessage="No product matches."
+                emptyMessage={t("receiving.noProductMatch")}
               />
               <button
                 type="button"
                 onClick={() => setShowRequestModal(true)}
                 style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "var(--primary)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-              >Can't find it? Request it from the admin →</button>
+              >{t("receiving.requestLink")}</button>
             </Field>
             <Field
-              label="Variant"
+              label={t("receiving.variantFieldLabel")}
               hint={!line.productId
-                ? "Choose a product first."
+                ? t("receiving.variantHintNoProduct")
                 : lineVariants.length === 0
-                  ? "None recorded yet for this product."
-                  : `${lineVariants.length} variant${lineVariants.length === 1 ? "" : "s"} for this product`}
+                  ? t("receiving.variantHintNone")
+                  : t("receiving.variantHintCount", { count: lineVariants.length })}
             >
               <SearchSelect
                 options={variantOptions}
                 value={line.variantId}
                 onSelect={variantId => { updateLine({ variantId }); void applyProductDefaults(line.productId, variantId) }}
                 disabled={!line.productId || lineVariants.length === 0}
-                placeholder={!line.productId ? "Select a product first" : lineVariants.length === 0 ? "None" : "Search dosage, form or unit…"}
+                placeholder={!line.productId ? t("receiving.variantSearchPlaceholderNoProduct") : lineVariants.length === 0 ? t("receiving.variantSearchPlaceholderNone") : t("receiving.variantSearchPlaceholder")}
                 invalid={!!line.productId && lineVariants.length > 0 && !line.variantId}
-                emptyMessage="No variant matches that search."
+                emptyMessage={t("receiving.noVariantMatch")}
               />
             </Field>
             {selectedProductTax && (
               <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--ink-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontWeight: 700, color: "var(--ink-mid)" }}>Tax:</span>
+                <span style={{ fontWeight: 700, color: "var(--ink-mid)" }}>{t("receiving.taxLabel")}</span>
                 <span style={{
                   padding: "2px 8px", borderRadius: 999, fontWeight: 700, fontSize: 10,
                   background: selectedProductTax.rate === 0 ? "#dcfce7" : "#fef3c7",
@@ -610,21 +613,21 @@ export default function StockReceivingPage() {
                 }}>
                   {selectedProductTax.name} {selectedProductTax.rate > 0 ? `(${selectedProductTax.rate}%)` : ""}
                 </span>
-                <span>— set by the super admin, not editable here.</span>
+                <span>{t("receiving.taxNotEditable")}</span>
               </div>
             )}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 12 }}>
-            <Field label="Product category" hint="Private to this branch — never visible to any other branch.">
+            <Field label={t("receiving.categoryFieldLabel")} hint={t("receiving.categoryHint")}>
               <SearchSelect
                 options={categoryOptions}
                 value={line.categoryName}
                 onSelect={categoryName => updateLine({ categoryName })}
                 allowFreeText
-                createLabel="New category"
-                placeholder="Search or type a category…"
-                emptyMessage="No categories yet — type a name to create the first one."
+                createLabel={t("receiving.newCategoryLabel")}
+                placeholder={t("receiving.categorySearchPlaceholder")}
+                emptyMessage={t("receiving.noCategoriesYet")}
                 invalid={!line.categoryName.trim()}
               />
               {addingCategory ? (
@@ -637,33 +640,33 @@ export default function StockReceivingPage() {
                       if (event.key === "Enter") { event.preventDefault(); confirmNewCategory() }
                       if (event.key === "Escape") { setAddingCategory(false); setNewCategoryDraft("") }
                     }}
-                    placeholder="New category name"
+                    placeholder={t("receiving.newCategoryPlaceholder")}
                     style={{ ...inputStyle, flex: 1 }}
                   />
-                  <Btn small onClick={confirmNewCategory}>Add</Btn>
-                  <Btn small variant="ghost" onClick={() => { setAddingCategory(false); setNewCategoryDraft("") }}>Cancel</Btn>
+                  <Btn small onClick={confirmNewCategory}>{t("receiving.addAction")}</Btn>
+                  <Btn small variant="ghost" onClick={() => { setAddingCategory(false); setNewCategoryDraft("") }}>{t("receiving.cancelAction")}</Btn>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => setAddingCategory(true)}
                   style={{ marginTop: 6, background: "none", border: "none", padding: 0, color: "var(--primary)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
-                >+ New category (only for this branch)</button>
+                >{t("receiving.addNewCategoryLink")}</button>
               )}
             </Field>
-            <Field label="Manufacturer (optional)" hint="Used to trace batch recalls.">
+            <Field label={t("receiving.manufacturerLabel")} hint={t("receiving.manufacturerHint")}>
               <input value={line.manufacturer} onChange={event => updateLine({ manufacturer: event.target.value })} style={inputStyle} />
             </Field>
-            <Field label="Manufacturer batch number">
-              <input value={line.batchNumber} onChange={event => updateLine({ batchNumber: event.target.value })} placeholder="e.g. PARA-24K" style={{ ...inputStyle, borderColor: line.batchNumber.trim() ? "var(--border)" : "#fca5a5" }} />
+            <Field label={t("receiving.batchNumberLabel")}>
+              <input value={line.batchNumber} onChange={event => updateLine({ batchNumber: event.target.value })} placeholder={t("receiving.batchNumberPlaceholder")} style={{ ...inputStyle, borderColor: line.batchNumber.trim() ? "var(--border)" : "#fca5a5" }} />
             </Field>
-            <Field label="Expiry date">
+            <Field label={t("receiving.expiryDateLabel")}>
               <input type="date" value={line.expiryDate} onChange={event => updateLine({ expiryDate: event.target.value })} style={{ ...inputStyle, borderColor: line.expiryDate ? "var(--border)" : "#fca5a5" }} />
             </Field>
-            <Field label="Cost price / piece (what you pay)">
+            <Field label={t("receiving.costPriceLabel")}>
               <input type="number" min="0" step="0.01" value={line.costPrice} onChange={event => updateLine({ costPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.costPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
             </Field>
-            <Field label="Selling price / piece (what you charge)">
+            <Field label={t("receiving.sellingPriceLabel")}>
               <input type="number" min="0" step="0.01" value={line.sellingPrice} onChange={event => updateLine({ sellingPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.sellingPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
             </Field>
           </div>
@@ -671,40 +674,39 @@ export default function StockReceivingPage() {
           <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: "var(--bg)", border: "1px solid var(--border)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>Packaging</div>
-                <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>Quantity received is calculated by the server from these numbers.</div>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>{t("receiving.packagingTitle")}</div>
+                <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>{t("receiving.packagingSubtitle")}</div>
               </div>
               <Toggle
                 value={line.packaging}
                 onChange={packaging => updateLine({ packaging })}
-                options={[{ id: "simple" as Packaging, label: "Simple packs" }, { id: "cartons" as Packaging, label: "Cartons with inner packs" }]}
+                options={[{ id: "simple" as Packaging, label: t("receiving.packagingSimple") }, { id: "cartons" as Packaging, label: t("receiving.packagingCartons") }]}
               />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: line.packaging === "cartons" ? "repeat(3, 1fr)" : "repeat(2, 1fr)", gap: 12 }}>
-              {line.packaging === "cartons" && <Field label="Cartons received">
+              {line.packaging === "cartons" && <Field label={t("receiving.cartonsReceivedLabel")}>
                 <input type="number" min="1" value={line.cartons} onChange={event => updateLine({ cartons: event.target.value })} style={inputStyle} />
               </Field>}
-              <Field label={line.packaging === "cartons" ? "Packs per carton" : "Packs received"}>
+              <Field label={line.packaging === "cartons" ? t("receiving.packsPerCartonLabel") : t("receiving.packsReceivedLabel")}>
                 <input type="number" min="1" value={line.packs} onChange={event => updateLine({ packs: event.target.value })} style={inputStyle} />
               </Field>
-              <Field label="Pieces per pack">
+              <Field label={t("receiving.piecesPerPackLabel")}>
                 <input type="number" min="1" value={line.piecesPerPack} onChange={event => updateLine({ piecesPerPack: event.target.value })} style={inputStyle} />
               </Field>
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: "var(--ink-mid)" }}>
-              This line totals <strong style={{ color: "var(--primary)" }}>{piecesFor(line).toLocaleString()} pieces</strong>
               {line.packaging === "cartons"
-                ? ` — one box barcode per carton, each holding ${Math.max(toInt(line.packs), 0)} child pack barcodes.`
-                : " — pack barcodes only, no parent carton level."}
+                ? t("receiving.lineTotalsCartons", { pieces: piecesFor(line).toLocaleString(), packs: Math.max(toInt(line.packs), 0) })
+                : t("receiving.lineTotalsSimple", { pieces: piecesFor(line).toLocaleString() })}
             </div>
           </div>
 
           <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
-            <Btn variant="ghost" small onClick={() => goTo(safeIndex - 1)} style={{ opacity: safeIndex === 0 ? 0.45 : 1 }}>← Previous</Btn>
-            <Btn variant="ghost" small onClick={() => goTo(safeIndex + 1)} style={{ opacity: safeIndex >= lines.length - 1 ? 0.45 : 1 }}>Next →</Btn>
-            <Btn variant="secondary" small onClick={addLine}>+ Add another product</Btn>
+            <Btn variant="ghost" small onClick={() => goTo(safeIndex - 1)} style={{ opacity: safeIndex === 0 ? 0.45 : 1 }}>{t("receiving.navPrevious")}</Btn>
+            <Btn variant="ghost" small onClick={() => goTo(safeIndex + 1)} style={{ opacity: safeIndex >= lines.length - 1 ? 0.45 : 1 }}>{t("receiving.navNext")}</Btn>
+            <Btn variant="secondary" small onClick={addLine}>{t("receiving.addAnotherProduct")}</Btn>
             <div style={{ flex: 1 }} />
-            <Btn variant="danger" small onClick={removeLine}>{lines.length === 1 ? "Clear this product" : "Remove this product"}</Btn>
+            <Btn variant="danger" small onClick={removeLine}>{lines.length === 1 ? t("receiving.clearThisProduct") : t("receiving.removeThisProduct")}</Btn>
           </div>
         </Card>
       </div>
@@ -712,7 +714,7 @@ export default function StockReceivingPage() {
 
     <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 220, fontSize: 11, color: disabledReason ? "#b45309" : "var(--ink-muted)" }}>
-        {disabledReason ?? `Ready to submit ${lines.length} product line${lines.length === 1 ? "" : "s"} for ${supplier.trim()} as one delivery. The server generates the delivery code and every carton/pack barcode.`}
+        {disabledReason ?? t("receiving.readyToSubmit", { count: lines.length, supplier: supplier.trim() })}
       </div>
       <button
         type="button"
@@ -726,7 +728,7 @@ export default function StockReceivingPage() {
           boxShadow: disabledReason ? "none" : "0 6px 18px rgba(22,163,74,0.32)",
           transition: "all 0.15s",
         }}
-      >{submitting ? "Generating…" : "▮▯▮ Generate Barcodes"}</button>
+      >{submitting ? t("receiving.generating") : t("receiving.generateBarcodes")}</button>
     </div>
 
     {showRequestModal && (

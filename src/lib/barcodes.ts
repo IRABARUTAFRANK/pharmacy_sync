@@ -1,3 +1,4 @@
+import type { TranslationKey } from "./i18n/en"
 import { supabase } from "./supabase"
 
 // Read-only barcode history for the Barcode Manager screen. Barcodes are only ever
@@ -11,6 +12,35 @@ export type BarcodeStatus = "active" | "sold_out" | "expired" | "recalled" | "da
 export type BarcodeType = "box" | "pack"
 
 export const BARCODE_STATUSES: BarcodeStatus[] = ["active", "sold_out", "expired", "recalled", "damaged"]
+
+// Shared with BarcodeManagerPage and StockAdjustmentPage so the same status
+// value always renders with the same translated label everywhere it appears.
+export const BARCODE_STATUS_TITLE_KEYS: Record<BarcodeStatus, TranslationKey> = {
+  active: "barcode.statusActive",
+  sold_out: "barcode.statusSoldOut",
+  expired: "barcode.statusExpired",
+  recalled: "barcode.statusRecalled",
+  damaged: "barcode.statusDamaged",
+}
+
+export const BARCODE_TYPE_TITLE_KEYS: Record<BarcodeType, TranslationKey> = {
+  box: "barcode.typeBox",
+  pack: "barcode.typePack",
+}
+
+// A human packaging description -- "3 cartons × 10 packs × 20 tablets" or
+// "15 packs × 20 capsules" -- shared between StockAdjustmentPage and
+// LiveInventoryPage so both describe the same batch's stock the same way,
+// in the product's own unit, instead of only a raw total-pieces number.
+export function packagingSummary(
+  unit: string | undefined, boxCount: number, packCount: number, piecesPerPack: number,
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string,
+): string {
+  const unitLabel = unit?.trim() || t("stockAdjustment.unitFallback")
+  return boxCount > 0
+    ? t("stockAdjustment.packagingWithCartons", { cartons: boxCount, packs: packCount > 0 ? Math.round(packCount / boxCount) : 0, pieces: piecesPerPack, unit: unitLabel })
+    : t("stockAdjustment.packagingLooseOnly", { packs: packCount, pieces: piecesPerPack, unit: unitLabel })
+}
 
 export interface BarcodeRow {
   id: string

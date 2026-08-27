@@ -88,12 +88,12 @@ function Badge({ status }: { status: BranchStatus | TicketStatus }) {
     pending:     "bg-amber-100 text-amber-700 border-amber-200",
     approved:    "bg-blue-100 text-blue-700 border-blue-200",
     otp_sent:    "bg-violet-100 text-violet-700 border-violet-200",
-    active:      "bg-green-100 text-green-700 border-green-200",
+    active:      "bg-blue-100 text-blue-700 border-blue-200",
     locked:      "bg-orange-100 text-orange-700 border-orange-200",
     denied:      "bg-red-100 text-red-700 border-red-200",
     open:        "bg-red-100 text-red-700 border-red-200",
     in_progress: "bg-blue-100 text-blue-700 border-blue-200",
-    resolved:    "bg-green-100 text-green-700 border-green-200",
+    resolved:    "bg-blue-100 text-blue-700 border-blue-200",
     closed:      "bg-slate-100 text-slate-600 border-slate-200",
   };
   return (
@@ -103,12 +103,12 @@ function Badge({ status }: { status: BranchStatus | TicketStatus }) {
   );
 }
 
-function StatCard({ icon, label, value, sub, color }: {
+function StatCard({ icon, label, value, sub, color, delay }: {
   icon: React.ReactNode; label: string; value: number | string;
-  sub?: string; color: string;
+  sub?: string; color: string; delay?: number;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-green-100 p-5 shadow-sm">
+    <div className="bg-white rounded-xl border border-blue-100 p-5 shadow-sm animate-fade-up" style={delay ? { animationDelay: `${delay}ms` } : undefined}>
       <div className={`w-10 h-10 rounded-lg flex items-center justify-center mb-3 ${color}`}>
         {icon}
       </div>
@@ -124,7 +124,7 @@ function Modal({ title, onClose, children }: {
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-xl border border-green-100 w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl border border-blue-100 w-full max-w-md">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <h3 className="font-semibold text-slate-800">{title}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors rounded-lg p-1 hover:bg-slate-100">
@@ -162,7 +162,7 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: A
   const feed = [
     ...branches.map((b) => ({
       time: b.submittedAt,
-      icon: <Building2 className="w-3.5 h-3.5 text-green-500" />,
+      icon: <Building2 className="w-3.5 h-3.5 text-blue-500" />,
       text: `${b.pharmacyName} — ${t(statusLabelKey(b.status))}`,
     })),
     ...tickets.map((tk) => ({
@@ -182,10 +182,10 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: A
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Clock className="w-5 h-5 text-amber-600" />} label={t("admin.pendingApproval")} value={pending} color="bg-amber-50" />
-        <StatCard icon={<Activity className="w-5 h-5 text-green-600" />} label={t("admin.activeBranches")} value={active} color="bg-green-50" />
-        <StatCard icon={<Lock className="w-5 h-5 text-orange-600" />} label={t("admin.lockedBranchesLabel")} value={locked} color="bg-orange-50" />
-        <StatCard icon={<Ticket className="w-5 h-5 text-violet-600" />} label={t("admin.openTicketsLabel")} value={openTix} color="bg-violet-50" />
+        <StatCard icon={<Clock className="w-5 h-5 text-amber-600" />} label={t("admin.pendingApproval")} value={pending} color="bg-amber-50" delay={0} />
+        <StatCard icon={<Activity className="w-5 h-5 text-blue-600" />} label={t("admin.activeBranches")} value={active} color="bg-blue-50" delay={60} />
+        <StatCard icon={<Lock className="w-5 h-5 text-orange-600" />} label={t("admin.lockedBranchesLabel")} value={locked} color="bg-orange-50" delay={120} />
+        <StatCard icon={<Ticket className="w-5 h-5 text-violet-600" />} label={t("admin.openTicketsLabel")} value={openTix} color="bg-violet-50" delay={180} />
       </div>
 
       {locked > 0 && (
@@ -210,9 +210,9 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: A
         </div>
       )}
 
-      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-green-600" />
+          <TrendingUp className="w-4 h-4 text-blue-600" />
           <p className="font-semibold text-sm text-slate-700">{t("admin.recentActivity")}</p>
         </div>
         <div className="divide-y divide-slate-50">
@@ -289,21 +289,21 @@ function Approvals({
       </div>
 
       {pending.length === 0 ? (
-        <div className="bg-white rounded-xl border border-green-100 p-12 text-center">
-          <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
+        <div className="bg-white rounded-xl border border-blue-100 p-12 text-center">
+          <CheckCircle2 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
           <p className="text-sm text-slate-500">{t("admin.allCaughtUp")}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {pending.map((b) => (
-            <div key={b.id} className="bg-white rounded-xl border border-green-100 shadow-sm p-5 hover:border-green-300 transition-colors">
+            <div key={b.id} className="bg-white rounded-xl border border-blue-100 shadow-sm p-5 hover:border-blue-300 transition-colors">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="space-y-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-mono text-[10px] text-slate-400">{b.applicationCode ?? b.id.slice(0, 8)}</span>
                     <Badge status={b.status} />
                     {b.calledAt && (
-                      <span className="flex items-center gap-1 text-[10px] text-green-600 font-semibold">
+                      <span className="flex items-center gap-1 text-[10px] text-blue-600 font-semibold">
                         <Phone className="w-3 h-3" /> {t("admin.called")}
                       </span>
                     )}
@@ -334,7 +334,7 @@ function Approvals({
                   <button
                     disabled={!b.calledAt}
                     onClick={() => { setDetailBranch(b); setAction("approve"); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     title={!b.calledAt ? t("admin.mustCallFirst") : ""}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" /> {t("admin.approveAndSendOtp")}
@@ -379,11 +379,11 @@ function Approvals({
               {t("admin.approvePortalAccessFor")}{" "}
               <span className="font-semibold text-slate-800">{detailBranch.pharmacyName}</span>?
             </p>
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3 space-y-1.5 text-xs">
-              <p className="font-semibold text-green-800 flex items-center gap-1.5"><Send className="w-3 h-3" /> {t("admin.whatWillHappen")}</p>
-              <p className="text-green-700">{t("admin.approveBullet1", { email: detailBranch.email })}</p>
-              <p className="text-green-700">{t("admin.approveBullet2")}</p>
-              <p className="text-green-700">{t("admin.approveBullet3")}</p>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5 text-xs">
+              <p className="font-semibold text-blue-800 flex items-center gap-1.5"><Send className="w-3 h-3" /> {t("admin.whatWillHappen")}</p>
+              <p className="text-blue-700">{t("admin.approveBullet1", { email: detailBranch.email })}</p>
+              <p className="text-blue-700">{t("admin.approveBullet2")}</p>
+              <p className="text-blue-700">{t("admin.approveBullet3")}</p>
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => { setDetailBranch(null); setAction(null); }}
@@ -391,7 +391,7 @@ function Approvals({
                 {t("admin.cancel")}
               </button>
               <button onClick={handleApprove} disabled={sendingOtp}
-                className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
                 {sendingOtp ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 {sendingOtp ? t("admin.sendingOtp") : t("admin.approveAndSendOtp")}
               </button>
@@ -413,7 +413,7 @@ function Approvals({
               <textarea
                 value={denyReason} onChange={(e) => setDenyReason(e.target.value)}
                 rows={3} placeholder={t("admin.enterDenialReason")}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 resize-none focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 resize-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors"
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -484,15 +484,15 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
           <button key={s} onClick={() => setFilter(s)}
             className={`text-[10px] font-mono uppercase tracking-widest px-3 py-1.5 rounded-lg border transition-colors ${
               filter === s
-                ? "border-green-500 text-green-700 bg-green-50"
-                : "border-slate-200 text-slate-500 hover:border-green-300"
+                ? "border-blue-500 text-blue-700 bg-blue-50"
+                : "border-slate-200 text-slate-500 hover:border-blue-300"
             }`}>
             {s === "all" ? t("admin.statusAll") : t(statusLabelKey(s))}
           </button>
         ))}
       </div>
 
-      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -505,12 +505,12 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
             </thead>
             <tbody className="divide-y divide-slate-50">
               {shown.map((b) => (
-                <tr key={b.id} onClick={() => setDetail(b)} className="hover:bg-green-50/30 transition-colors cursor-pointer">
+                <tr key={b.id} onClick={() => setDetail(b)} className="hover:bg-blue-50/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3 font-mono text-slate-400">{b.applicationCode ?? b.id.slice(0, 8)}</td>
                   <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{b.pharmacyName}</td>
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{b.location.split(",")[0]}</td>
                   <td className="px-4 py-3 font-mono text-slate-500">{b.phone}</td>
-                  <td className="px-4 py-3 font-mono text-green-700 font-semibold">{b.branchCode ?? "—"}</td>
+                  <td className="px-4 py-3 font-mono text-blue-700 font-semibold">{b.branchCode ?? "—"}</td>
                   <td className="px-4 py-3"><Badge status={b.status} /></td>
                   <td className="px-4 py-3 font-mono">
                     <span className={b.failedLogins >= 5 ? "text-red-500 font-bold" : b.failedLogins >= 3 ? "text-amber-500 font-bold" : "text-slate-400"}>
@@ -518,7 +518,7 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-green-600">
+                    <span className="text-blue-600">
                       <Eye className="w-3.5 h-3.5" />
                     </span>
                   </td>
@@ -563,7 +563,7 @@ function BranchDetailView({
   return (
     <div className="space-y-6 animate-fade-up">
       <button onClick={onBack}
-        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-700 transition-colors">
+        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors">
         <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.backToBranches")}
       </button>
 
@@ -586,7 +586,7 @@ function BranchDetailView({
           { label: t("admin.fieldBranchCode"), value: branch.branchCode ?? "—", mono: true, icon: <Building2 className="w-3.5 h-3.5" /> },
           { label: t("admin.fieldActivationCode"), value: branch.activationCode ?? "—", mono: true, icon: <KeyRound className="w-3.5 h-3.5" /> },
         ].map((row, i) => (
-          <div key={i} className="bg-white rounded-xl border border-green-100 shadow-sm p-4"
+          <div key={i} className="bg-white rounded-xl border border-blue-100 shadow-sm p-4"
             style={{ animation: `fadeUp 0.4s cubic-bezier(.22,.68,0,1.2) both`, animationDelay: `${i * 0.04}s` }}>
             <div className="flex items-center gap-1.5 text-slate-400 mb-2">
               {row.icon}
@@ -824,8 +824,8 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
           <p className="text-sm font-semibold text-slate-700">{t("admin.lockedBranchesCount", { count: locked.length })}</p>
         </div>
         {locked.length === 0 ? (
-          <div className="bg-white rounded-xl border border-green-100 p-10 text-center">
-            <ShieldAlert className="w-8 h-8 text-green-300 mx-auto mb-2" />
+          <div className="bg-white rounded-xl border border-blue-100 p-10 text-center">
+            <ShieldAlert className="w-8 h-8 text-blue-300 mx-auto mb-2" />
             <p className="text-xs text-slate-400">{t("admin.noBranchesLocked")}</p>
           </div>
         ) : (
@@ -850,7 +850,7 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
                   </div>
                 </div>
                 <button onClick={() => setConfirmRelease(b)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
                   <Unlock className="w-3.5 h-3.5" /> {t("admin.releaseBranch")}
                 </button>
               </div>
@@ -884,12 +884,12 @@ function Security({ branches, onChange }: { branches: BranchRecord[]; onChange: 
             <p className="text-sm text-slate-600">
               {t("admin.releaseConfirmBody", { name: confirmRelease.pharmacyName })}
             </p>
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-xs text-green-700">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
               {t("admin.releaseConfirmNote", { email: confirmRelease.email })}
             </div>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmRelease(null)} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
-              <button onClick={() => void release(confirmRelease)} className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+              <button onClick={() => void release(confirmRelease)} className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                 <Unlock className="w-3.5 h-3.5" /> {t("admin.releaseBranch")}
               </button>
             </div>
@@ -953,7 +953,7 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
       <div className="space-y-3">
         {sorted.map((tk) => (
           <div key={tk.id} onClick={() => setDetail(tk)}
-            className="bg-white rounded-xl border border-green-100 shadow-sm p-4 cursor-pointer hover:border-green-300 transition-colors">
+            className="bg-white rounded-xl border border-blue-100 shadow-sm p-4 cursor-pointer hover:border-blue-300 transition-colors">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -972,8 +972,8 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
           </div>
         ))}
         {sorted.length === 0 && (
-          <div className="bg-white rounded-xl border border-green-100 p-12 text-center">
-            <Ticket className="w-8 h-8 text-green-300 mx-auto mb-2" />
+          <div className="bg-white rounded-xl border border-blue-100 p-12 text-center">
+            <Ticket className="w-8 h-8 text-blue-300 mx-auto mb-2" />
             <p className="text-xs text-slate-400">{t("admin.noSupportTickets")}</p>
           </div>
         )}
@@ -991,7 +991,7 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
             </div>
             <div>
               <p className="font-bold text-slate-800">{detail.subject}</p>
-              <p className="text-xs text-green-700 font-semibold mt-0.5">{detail.branch_name} · {detail.raised_by_name}</p>
+              <p className="text-xs text-blue-700 font-semibold mt-0.5">{detail.branch_name} · {detail.raised_by_name}</p>
             </div>
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
               <p className="text-xs text-slate-600 leading-relaxed">{detail.description || "—"}</p>
@@ -1003,8 +1003,8 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
                   <button key={s} disabled={updating} onClick={() => void updateStatus(detail.id, s)}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors disabled:opacity-50 ${
                       detail.status === s
-                        ? "border-green-500 bg-green-50 text-green-700"
-                        : "border-slate-200 text-slate-500 hover:border-green-300"
+                        ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : "border-slate-200 text-slate-500 hover:border-blue-300"
                     }`}>
                     {t(statusLabelKey(s))}
                   </button>
@@ -1032,13 +1032,13 @@ function VariantRow({ variant, onChange, onRemove, canRemove }: {
     <div className="flex items-center gap-2">
       <input value={variant.dosage ?? ""} onChange={(e) => onChange({ ...variant, dosage: e.target.value })}
         placeholder={t("admin.dosagePlaceholder")}
-        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
       <input value={variant.form ?? ""} onChange={(e) => onChange({ ...variant, form: e.target.value })}
         placeholder={t("admin.formPlaceholder")}
-        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
       <input value={variant.unit ?? ""} onChange={(e) => onChange({ ...variant, unit: e.target.value })}
         placeholder={t("admin.unitPlaceholder")}
-        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
       {canRemove && (
         <button type="button" onClick={onRemove} className="text-slate-400 hover:text-red-600 transition-colors shrink-0">
           <X className="w-3.5 h-3.5" />
@@ -1061,7 +1061,7 @@ function VariantEditor({ variants, onChange }: { variants: ProductVariantInput[]
         />
       ))}
       <button type="button" onClick={() => onChange([...variants, {}])}
-        className="text-xs font-semibold text-green-700 hover:text-green-800 transition-colors">+ {t("admin.addVariant")}</button>
+        className="text-xs font-semibold text-blue-700 hover:text-blue-800 transition-colors">+ {t("admin.addVariant")}</button>
     </div>
   );
 }
@@ -1098,18 +1098,18 @@ function AddProductModal({ taxRates, onClose, onCreated }: { taxRates: TaxRate[]
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productName")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amoxicillin"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.genericName")}</label>
             <input value={genericName} onChange={(e) => setGenericName(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productType")}</label>
             <select value={productType} onChange={(e) => setProductType(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
               <option value="medicine">{t("admin.productTypeMedicine")}</option>
               <option value="supply">{t("admin.productTypeSupply")}</option>
               <option value="other">{t("admin.productTypeOther")}</option>
@@ -1119,7 +1119,7 @@ function AddProductModal({ taxRates, onClose, onCreated }: { taxRates: TaxRate[]
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRate")}</label>
           <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
             {taxRates.map((rate) => (
               <option key={rate.id} value={rate.id}>{rate.name} ({rate.rate_percentage}%)</option>
             ))}
@@ -1129,7 +1129,7 @@ function AddProductModal({ taxRates, onClose, onCreated }: { taxRates: TaxRate[]
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
           <button onClick={() => void submit()} disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             {t("admin.addProduct")}
           </button>
@@ -1169,17 +1169,17 @@ function AddTaxRateModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRateName")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("admin.taxRateNamePlaceholder")}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRatePercentage")}</label>
           <input type="number" min="0" max="100" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
           <button onClick={() => void submit()} disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             {t("admin.addTaxRate")}
           </button>
@@ -1244,11 +1244,11 @@ function ProductsView() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowAddTax(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-green-200 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
             <Tag className="w-3.5 h-3.5" /> {t("admin.addTaxRate")}
           </button>
           <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
             <Plus className="w-3.5 h-3.5" /> {t("admin.addProduct")}
           </button>
         </div>
@@ -1257,9 +1257,9 @@ function ProductsView() {
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
 
       <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.searchProducts")}
-        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
 
-      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -1271,7 +1271,7 @@ function ProductsView() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {shown.map((p) => (
-                <tr key={p.id} className="hover:bg-green-50/30 transition-colors">
+                <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-4 py-3">
                     <p className="font-semibold text-slate-700">{p.name}</p>
                     {p.genericName && <p className="text-[10px] text-slate-400">{p.genericName}</p>}
@@ -1285,7 +1285,7 @@ function ProductsView() {
                       value={p.taxRateId}
                       disabled={savingTaxFor === p.id}
                       onChange={(e) => void changeTax(p.id, e.target.value)}
-                      className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors disabled:opacity-50"
+                      className="border border-slate-200 rounded-lg px-2 py-1 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors disabled:opacity-50"
                     >
                       {taxRates.map((rate) => (
                         <option key={rate.id} value={rate.id}>{rate.name} ({rate.rate_percentage}%)</option>
@@ -1349,17 +1349,17 @@ function AddCategoryModal({ branches, onClose, onCreated }: {
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.categoryName")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.categoryDescription")}</label>
           <input value={description} onChange={(e) => setDescription(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.categoryTarget")}</label>
           <select value={branchId} onChange={(e) => setBranchId(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
             <option value="">{t("admin.categoryAllBranches")}</option>
             {branches.map((b) => (
               <option key={b.id} value={b.id}>{b.name}</option>
@@ -1369,7 +1369,7 @@ function AddCategoryModal({ branches, onClose, onCreated }: {
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
           <button onClick={() => void submit()} disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             {t("admin.addCategory")}
           </button>
@@ -1413,7 +1413,7 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
           <p className="text-xs text-slate-400 mt-0.5">{t("admin.categoriesCount", { count: categories.length })}</p>
         </div>
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <Plus className="w-3.5 h-3.5" /> {t("admin.addCategory")}
         </button>
       </div>
@@ -1421,9 +1421,9 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
 
       <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.searchCategories")}
-        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
 
-      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -1435,7 +1435,7 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {shown.map((c) => (
-                <tr key={c.id} className="hover:bg-green-50/30 transition-colors">
+                <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-4 py-3 font-semibold text-slate-700">{c.name}</td>
                   <td className="px-4 py-3 text-slate-500">{c.description ?? "—"}</td>
                   <td className="px-4 py-3 text-slate-500">{c.branch_name}</td>
@@ -1495,22 +1495,22 @@ function ProviderFormModal({ provider, onClose, onSaved }: {
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">Provider Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. RSSB, MMI, Radiant"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">Default Coverage Applied to All Medicines (%)</label>
           <input type="number" min="0" max="100" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">Contact Info (optional)</label>
           <input value={contact} onChange={(e) => setContact(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
           <button onClick={() => void submit()} disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
             {provider ? "Save Changes" : "Add Provider"}
           </button>
@@ -1595,7 +1595,7 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
               <div key={o.productId} className="flex items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-2">
                 <span className="text-sm text-slate-700">{o.productName}</span>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-xs font-bold ${o.coveragePercentage === 0 ? "text-red-600" : "text-green-700"}`}>
+                  <span className={`text-xs font-bold ${o.coveragePercentage === 0 ? "text-red-600" : "text-blue-700"}`}>
                     {o.coveragePercentage === 0 ? "Not covered" : `${o.coveragePercentage}%`}
                   </span>
                   <button onClick={() => void clearOverride(o.productId)} disabled={busy} title="Revert to default"
@@ -1613,12 +1613,12 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
           <input value={pickedProductId ? products.find((p) => p.id === pickedProductId)?.name ?? "" : productQuery}
             onChange={(e) => { setProductQuery(e.target.value); setPickedProductId(""); }}
             placeholder="Search a product…"
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
           {!pickedProductId && productQuery.trim() && (
             <div className="border border-slate-100 rounded-lg max-h-32 overflow-y-auto">
               {candidates.slice(0, 20).map((p) => (
                 <button key={p.id} onClick={() => { setPickedProductId(p.id); setProductQuery(""); }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-green-50 transition-colors">
+                  className="w-full text-left px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 transition-colors">
                   {p.name}
                 </button>
               ))}
@@ -1628,11 +1628,11 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
           {pickedProductId && (
             <div className="flex items-center gap-2">
               <input type="number" min="0" max="100" step="0.01" value={pct} onChange={(e) => setPct(e.target.value)}
-                placeholder="Coverage %" className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+                placeholder="Coverage %" className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
               <button onClick={() => setPct("0")} className="text-xs font-semibold text-red-600 hover:underline">Not covered</button>
               <div className="flex-1" />
               <button onClick={() => void saveOverride(pickedProductId, Number(pct))} disabled={busy || pct.trim() === "" || !Number.isFinite(Number(pct))}
-                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
                 {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Save
               </button>
             </div>
@@ -1673,14 +1673,14 @@ function InsuranceView() {
           <p className="text-xs text-slate-400 mt-0.5">{providers.length} provider{providers.length === 1 ? "" : "s"}</p>
         </div>
         <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
           <Plus className="w-3.5 h-3.5" /> Add Provider
         </button>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
 
-      <div className="bg-white rounded-xl border border-green-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -1692,13 +1692,13 @@ function InsuranceView() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {providers.map((p) => (
-                <tr key={p.id} className="hover:bg-green-50/30 transition-colors">
+                <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-4 py-3 font-semibold text-slate-700">{p.name}</td>
                   <td className="px-4 py-3 text-slate-500">{p.defaultCoveragePercentage}%</td>
                   <td className="px-4 py-3 text-slate-500">{p.contactInfo || "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => setManaging(p)} className="text-xs font-semibold text-green-700 hover:underline">Manage Coverage</button>
+                      <button onClick={() => setManaging(p)} className="text-xs font-semibold text-blue-700 hover:underline">Manage Coverage</button>
                       <button onClick={() => setEditing(p)} className="text-xs font-semibold text-slate-500 hover:underline">Edit</button>
                     </div>
                   </td>
@@ -1770,18 +1770,18 @@ function ApproveRequestModal({ request, taxRates, onClose, onApproved }: {
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productName")}</label>
           <input value={name} onChange={(e) => setName(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.genericName")}</label>
             <input value={genericName} onChange={(e) => setGenericName(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
           </div>
           <div>
             <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productType")}</label>
             <select value={productType} onChange={(e) => setProductType(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
               <option value="medicine">{t("admin.productTypeMedicine")}</option>
               <option value="supply">{t("admin.productTypeSupply")}</option>
               <option value="other">{t("admin.productTypeOther")}</option>
@@ -1791,7 +1791,7 @@ function ApproveRequestModal({ request, taxRates, onClose, onApproved }: {
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.taxRate")}</label>
           <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors">
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
             {taxRates.map((rate) => (
               <option key={rate.id} value={rate.id}>{rate.name} ({rate.rate_percentage}%)</option>
             ))}
@@ -1801,7 +1801,7 @@ function ApproveRequestModal({ request, taxRates, onClose, onApproved }: {
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
           <button onClick={() => void submit()} disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
             {t("admin.approveRequest")}
           </button>
@@ -1835,7 +1835,7 @@ function RejectRequestModal({ request, onClose, onRejected }: { request: AdminPr
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.reasonOptional")}</label>
           <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 resize-none focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors" />
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 resize-none focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
@@ -1887,14 +1887,14 @@ function ProductRequestsView() {
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
 
       {pending.length === 0 && !loading ? (
-        <div className="bg-white rounded-xl border border-green-100 p-12 text-center">
-          <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
+        <div className="bg-white rounded-xl border border-blue-100 p-12 text-center">
+          <CheckCircle2 className="w-10 h-10 text-blue-400 mx-auto mb-3" />
           <p className="text-sm text-slate-500">{t("admin.allCaughtUp")}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {pending.map((r) => (
-            <div key={r.id} className="bg-white rounded-xl border border-green-100 shadow-sm p-5 hover:border-green-300 transition-colors">
+            <div key={r.id} className="bg-white rounded-xl border border-blue-100 shadow-sm p-5 hover:border-blue-300 transition-colors">
               <div className="flex items-start justify-between gap-4 flex-wrap">
                 <div className="flex gap-3 min-w-0 flex-1">
                   {r.image_path && (
@@ -1912,7 +1912,7 @@ function ProductRequestsView() {
                     <Ban className="w-3.5 h-3.5" /> {t("admin.deny")}
                   </button>
                   <button onClick={() => setApproveTarget(r)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                     <CheckCircle2 className="w-3.5 h-3.5" /> {t("admin.approveRequest")}
                   </button>
                 </div>
@@ -1933,7 +1933,7 @@ function ProductRequestsView() {
                   <p className="text-[10px] text-slate-400">{r.branch_name}</p>
                 </div>
                 <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-md border ${
-                  r.status === "approved" ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200"
+                  r.status === "approved" ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-red-100 text-red-700 border-red-200"
                 }`}>
                   {r.status === "approved" ? t("admin.statusApproved") : t("admin.statusDenied")}
                 </span>
@@ -2013,16 +2013,16 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-white to-emerald-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-sky-50 px-4">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-between mb-4">
           <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors">
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors">
             <ArrowLeft className="w-3.5 h-3.5" /> {t("common.backToPharmSync")}
           </a>
           <LanguageSwitcher />
         </div>
-      <div className="w-full bg-white rounded-2xl border border-green-100 shadow-sm p-7">
+      <div className="w-full bg-white rounded-2xl border border-blue-100 shadow-sm p-7">
         {/* Same mark the branch sign-in shows, so both doors into the product
             look like the same product. */}
         <div className="mb-5">
@@ -2036,11 +2036,11 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
             <input
               type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
               placeholder="you@pharmsync.rw"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors"
             />
             {error && <p className="text-xs text-red-600">{error}</p>}
             <button onClick={() => void sendCode()} disabled={sending}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
               {sending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
               {sending ? t("admin.sending") : t("admin.sendCode")}
             </button>
@@ -2054,13 +2054,13 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
                   key={i} id={`admin-otp-${i}`} value={digit} maxLength={1} inputMode="numeric"
                   onChange={(e) => setDigit(i, e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Backspace" && !otp[i] && i > 0) document.getElementById(`admin-otp-${i - 1}`)?.focus(); }}
-                  className="w-10 h-12 text-center text-lg font-bold border border-slate-200 rounded-lg focus:border-green-400 focus:ring-1 focus:ring-green-200 transition-colors"
+                  className="w-10 h-12 text-center text-lg font-bold border border-slate-200 rounded-lg focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors"
                 />
               ))}
             </div>
             {error && <p className="text-xs text-red-600">{error}</p>}
             <button onClick={() => void verify()} disabled={verifying}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60">
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
               {verifying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
               {verifying ? t("admin.verifying") : t("admin.verifyAndSignIn")}
             </button>
@@ -2136,7 +2136,7 @@ export default function AdminPortal() {
   }
 
   if (!authChecked) {
-    return <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]"><RefreshCw className="w-5 h-5 text-green-500 animate-spin" /></div>;
+    return <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]"><RefreshCw className="w-5 h-5 text-blue-500 animate-spin" /></div>;
   }
   if (!authed) {
     return <AdminAuthGate onAuthed={(email) => { setAuthed(true); setAdminEmail(email); }} />;
@@ -2156,8 +2156,8 @@ export default function AdminPortal() {
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed lg:static z-30 flex flex-col w-60 h-full bg-white border-r border-green-100 shadow-sm transition-transform lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="px-5 py-5 border-b border-green-100">
+      <aside className={`fixed lg:static z-30 flex flex-col w-60 h-full bg-white border-r border-blue-100 shadow-sm transition-transform lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="px-5 py-5 border-b border-blue-100">
           {/* Shared brand mark. This used to be a ShieldAlert glyph beside the
               name "PharmacySync" -- a third logo AND a third spelling, against
               "PharmSync" on the home page and in the pharmacy dashboard. */}
@@ -2178,8 +2178,8 @@ export default function AdminPortal() {
               onClick={() => { setNav(item.id); setSidebarOpen(false); }}
               className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-colors ${
                 nav === item.id
-                  ? "bg-green-600 text-white shadow-sm shadow-green-200"
-                  : "text-slate-600 hover:bg-green-50 hover:text-green-700"
+                  ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                  : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
               }`}>
               <span className="flex items-center gap-2.5 font-medium">
                 {item.icon}
@@ -2187,7 +2187,7 @@ export default function AdminPortal() {
               </span>
               {badges[item.id] ? (
                 <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center ${
-                  nav === item.id ? "bg-white/30 text-white" : "bg-green-100 text-green-700"
+                  nav === item.id ? "bg-white/30 text-white" : "bg-blue-100 text-blue-700"
                 }`}>
                   {badges[item.id]}
                 </span>
@@ -2204,9 +2204,9 @@ export default function AdminPortal() {
           <LanguageSwitcher />
         </div>
 
-        <div className="px-4 py-4 border-t border-green-100">
-          <div className="flex items-center gap-2.5 bg-green-50 rounded-xl p-2.5">
-            <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center shrink-0">
+        <div className="px-4 py-4 border-t border-blue-100">
+          <div className="flex items-center gap-2.5 bg-blue-50 rounded-xl p-2.5">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
               <span className="text-white text-[10px] font-bold">SA</span>
             </div>
             <div className="min-w-0 flex-1">
@@ -2222,7 +2222,7 @@ export default function AdminPortal() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="flex items-center justify-between px-4 lg:px-6 py-3.5 bg-white border-b border-green-100 shadow-sm shrink-0">
+        <header className="flex items-center justify-between px-4 lg:px-6 py-3.5 bg-white border-b border-blue-100 shadow-sm shrink-0">
           <div className="flex items-center gap-3">
             <button className="lg:hidden text-slate-500 hover:text-slate-700 transition-colors" onClick={() => setSidebarOpen(true)}>
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -2232,27 +2232,29 @@ export default function AdminPortal() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-green-600 transition-colors">
+            <a href="#" onClick={(e) => { e.preventDefault(); backToHome(); }} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors">
               <ArrowLeft className="w-3.5 h-3.5" /> <span className="hidden sm:inline">{t("common.backToPharmSync")}</span>
             </a>
             <span className="font-mono text-[10px] text-slate-400 hidden sm:block">{t("admin.version")}</span>
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-[10px] text-green-600 font-semibold">{t("admin.live")}</span>
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-[10px] text-blue-600 font-semibold">{t("admin.live")}</span>
             </div>
           </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
-          {nav === "approvals" && <Approvals branches={branches} onChange={refresh} />}
-          {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
-          {nav === "products"  && <ProductsView />}
-          {nav === "categories" && <CategoriesView branches={branches} />}
-          {nav === "productRequests" && <ProductRequestsView />}
-          {nav === "insurance" && <InsuranceView />}
-          {nav === "security"  && <Security branches={branches} onChange={refresh} />}
-          {nav === "tickets"   && <TicketsView tickets={tickets} onChange={refresh} />}
+          <div key={nav} className="animate-fade-in">
+            {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
+            {nav === "approvals" && <Approvals branches={branches} onChange={refresh} />}
+            {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
+            {nav === "products"  && <ProductsView />}
+            {nav === "categories" && <CategoriesView branches={branches} />}
+            {nav === "productRequests" && <ProductRequestsView />}
+            {nav === "insurance" && <InsuranceView />}
+            {nav === "security"  && <Security branches={branches} onChange={refresh} />}
+            {nav === "tickets"   && <TicketsView tickets={tickets} onChange={refresh} />}
+          </div>
         </main>
       </div>
     </div>

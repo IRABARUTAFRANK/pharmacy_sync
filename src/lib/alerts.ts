@@ -1,14 +1,18 @@
+import type { TranslationKey } from "./i18n/en"
 import { supabase } from "./supabase"
 
 // Real public.notifications rows (branch-scoped by RLS), replacing the
 // dbNotifications/alertsData mocks that used to back AlertsPage.tsx and
-// App.tsx's NotifDropdown/sidebar badge. Nothing in this codebase currently
-// creates a batch_recall/stock_adjustment notification (no UI flow writes
-// those tables yet), so those source types will legitimately show as empty
-// until that exists -- this is real data, not padded to look busier than it
-// is. product_request_approved/rejected notifications ARE created, by
-// admin_approve_product_request()/admin_reject_product_request() in the
-// schema.
+// App.tsx's NotifDropdown/sidebar badge. product_request_approved/rejected
+// and out_of_stock notifications are created server-side (see
+// admin_approve_product_request()/admin_reject_product_request()/
+// check_out_of_stock_alerts() in the schema); batch_recall and
+// stock_adjustment are created by adjust_stock().
+//
+// titleKey holds a TranslationKey, not display text -- the caller (AlertsPage,
+// App.tsx's NotifDropdown) renders it with t(), so the same stored
+// notification row displays in whichever language is active rather than
+// being frozen in English at write time.
 
 export type AlertSeverity = "critical" | "warning" | "info"
 
@@ -16,18 +20,18 @@ export interface LiveAlert {
   id: string
   sourceType: string
   type: AlertSeverity
-  title: string
+  titleKey: TranslationKey
   msg: string
   createdAt: string
   isRead: boolean
 }
 
-const TITLES: Record<string, string> = {
-  batch_recall: "Batch Recall",
-  stock_adjustment: "Stock Adjustment",
-  product_request_approved: "Product Request Approved",
-  product_request_rejected: "Product Request Declined",
-  out_of_stock: "Out of Stock",
+export const ALERT_SOURCE_TITLE_KEYS: Record<string, TranslationKey> = {
+  batch_recall: "alerts.source.batchRecall",
+  stock_adjustment: "alerts.source.stockAdjustment",
+  product_request_approved: "alerts.source.productRequestApproved",
+  product_request_rejected: "alerts.source.productRequestRejected",
+  out_of_stock: "alerts.source.outOfStock",
 }
 
 const SEVERITY: Record<string, AlertSeverity> = {
@@ -55,7 +59,7 @@ export async function loadLiveAlerts(): Promise<LiveAlert[]> {
     id: row.id,
     sourceType: row.source_type,
     type: SEVERITY[row.source_type] ?? "info",
-    title: TITLES[row.source_type] ?? "Notification",
+    titleKey: ALERT_SOURCE_TITLE_KEYS[row.source_type] ?? "alerts.source.notification",
     msg: row.message,
     createdAt: row.created_at,
     isRead: row.is_read,

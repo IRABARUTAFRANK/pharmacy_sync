@@ -236,6 +236,26 @@ button:focus:not(:focus-visible) { outline: none; }
 @keyframes psync-shake { 10%, 90% { transform: translateX(-2px); } 30%, 70% { transform: translateX(4px); } 50% { transform: translateX(-4px); } }
 @keyframes psync-spin  { to { transform: rotate(360deg); } }
 
+/* Dashboard modal open transition (AdminPortal, StockReceivingPage,
+   StockAdjustmentPage, HelpPage, LiveInventoryPage, etc. all share the one
+   Modal component in components.tsx) — backdrop fades in, panel fades and
+   scales up from 96%, so opening a modal reads as one continuous motion
+   instead of an instant pop. */
+@keyframes modal-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-panel-in    { from { opacity: 0; transform: scale(0.96) translateY(6px); } to { opacity: 1; transform: none; } }
+.modal-backdrop { animation: modal-backdrop-in 0.18s ease both; }
+.modal-panel    { animation: modal-panel-in 0.2s cubic-bezier(.22,.68,0,1.2) both; }
+
+/* Dashboard cards that are clickable (Card in components.tsx, when given an
+   onClick) get the same hover-lift feel as the marketing page's
+   .feature-card, so the affordance reads consistently across the app. */
+.dashboard-card-clickable {
+  transition: transform 0.2s cubic-bezier(.22,.68,0,1.2), box-shadow 0.2s ease;
+}
+.dashboard-card-clickable:hover {
+  transform: translateY(-3px);
+}
+
 /* Printing a page (e.g. a barcode sheet) should show only that page's own
    content, not the app shell around it, and must not be clipped to one
    viewport-height screen the way the on-screen layout is. */
@@ -246,7 +266,29 @@ button:focus:not(:focus-visible) { outline: none; }
   .no-print { display: none !important; }
 }
 
+/* App-open intro splash (App.tsx) -- shown once per browser session (gated
+   by sessionStorage), not on every internal navigation. mark reveals first,
+   wordmark follows, the whole thing fades+scales out into the real app. */
+@keyframes intro-mark-in {
+  from { opacity: 0; transform: scale(0.82); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes intro-wordmark-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes intro-out {
+  from { opacity: 1; transform: scale(1); }
+  to   { opacity: 0; transform: scale(1.04); }
+}
+.intro-mark     { animation: intro-mark-in 0.5s cubic-bezier(.22,.68,0,1.2) both; }
+.intro-wordmark { animation: intro-wordmark-in 0.45s ease both 0.25s; }
+.intro-exit     { animation: intro-out 0.32s ease both; }
+
 @media (prefers-reduced-motion: reduce) {
+  @keyframes intro-mark-in     { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
+  @keyframes intro-wordmark-in { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
+  @keyframes intro-out         { from { opacity: 1; } to { opacity: 1; } }
   @keyframes slide-out-left  { from { opacity: 1; } to { opacity: 1; } }
   @keyframes slide-out-right { from { opacity: 1; } to { opacity: 1; } }
   @keyframes slide-in-right  { from { opacity: 1; } to { opacity: 1; } }
@@ -257,4 +299,8 @@ button:focus:not(:focus-visible) { outline: none; }
   @keyframes psync-grow      { from { transform: none; } to { transform: none; } }
   @keyframes psync-shake     { from { transform: none; } to { transform: none; } }
   @keyframes psync-spin      { from { transform: none; } to { transform: none; } }
+  @keyframes modal-backdrop-in { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes modal-panel-in    { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
+  @keyframes fadeIn             { from { opacity: 1; } to { opacity: 1; } }
+  .dashboard-card-clickable:hover { transform: none; }
 }

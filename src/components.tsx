@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import Barcode from 'react-barcode'
-import { fmtRWF, fmtRWFExact, alertColors, type AlertSeverity } from './data'
+import { fmtRWFExact, alertColors, type AlertSeverity } from './data'
 import logoImg from './assets/logo.png'
 
 // ─── Brand mark ───────────────────────────────────────────────────────────────
@@ -42,13 +42,13 @@ export function Card({ children, style = {}, onClick }: { children: ReactNode; s
   return (
     <div
       onClick={onClick}
+      className={onClick ? 'dashboard-card-clickable' : undefined}
       style={{
         background: '#fff',
         borderRadius: 12,
         border: '1px solid var(--border)',
         padding: '18px 20px',
         cursor: onClick ? 'pointer' : undefined,
-        transition: 'box-shadow 0.2s',
         ...style,
       }}
       onMouseEnter={onClick ? e => { (e.currentTarget as HTMLDivElement).style.boxShadow = '0 4px 16px rgba(30,95,168,0.10)' } : undefined}
@@ -105,7 +105,7 @@ export function ChartTooltip({ active, payload, label }: any) {
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, flexShrink: 0 }} />
           <span style={{ color: 'var(--ink-muted)' }}>{p.name}:</span>
           <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
-            {typeof p.value === 'number' && p.value > 10000 ? fmtRWF(p.value) : p.value?.toLocaleString?.() ?? p.value}
+            {typeof p.value === 'number' && p.value > 10000 ? fmtRWFExact(p.value) : p.value?.toLocaleString?.() ?? p.value}
           </span>
         </div>
       ))}
@@ -237,12 +237,12 @@ export function Modal({ title, onClose, children, width = 620 }: {
   title: string; onClose: () => void; children: ReactNode; width?: number
 }) {
   return (
-    <div style={{
+    <div className="modal-backdrop" style={{
       position: 'fixed', inset: 0, zIndex: 200,
       background: 'rgba(13,31,18,0.45)', display: 'flex',
       alignItems: 'center', justifyContent: 'center', padding: 20,
     }} onClick={onClose}>
-      <div style={{
+      <div className="modal-panel" style={{
         background: '#fff', borderRadius: 14, width: '100%', maxWidth: width,
         boxShadow: '0 24px 64px rgba(0,0,0,0.16)', overflow: 'hidden',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',

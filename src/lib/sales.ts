@@ -180,15 +180,25 @@ export interface CompleteSaleResult {
   patientOwedTotal: number
 }
 
+export interface SaleLineInput {
+  code: string
+  /** Pieces to sell from this pack. Omit to sell the whole pack. */
+  quantity?: number
+}
+
 // The one and only way a sale is written: complete_sale() re-validates and
 // re-locks every barcode server-side (never trust the client's cached scan),
 // so this is the sole source of truth for what actually got sold and for how
-// much — the cart on screen is only ever a preview of this.
-export async function completeSale(codes: string[], insuranceProviderId: string | null): Promise<CompleteSaleResult> {
-  if (codes.length === 0) throw new Error("Scan at least one item before completing the sale.")
+// much — the cart on screen is only ever a preview of this. A line's
+// quantity may be fewer than the pack's own pieces_per_pack -- selling part
+// of a pack leaves the remainder as the same, still-scannable barcode with
+// its pieces_per_pack reduced, instead of forcing a whole-pack sale.
+export async function completeSale(lines: SaleLineInput[], insuranceProviderId: string | null, patientId: string | null = null): Promise<CompleteSaleResult> {
+  if (lines.length === 0) throw new Error("Scan at least one item before completing the sale.")
   const { data, error } = await supabase.rpc("complete_sale", {
-    p_lines: codes.map(code => ({ code })),
+    p_lines: lines.map(l => ({ code: l.code, quantity: l.quantity ?? null })),
     p_insurance_provider_id: insuranceProviderId,
+    p_patient_id: patientId,
   })
   if (error) raise(error, "Could not complete this sale.")
   const row = Array.isArray(data) ? data[0] : data
@@ -221,7 +231,18 @@ export interface ReceiptData {
   receiptNumber: string
   issuedAt: string
   branchName: string
+  branchTin: string | null
+  branchAddress: string | null
+  branchPhone: string | null
+  branchLogoUrl: string | null
+  branchBankAccountNumber: string | null
+  branchBankAccountName: string | null
+  branchMomoPayNumber: string | null
   cashierName: string
+  patientName: string | null
+  patientGender: string | null
+  patientAge: number | null
+  patientContact: string | null
   insuranceProviderName: string | null
   items: ReceiptItem[]
   subtotal: number
@@ -233,7 +254,7 @@ export interface ReceiptData {
 
 export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
   const [saleRes, receiptRes, itemsRes, claimRes] = await Promise.all([
-    supabase.from("sales").select("id, branch_id, cashier_id, total_amount, sold_at").eq("id", saleId).maybeSingle(),
+    supabase.from("sales").select("id, branch_id, cashier_id, patient_id, total_amount, sold_at").eq("id", saleId).maybeSingle(),
     supabase.from("receipts").select("receipt_number, issued_at").eq("sale_id", saleId).maybeSingle(),
     supabase.from("sale_items").select("barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount").eq("sale_id", saleId),
     supabase.from("insurance_claims").select("insurance_provider_id").eq("sale_id", saleId).maybeSingle(),
@@ -247,13 +268,16 @@ export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
   const barcodeIds = items.map(i => i.barcode_id)
   const taxRateIds = Array.from(new Set(items.map(i => i.tax_rate_id)))
 
-  const [branchRes, cashierRes, barcodesRes, taxRatesRes, providerRes] = await Promise.all([
-    supabase.from("branches").select("name").eq("id", saleRes.data.branch_id).maybeSingle(),
+  const [branchRes, cashierRes, barcodesRes, taxRatesRes, providerRes, patientRes] = await Promise.all([
+    supabase.from("branches").select("name, tin, address, phone, logo_path, bank_account_number, bank_account_name, momo_pay_number").eq("id", saleRes.data.branch_id).maybeSingle(),
     supabase.from("users").select("full_name").eq("id", saleRes.data.cashier_id).maybeSingle(),
     barcodeIds.length ? supabase.from("barcodes").select("id, code, stock_batch_id").in("id", barcodeIds) : Promise.resolve({ data: [], error: null }),
     taxRateIds.length ? supabase.from("tax_rates").select("id, rate_percentage").in("id", taxRateIds) : Promise.resolve({ data: [], error: null }),
     claimRes.data?.insurance_provider_id
       ? supabase.from("insurance_providers").select("name").eq("id", claimRes.data.insurance_provider_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    saleRes.data.patient_id
+      ? supabase.from("patients").select("full_name, gender, age, tin_or_phone").eq("id", saleRes.data.patient_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ])
   if (branchRes.error) raise(branchRes.error, "Could not load the branch for this receipt.")
@@ -304,9 +328,19 @@ export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
   const taxTotal = receiptItems.reduce((sum, i) => sum + i.taxAmount, 0)
   const insuranceCoveredTotal = receiptItems.reduce((sum, i) => sum + i.insuranceCovered, 0)
 
+  const patient = patientRes.data as any
+  const branchRow = branchRes.data as any
+  const logoPath: string | null = branchRow?.logo_path ?? null
+
   return {
     saleId, receiptNumber: receiptRes.data.receipt_number, issuedAt: receiptRes.data.issued_at,
-    branchName: branchRes.data?.name ?? "—", cashierName: cashierRes.data?.full_name ?? "—",
+    branchName: branchRow?.name ?? "—",
+    branchTin: branchRow?.tin ?? null, branchAddress: branchRow?.address ?? null, branchPhone: branchRow?.phone ?? null,
+    branchLogoUrl: logoPath ? supabase.storage.from("branch-logos").getPublicUrl(logoPath).data.publicUrl : null,
+    branchBankAccountNumber: branchRow?.bank_account_number ?? null, branchBankAccountName: branchRow?.bank_account_name ?? null,
+    branchMomoPayNumber: branchRow?.momo_pay_number ?? null,
+    cashierName: cashierRes.data?.full_name ?? "—",
+    patientName: patient?.full_name ?? null, patientGender: patient?.gender ?? null, patientAge: patient?.age ?? null, patientContact: patient?.tin_or_phone ?? null,
     insuranceProviderName: (providerRes.data as any)?.name ?? null,
     items: receiptItems, subtotal, taxTotal, insuranceCoveredTotal,
     patientOwedTotal: subtotal + taxTotal - insuranceCoveredTotal, grandTotal: subtotal + taxTotal,
@@ -321,29 +355,39 @@ export interface SaleHistoryRow {
   soldAt: string
   totalAmount: number
   cashierName: string
+  patientId: string | null
+  patientName: string | null
   insuranceProviderName: string | null
   itemCount: number
 }
 
-export async function listSaleHistory(limit = 100): Promise<SaleHistoryRow[]> {
-  const salesRes = await supabase.from("sales").select("id, cashier_id, total_amount, sold_at").order("sold_at", { ascending: false }).limit(limit)
+// patientId, when given, narrows to one patient's own visit history -- the
+// same query PatientsPage uses to answer "what did they buy last time,"
+// reused rather than duplicated.
+export async function listSaleHistory(limit = 100, patientId?: string): Promise<SaleHistoryRow[]> {
+  let query = supabase.from("sales").select("id, cashier_id, patient_id, total_amount, sold_at").order("sold_at", { ascending: false }).limit(limit)
+  if (patientId) query = query.eq("patient_id", patientId)
+  const salesRes = await query
   if (salesRes.error) raise(salesRes.error, "Could not load sales history.")
   const sales = salesRes.data ?? []
   if (sales.length === 0) return []
 
   const saleIds = sales.map(s => s.id)
   const cashierIds = Array.from(new Set(sales.map(s => s.cashier_id)))
+  const patientIds = Array.from(new Set(sales.map(s => s.patient_id).filter((id): id is string => !!id)))
 
-  const [receiptsRes, itemsRes, claimsRes, cashiersRes] = await Promise.all([
+  const [receiptsRes, itemsRes, claimsRes, cashiersRes, patientsRes] = await Promise.all([
     supabase.from("receipts").select("sale_id, receipt_number").in("sale_id", saleIds),
     supabase.from("sale_items").select("sale_id").in("sale_id", saleIds),
     supabase.from("insurance_claims").select("sale_id, insurance_provider_id").in("sale_id", saleIds),
     supabase.from("users").select("id, full_name").in("id", cashierIds),
+    patientIds.length ? supabase.from("patients").select("id, full_name").in("id", patientIds) : Promise.resolve({ data: [], error: null }),
   ])
   if (receiptsRes.error) raise(receiptsRes.error, "Could not load receipts.")
   if (itemsRes.error) raise(itemsRes.error, "Could not load sale items.")
   if (claimsRes.error) raise(claimsRes.error, "Could not load insurance claims.")
   if (cashiersRes.error) raise(cashiersRes.error, "Could not load cashier names.")
+  if (patientsRes.error) raise(patientsRes.error, "Could not load patient names.")
 
   const providerIds = Array.from(new Set((claimsRes.data ?? []).map(c => c.insurance_provider_id)))
   const providersRes = providerIds.length
@@ -355,12 +399,14 @@ export async function listSaleHistory(limit = 100): Promise<SaleHistoryRow[]> {
   const claimBySale = new Map((claimsRes.data ?? []).map(c => [c.sale_id, c.insurance_provider_id]))
   const providerById = new Map((providersRes.data ?? []).map((p: any) => [p.id, p.name]))
   const cashierById = new Map((cashiersRes.data ?? []).map(u => [u.id, u.full_name]))
+  const patientById = new Map((patientsRes.data ?? []).map((p: any) => [p.id, p.full_name]))
   const itemCountBySale = new Map<string, number>()
   for (const item of itemsRes.data ?? []) itemCountBySale.set(item.sale_id, (itemCountBySale.get(item.sale_id) ?? 0) + 1)
 
   return sales.map(s => ({
     saleId: s.id, receiptNumber: receiptBySale.get(s.id) ?? "—", soldAt: s.sold_at, totalAmount: Number(s.total_amount),
     cashierName: cashierById.get(s.cashier_id) ?? "—",
+    patientId: s.patient_id, patientName: s.patient_id ? patientById.get(s.patient_id) ?? null : null,
     insuranceProviderName: (() => { const pid = claimBySale.get(s.id); return pid ? providerById.get(pid) ?? null : null })(),
     itemCount: itemCountBySale.get(s.id) ?? 0,
   }))

@@ -1,6 +1,6 @@
 // ─── Pharmacy Sync — Central Data & Types ─────────────────────────────────────
 
-export type Role = 'owner' | 'manager' | 'pharmacist'
+export type Role = 'owner' | 'manager' | 'pharmacist' | 'seller'
 
 // ─── Barcode Types ────────────────────────────────────────────────────────────
 
@@ -205,23 +205,30 @@ export interface InsuranceProvider {
 
 // ─── Nav Config ───────────────────────────────────────────────────────────────
 
+// Two functional tiers from here on: owner/manager see everything, seller
+// sees only Sales, Patients, and Help -- "for confidentiality of
+// information," per the request that shaped this list. `pharmacist`/`staff`
+// stay legal role values in the database (nothing ever created one) but no
+// nav item grants them anything any more; the only roles a real login can
+// ever end up with going forward are owner, manager, and seller.
 export const NAV_ITEMS: NavItem[] = [
-  // ── All roles ────────────────────────────────────────────────
-  { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'inventory',   label: 'Inventory Dashboard',  icon: '📦', roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'receiving',   label: 'Receive Stock',        icon: '📥', roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'requestProduct', label: 'Request Product',   icon: '🙋', roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'barcode',     label: 'Barcode Manager',      icon: '▦',  roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'analytics',   label: 'Analytics',            icon: '📊', roles: ['owner', 'manager'] },
-  { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager', 'pharmacist'] },
-  { id: 'compliance',  label: 'Compliance',           icon: '📋', roles: ['owner', 'manager'] },
-  { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager', 'pharmacist'] },
+  // ── Owner / manager only ────────────────────────────────────
+  { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager'] },
+  { id: 'inventory',   label: 'Inventory Dashboard',  icon: '📦', roles: ['owner', 'manager'] },
+  { id: 'receiving',   label: 'Receive Stock',        icon: '📥', roles: ['owner', 'manager'] },
+  { id: 'requestProduct', label: 'Request Product',   icon: '🙋', roles: ['owner', 'manager'] },
+  { id: 'barcode',     label: 'Barcode Manager',      icon: '▦',  roles: ['owner', 'manager'] },
+  { id: 'reports',     label: 'Products in Stock',    icon: '📦', roles: ['owner', 'manager'] },
+  { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager'] },
+  { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager'] },
+  { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager'] },
+  { id: 'team',        label: 'Team',                 icon: '👥', roles: ['owner', 'manager'] },
+  // ── Shared with seller ──────────────────────────────────────
+  { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'seller'] },
+  { id: 'patients',    label: 'Patients',              icon: '🩺', roles: ['owner', 'manager', 'seller'] },
+  { id: 'help',        label: 'Help & Support',       icon: '💬', roles: ['owner', 'manager', 'seller'] },
   // ── Owner only ───────────────────────────────────────────────
   { id: 'branch',      label: 'Branch Settings',      icon: '⚙️', roles: ['owner'] },
-  // ── Help — different label per role ──────────────────────────
-  { id: 'help',        label: 'Help & Support',       icon: '💬', roles: ['owner', 'manager', 'pharmacist'] },
 ]
 
 // ─── KPIs ─────────────────────────────────────────────────────────────────────

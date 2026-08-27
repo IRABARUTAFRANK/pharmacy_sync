@@ -22,3 +22,7 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Local Supabase CLI session/link cache (project ref, pooler URL, CLI
+# version) -- machine-local state from `supabase login`/`link`, not source.
+supabase/.temp/

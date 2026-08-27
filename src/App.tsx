@@ -18,8 +18,12 @@ import AdminPortal from './pages/AdminPortal'
 import BranchPortal from './pages/BranchPortal'
 import ResetPassword from './pages/ResetPassword'
 import { Logo } from './components'
+import TeamPage from './pages/TeamPage'
+import PatientsPage from './pages/PatientsPage'
+import ReportsPage from './pages/ReportsPage'
+import BranchSettingsPage from './pages/BranchSettingsPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
-import { checkOutOfStockAlerts, loadLiveAlerts, type LiveAlert } from './lib/alerts'
+import { checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 
 // ─── Top-level hash router ──────────────────────────────────────────────────────
 // #admin and #branch are the super-admin console and pharmacy registration —
@@ -60,11 +64,11 @@ function useHashRoute(): HashRoute {
 const ROLES: { id: Role; abbr: string; color: string }[] = [
   { id: 'owner',      abbr: 'OW', color: '#1e5fa8' },
   { id: 'manager',    abbr: 'MG', color: '#0284c7' },
-  { id: 'pharmacist', abbr: 'PH', color: '#7c3aed' },
+  { id: 'seller',     abbr: 'SL', color: '#7c3aed' },
 ]
 
 function roleLabelKey(id: Role): TranslationKey {
-  return id === 'owner' ? 'shell.roleOwner' : id === 'manager' ? 'shell.roleManager' : 'shell.rolePharmacist'
+  return id === 'owner' ? 'shell.roleOwner' : id === 'manager' ? 'shell.roleManager' : 'shell.roleSeller'
 }
 
 // ─── Export Modal (inline here, used from any page) ───────────────────────────
@@ -148,7 +152,7 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
             <div key={a.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10, background: bg[a.type] + '60' }}>
               <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot[a.type], marginTop: 4, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: dot[a.type] }}>{a.title}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: dot[a.type] }}>{t(a.titleKey)}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.msg}</div>
                 <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
               </div>
@@ -156,7 +160,7 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
           )
         })}
         {active.length === 0 && (
-          <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--ink-faint)' }}>No new alerts</div>
+          <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--ink-faint)' }}>{t('shell.noNewAlerts')}</div>
         )}
       </div>
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
@@ -207,6 +211,53 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
   )
 }
 
+// ─── Intro splash ─────────────────────────────────────────────────────────────
+// Shown once per browser session (sessionStorage-gated, so it never repeats
+// on internal navigation, only on a genuine fresh load) before landing on
+// either the marketing home page or the dashboard -- whichever the access
+// check above resolves to. Deep-link routes (admin console, branch
+// activation, password reset) skip it entirely: a delay in front of a link
+// someone followed for a specific task would only be friction, not delight.
+
+const INTRO_SESSION_KEY = 'psync_intro_shown'
+
+function IntroSplash({ exiting }: { exiting: boolean }) {
+  return (
+    <div className={exiting ? 'intro-exit' : undefined} style={{
+      position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center', gap: 14, background: 'var(--bg)',
+    }}>
+      <div className="intro-mark"><Logo size={56} showWordmark={false} /></div>
+      <div className="intro-wordmark" style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22, letterSpacing: '-0.01em', color: 'var(--ink)' }}>
+        Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
+      </div>
+    </div>
+  )
+}
+
+function useIntroSplash(): 'visible' | 'exiting' | 'done' {
+  const [phase, setPhase] = useState<'visible' | 'exiting' | 'done'>(() => {
+    try { return sessionStorage.getItem(INTRO_SESSION_KEY) === '1' ? 'done' : 'visible' } catch { return 'done' }
+  })
+
+  useEffect(() => {
+    if (phase !== 'visible') return
+    const toExit = window.setTimeout(() => setPhase('exiting'), 1000)
+    return () => window.clearTimeout(toExit)
+  }, [phase])
+
+  useEffect(() => {
+    if (phase !== 'exiting') return
+    const toDone = window.setTimeout(() => {
+      setPhase('done')
+      try { sessionStorage.setItem(INTRO_SESSION_KEY, '1') } catch { /* per-viewer convenience only */ }
+    }, 320)
+    return () => window.clearTimeout(toDone)
+  }, [phase])
+
+  return phase
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 const DATE_RANGE_OPTIONS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', 'quarter', 'custom'] as const
@@ -218,6 +269,7 @@ const dateRangeLabelKey: Record<DateRangeOption, TranslationKey> = {
 
 export default function App() {
   const hashRoute = useHashRoute()
+  const introPhase = useIntroSplash()
   const { t } = useTranslation()
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
@@ -226,6 +278,7 @@ export default function App() {
   const [dateRange, setDateRange]   = useState<DateRangeOption>('thisMonth')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showNotif, setShowNotif]   = useState(false)
+  const [notifSnapshot, setNotifSnapshot] = useState<LiveAlert[]>([])
   const [showUser, setShowUser]     = useState(false)
   const [showExport, setShowExport] = useState(false)
 
@@ -259,9 +312,13 @@ export default function App() {
     return () => clearInterval(id)
   }, [access, refreshAlerts])
 
-  const role: Role = access?.role === 'owner' || access?.role === 'manager' || access?.role === 'pharmacist'
+  // Falls back to the least-privileged role, not the broadest one, for any
+  // legacy/unrecognized role value (pharmacist/staff exist in the database's
+  // check constraint but nothing has ever created one) -- an unknown role
+  // should never silently grant full access.
+  const role: Role = access?.role === 'owner' || access?.role === 'manager' || access?.role === 'seller'
     ? access.role
-    : 'pharmacist'
+    : 'seller'
 
   async function handleSignOut() {
     await signOutFromBranch()
@@ -273,6 +330,8 @@ export default function App() {
   if (hashRoute === 'admin') return <AdminPortal />
   if (hashRoute === 'branch') return <BranchPortal />
   if (hashRoute === 'reset') return <ResetPassword />
+
+  if (introPhase !== 'done') return <IntroSplash exiting={introPhase === 'exiting'} />
 
   if (accessLoading) {
     return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'var(--font-body)' }}>{t('shell.loadingWorkspace')}</main>
@@ -286,6 +345,27 @@ export default function App() {
   const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(role))
   const alertCount = alerts.filter(a => !a.isRead).length
   const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
+
+  // Opening the bell marks whatever was unread at that instant as read —
+  // no separate click required. The dropdown itself still renders from a
+  // frozen snapshot taken right here, so the cashier can see what was just
+  // read instead of the list emptying out from under them the moment it
+  // marks itself read.
+  function toggleNotif() {
+    setShowNotif(open => {
+      const next = !open
+      if (next) {
+        const unread = alerts.filter(a => !a.isRead)
+        setNotifSnapshot(unread)
+        if (unread.length > 0) {
+          void markAllAlertsRead(unread.map(a => a.id)).catch(() => { /* best-effort; next poll reconciles */ })
+          setAlerts(current => current.map(a => a.isRead ? a : { ...a, isRead: true }))
+        }
+      }
+      return next
+    })
+    setShowUser(false)
+  }
 
   const closeMenus = () => { setShowNotif(false); setShowUser(false) }
 
@@ -304,12 +384,13 @@ export default function App() {
       case 'requestProduct': return <RequestProductPage />
       case 'barcode':       return <BarcodeManagerPage />
       case 'sales':         return <SalesPage />
-      case 'analytics':     return <DatabaseBackedPage title="Analytics" tables="sales · sale_items · sales_forecasts" />
+      case 'reports':       return <ReportsPage />
       case 'alerts':        return <AlertsPage />
       case 'transactions':  return <TransactionsPage />
-      case 'compliance':    return <DatabaseBackedPage title="Compliance" tables="sales · tax_rates" />
       case 'insurance':     return <InsurancePage />
-      case 'branch':        return <DatabaseBackedPage title="Branch Management" tables="branches · users · branch_settings" />
+      case 'team':          return <TeamPage />
+      case 'patients':      return <PatientsPage />
+      case 'branch':        return <BranchSettingsPage />
       case 'help':          return <HelpPage />
       default:              return null
     }
@@ -513,7 +594,7 @@ export default function App() {
 
           {/* Notifications */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
-            <button onClick={() => { setShowNotif(n => !n); setShowUser(false) }} style={{
+            <button onClick={toggleNotif} style={{
               width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
               background: showNotif ? 'var(--bg)' : 'none', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -527,7 +608,7 @@ export default function App() {
                 <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, background: '#dc2626', borderRadius: '50%', border: '2px solid #fff' }} />
               )}
             </button>
-            {showNotif && <NotifDropdown alerts={alerts} onClose={() => setShowNotif(false)} />}
+            {showNotif && <NotifDropdown alerts={notifSnapshot} onClose={() => setShowNotif(false)} />}
           </div>
 
           {/* User avatar */}
