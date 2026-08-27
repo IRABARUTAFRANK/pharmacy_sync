@@ -120,7 +120,12 @@ export interface ScannedBarcode {
   barcodeType: "box" | "pack"
   status: string
   quantityAvailable: number
+  // For a pack: pieces still inside this pack. Null for cartons.
   piecesPerPack: number | null
+  // Carton-only: pieces in a full (untouched) child pack. Null for packs.
+  childPiecesPerPack: number | null
+  // Carton-only: how many child packs are still sellable inside this carton.
+  activeChildCount: number | null
   productId: string
   productName: string
   dosage: string | null
@@ -143,8 +148,8 @@ const STATUS_MESSAGE: Record<string, string> = {
 // Verifies that a barcode's unique code retrieves the product's full info from
 // the database — the same lookup_barcode() RPC the receiving/barcode pages
 // use, extended with product_id/tax_rate_id so a sale can price and apply
-// insurance without a second round trip. Rejects anything that isn't an
-// active, sellable pack before it ever reaches the cart.
+// insurance without a second round trip. Accepts both packs and cartons; the
+// caller (SalesPage) picks the sell mode based on barcode_type.
 export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<ScannedBarcode> {
   const trimmed = code.trim()
   if (!trimmed) throw new Error("Scan or type a barcode.")
@@ -155,14 +160,23 @@ export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<S
   if (lookup.error) raise(lookup.error, "Could not look up this barcode.")
   const row = Array.isArray(lookup.data) ? lookup.data[0] : lookup.data
   if (!row) throw new Error(`No product is linked to barcode "${trimmed}".`)
-  if (row.barcode_type !== "pack") throw new Error(`"${trimmed}" is a carton barcode, not a sellable pack — scan an individual pack instead.`)
+  if (row.barcode_type !== "pack" && row.barcode_type !== "box") {
+    throw new Error(`Barcode "${trimmed}" is not sellable.`)
+  }
   if (row.status !== "active") throw new Error(STATUS_MESSAGE[row.status as string] ?? `This barcode is ${row.status} and cannot be sold.`)
-  if (!row.quantity_available || row.quantity_available < 1) throw new Error("This pack has already been sold.")
+  if (row.barcode_type === "pack" && (!row.quantity_available || row.quantity_available < 1)) {
+    throw new Error("This pack has already been sold.")
+  }
+  if (row.barcode_type === "box" && (!row.active_child_count || row.active_child_count < 1)) {
+    throw new Error("This carton has no packs left to sell.")
+  }
 
   const taxRate = rates.find(r => r.id === row.tax_rate_id)
   return {
     barcodeId: row.barcode_id, code: row.code, barcodeType: row.barcode_type, status: row.status,
     quantityAvailable: row.quantity_available, piecesPerPack: row.pieces_per_pack,
+    childPiecesPerPack: row.child_pieces_per_pack ?? null,
+    activeChildCount: row.active_child_count ?? null,
     productId: row.product_id, productName: row.product_name, dosage: row.dosage, form: row.form,
     manufacturerName: row.manufacturer_name, sellingPrice: Number(row.selling_price),
     taxRateId: row.tax_rate_id, taxRatePercentage: Number(taxRate?.rate_percentage ?? 0),
@@ -180,23 +194,32 @@ export interface CompleteSaleResult {
   patientOwedTotal: number
 }
 
+export type SellMode = "whole" | "packs" | "pieces"
+
 export interface SaleLineInput {
   code: string
-  /** Pieces to sell from this pack. Omit to sell the whole pack. */
-  quantity?: number
+  // Interpretation depends on the scanned barcode's type:
+  //  * pack   + "whole"   → sell the whole pack (quantity ignored)
+  //  * pack   + "pieces"  → sell `quantity` loose pieces from the pack
+  //  * carton + "whole"   → sell every remaining child pack (quantity ignored)
+  //  * carton + "packs"   → sell `quantity` child packs from the carton
+  //  * carton + "pieces"  → open one child pack, sell `quantity` pieces
+  sellMode: SellMode
+  quantity: number | null
 }
 
 // The one and only way a sale is written: complete_sale() re-validates and
 // re-locks every barcode server-side (never trust the client's cached scan),
 // so this is the sole source of truth for what actually got sold and for how
-// much — the cart on screen is only ever a preview of this. A line's
-// quantity may be fewer than the pack's own pieces_per_pack -- selling part
-// of a pack leaves the remainder as the same, still-scannable barcode with
-// its pieces_per_pack reduced, instead of forcing a whole-pack sale.
+// much — the cart on screen is only ever a preview of this.
 export async function completeSale(lines: SaleLineInput[], insuranceProviderId: string | null, patientId: string | null = null): Promise<CompleteSaleResult> {
   if (lines.length === 0) throw new Error("Scan at least one item before completing the sale.")
   const { data, error } = await supabase.rpc("complete_sale", {
-    p_lines: lines.map(l => ({ code: l.code, quantity: l.quantity ?? null })),
+    p_lines: lines.map(line => ({
+      code: line.code,
+      sell_mode: line.sellMode,
+      quantity: line.quantity,
+    })),
     p_insurance_provider_id: insuranceProviderId,
     p_patient_id: patientId,
   })

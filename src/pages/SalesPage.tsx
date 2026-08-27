@@ -6,19 +6,27 @@ import { findPatientByIdentifier, upsertPatient, type PatientGender } from "../l
 import { listTaxRates, type TaxRate } from "../lib/products"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, loadCoverageOverrides, loadInsuranceProviders, scanBarcode,
-  type InsuranceProvider, type ReceiptData, type ScannedBarcode,
+  type InsuranceProvider, type ReceiptData, type ScannedBarcode, type SellMode,
 } from "../lib/sales"
 
-// One physical pack, scanned once. Its own barcode code is the cart identity —
-// scanning the same code twice is rejected (both here and, authoritatively,
-// by complete_sale()) rather than treated as "quantity 2", since each pack
-// is a distinct physical unit with its own quantity_available flag. How many
-// of its pieces actually get sold is a separate, editable choice (sellQty) —
-// selling fewer than the whole pack leaves the remainder as that same,
-// still-scannable barcode with fewer pieces, same as adjust_stock()'s
-// partial-removal behaviour.
-interface CartLine extends ScannedBarcode {
-  sellQty: number
+// One physical scan (pack or carton) becomes one cart line. Its own barcode
+// code is the cart identity — scanning the same code twice within one sale is
+// rejected (both here and, authoritatively, by complete_sale()). Each entry
+// carries the sell mode and a quantity whose meaning follows the mode:
+//   * pack   + whole   → the whole pack (quantity = pack's current pieces_per_pack)
+//   * pack   + pieces  → `quantity` loose pieces from the pack
+//   * carton + whole   → every remaining child pack (quantity = pieces across all children)
+//   * carton + packs   → `quantity` child packs (each full size)
+//   * carton + pieces  → `quantity` pieces from one child pack
+// `piecesSold` collapses all of that back into "how many actual pieces move
+// out of the shelf" so the summary math stays a plain multiplication.
+interface CartItem extends ScannedBarcode {
+  sellMode: SellMode
+  quantity: number
+  piecesSold: number
+}
+
+interface CartLine extends CartItem {
   taxAmount: number
   lineTotal: number
   coveragePercentage: number
@@ -26,12 +34,30 @@ interface CartLine extends ScannedBarcode {
   patientOwed: number
 }
 
-function priceLine(item: ScannedBarcode, sellQty: number, coveragePercentage: number): CartLine {
-  const subtotal = item.sellingPrice * sellQty
+function priceLine(item: CartItem, coveragePercentage: number): CartLine {
+  const subtotal = item.sellingPrice * item.piecesSold
   const taxAmount = Math.round(subtotal * item.taxRatePercentage) / 100
   const lineTotal = subtotal + taxAmount
   const insuranceCovered = Math.round(lineTotal * coveragePercentage) / 100
-  return { ...item, sellQty, taxAmount, lineTotal, coveragePercentage, insuranceCovered, patientOwed: lineTotal - insuranceCovered }
+  return { ...item, taxAmount, lineTotal, coveragePercentage, insuranceCovered, patientOwed: lineTotal - insuranceCovered }
+}
+
+// Turns the (mode, quantity) choice into the actual number of pieces leaving
+// the shelf, which is the only thing the price cares about. For cartons in
+// "whole" mode the piece count equals every active child pack's current
+// pieces_per_pack summed up -- we approximate that with
+// activeChildCount * childPiecesPerPack (full packs), which is exact whenever
+// no child has been partially opened. Backend recomputes the exact total, so
+// the client value is only a preview.
+function piecesFromMode(item: ScannedBarcode, mode: SellMode, quantity: number): number {
+  if (item.barcodeType === "pack") {
+    return mode === "whole" ? (item.piecesPerPack ?? 1) : quantity
+  }
+  const childPieces = item.childPiecesPerPack ?? 1
+  const activePacks = item.activeChildCount ?? 0
+  if (mode === "whole") return activePacks * childPieces
+  if (mode === "packs") return quantity * childPieces
+  return quantity
 }
 
 // ── Printable receipt — shared between "just completed" and Transactions history reprints ──
@@ -228,14 +254,24 @@ function PatientStep({ draft, onChange, onClear, resolvedId }: {
   </div>
 }
 
+// The "pending scan" mode holds a freshly-looked-up barcode while the cashier
+// picks how much of it to sell. `mode` drives which radio is active; `amount`
+// is the free-text quantity input tied to the current mode (pieces or packs).
+// Kept as a string so the input can be cleared without collapsing to 0.
+interface PendingScan {
+  item: ScannedBarcode
+  mode: SellMode
+  amount: string
+}
+
 export default function SalesPage() {
   const { t } = useTranslation()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [providers, setProviders] = useState<InsuranceProvider[]>([])
   const [providerId, setProviderId] = useState<string>("") // "" = self-pay
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map())
-  const [cart, setCart] = useState<ScannedBarcode[]>([])
-  const [quantities, setQuantities] = useState<Map<string, number>>(new Map())
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [pending, setPending] = useState<PendingScan | null>(null)
   const [scanInput, setScanInput] = useState("")
   const [scanning, setScanning] = useState(false)
   const [completing, setCompleting] = useState(false)
@@ -244,12 +280,14 @@ export default function SalesPage() {
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(BLANK_PATIENT)
   const scanRef = useRef<HTMLInputElement>(null)
+  const amountRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     void Promise.all([listTaxRates(), loadInsuranceProviders()]).then(([rates, provs]) => { setTaxRates(rates); setProviders(provs) })
   }, [])
 
-  useEffect(() => { if (!receipt) scanRef.current?.focus() }, [receipt, cart.length])
+  useEffect(() => { if (!receipt && !pending) scanRef.current?.focus() }, [receipt, cart.length, pending])
+  useEffect(() => { if (pending && pending.mode !== "whole") amountRef.current?.focus() }, [pending?.mode])
 
   useEffect(() => {
     if (!providerId) { setOverrides(new Map()); return }
@@ -260,7 +298,7 @@ export default function SalesPage() {
 
   async function handleScan() {
     const code = scanInput.trim()
-    if (!code || scanning) return
+    if (!code || scanning || pending) return
     if (cart.some(item => item.code.toUpperCase() === code.toUpperCase())) {
       setError(t("salesPage.cartDuplicateError", { code }))
       setScanInput("")
@@ -270,8 +308,7 @@ export default function SalesPage() {
     setError("")
     try {
       const item = await scanBarcode(code, taxRates)
-      setCart(current => [...current, item])
-      setQuantities(current => new Map(current).set(item.barcodeId, item.piecesPerPack ?? 1))
+      setPending({ item, mode: "whole", amount: "1" })
       setScanInput("")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
@@ -280,26 +317,65 @@ export default function SalesPage() {
     }
   }
 
+  function confirmPending() {
+    if (!pending) return
+    const { item, mode } = pending
+    const isCarton = item.barcodeType === "box"
+    const typed = Number.parseInt(pending.amount, 10)
+    let quantity = 0
+
+    if (mode === "whole") {
+      quantity = isCarton ? (item.activeChildCount ?? 0) : (item.piecesPerPack ?? 0)
+    } else if (mode === "packs") {
+      const maxPacks = item.activeChildCount ?? 0
+      if (!Number.isFinite(typed) || typed < 1) { setError(t("salesPage.pendingEnterPacksError")); return }
+      if (typed > maxPacks) { setError(t("salesPage.pendingPacksTooManyError", { max: maxPacks })); return }
+      quantity = typed
+    } else { // pieces
+      const maxPieces = isCarton ? (item.childPiecesPerPack ?? 0) : (item.piecesPerPack ?? 0)
+      if (!Number.isFinite(typed) || typed < 1) { setError(t("salesPage.pendingEnterPiecesError")); return }
+      if (typed > maxPieces) {
+        setError(isCarton
+          ? t("salesPage.pendingPiecesTooManyCartonError", { max: maxPieces })
+          : t("salesPage.pendingPiecesTooManyPackError", { max: maxPieces }))
+        return
+      }
+      quantity = typed
+    }
+
+    const piecesSold = piecesFromMode(item, mode, quantity)
+    setCart(current => [...current, { ...item, sellMode: mode, quantity, piecesSold }])
+    setPending(null)
+    setError("")
+  }
+
+  function cancelPending() {
+    setPending(null)
+    setError("")
+  }
+
   function removeLine(barcodeId: string) {
     setCart(current => current.filter(item => item.barcodeId !== barcodeId))
-    setQuantities(current => { const next = new Map(current); next.delete(barcodeId); return next })
   }
 
-  // Clamped to [1, piecesPerPack]: selling more than the pack physically
-  // holds, or zero/negative, is never a valid edit.
-  function setLineQuantity(item: ScannedBarcode, raw: string) {
-    const max = item.piecesPerPack ?? 1
-    const parsed = Number.parseInt(raw, 10)
-    const clamped = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), max) : 1
-    setQuantities(current => new Map(current).set(item.barcodeId, clamped))
-  }
-
-  const lines = cart.map(item => priceLine(item, quantities.get(item.barcodeId) ?? item.piecesPerPack ?? 1, selectedProvider ? effectiveCoveragePercentage(selectedProvider, overrides, item.productId) : 0))
-  const subtotal = lines.reduce((sum, l) => sum + l.sellingPrice * l.sellQty, 0)
+  const lines = cart.map(item => priceLine(item, selectedProvider ? effectiveCoveragePercentage(selectedProvider, overrides, item.productId) : 0))
+  const subtotal = lines.reduce((sum, l) => sum + l.sellingPrice * l.piecesSold, 0)
   const taxTotal = lines.reduce((sum, l) => sum + l.taxAmount, 0)
   const insuranceCoveredTotal = lines.reduce((sum, l) => sum + l.insuranceCovered, 0)
   const grandTotal = subtotal + taxTotal
   const patientOwedTotal = grandTotal - insuranceCoveredTotal
+
+  function describeSale(item: CartItem): string {
+    const pcs = t("salesPage.piecesUnit", { count: item.piecesSold })
+    if (item.barcodeType === "pack") {
+      return item.sellMode === "whole"
+        ? t("salesPage.describeWholePack", { pieces: pcs })
+        : t("salesPage.describePartialPack", { pieces: pcs, total: item.piecesPerPack ?? "?" })
+    }
+    if (item.sellMode === "whole") return t("salesPage.describeWholeCarton", { packs: item.activeChildCount ?? 0, pieces: pcs })
+    if (item.sellMode === "packs") return t("salesPage.describePacksFromCarton", { packs: item.quantity, pieces: pcs })
+    return t("salesPage.describePiecesFromCarton", { pieces: pcs })
+  }
 
   async function handleCompleteSale() {
     if (cart.length === 0 || completing) return
@@ -319,13 +395,16 @@ export default function SalesPage() {
         )
       }
       const result = await completeSale(
-        cart.map(item => ({ code: item.code, quantity: quantities.get(item.barcodeId) ?? item.piecesPerPack ?? 1 })),
+        cart.map(item => ({
+          code: item.code,
+          sellMode: item.sellMode,
+          quantity: item.sellMode === "whole" ? null : item.quantity,
+        })),
         providerId || null, patientId,
       )
       const fullReceipt = await getSaleReceipt(result.saleId)
       setReceipt(fullReceipt)
       setCart([])
-      setQuantities(new Map())
       setProviderId("")
       setPatientDraft(BLANK_PATIENT)
       setNotice(t("salesPage.saleCompletedNotice"))
@@ -362,14 +441,117 @@ export default function SalesPage() {
                 value={scanInput}
                 onChange={e => setScanInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") void handleScan() }}
-                placeholder={t("salesPage.scanPlaceholder")}
-                disabled={scanning}
+                placeholder={pending ? t("salesPage.pendingScanBlockedPlaceholder") : t("salesPage.scanPlaceholder")}
+                disabled={scanning || pending !== null}
                 autoFocus
-                style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, fontFamily: "inherit", outline: "none" }}
+                style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, fontFamily: "inherit", outline: "none", opacity: pending ? 0.55 : 1 }}
               />
               <Btn variant="primary" onClick={() => void handleScan()}>{scanning ? t("salesPage.scanLookingUp") : t("salesPage.scanAdd")}</Btn>
             </div>
           </div>
+
+          {pending && (() => {
+            const isCarton = pending.item.barcodeType === "box"
+            const typed = Math.max(0, Number.parseInt(pending.amount, 10) || 0)
+            const maxPacks = pending.item.activeChildCount ?? 0
+            const maxPiecesPerPack = isCarton ? (pending.item.childPiecesPerPack ?? 0) : (pending.item.piecesPerPack ?? 0)
+            const boundedTyped = pending.mode === "packs"
+              ? Math.min(typed, maxPacks)
+              : Math.min(typed, maxPiecesPerPack)
+            const pieces = piecesFromMode(pending.item, pending.mode, boundedTyped)
+            const subtotalPreview = pending.item.sellingPrice * pieces
+            const taxPreview = Math.round(subtotalPreview * pending.item.taxRatePercentage) / 100
+            const totalPreview = subtotalPreview + taxPreview
+            const wholeLabel = isCarton
+              ? t("salesPage.pendingWholeCarton", { packs: maxPacks, pieces: maxPacks * maxPiecesPerPack })
+              : t("salesPage.pendingWholePack", { pieces: maxPiecesPerPack })
+            const summaryLine = isCarton
+              ? t("salesPage.pendingSummaryCarton", { code: pending.item.code, packs: maxPacks, pieces: maxPiecesPerPack, price: fmtRWFExact(pending.item.sellingPrice) })
+              : t("salesPage.pendingSummaryPack", { code: pending.item.code, pieces: maxPiecesPerPack, price: fmtRWFExact(pending.item.sellingPrice) })
+
+            return (
+              <div style={{ background: "#fff", border: "1px solid var(--accent)", borderRadius: 12, padding: 16, marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                  {isCarton ? t("salesPage.pendingConfirmCartonTitle") : t("salesPage.pendingConfirmPackTitle")}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 2 }}>
+                  {pending.item.productName}{pending.item.dosage ? ` · ${pending.item.dosage}` : ""}{pending.item.form ? ` · ${pending.item.form}` : ""}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-muted)", fontFamily: 'var(--font-mono)', marginBottom: 12 }}>{summaryLine}</div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="sale-mode"
+                      checked={pending.mode === "whole"}
+                      onChange={() => setPending({ ...pending, mode: "whole" })}
+                    />
+                    <span>{wholeLabel}</span>
+                  </label>
+
+                  {isCarton && (
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                      <input
+                        type="radio"
+                        name="sale-mode"
+                        checked={pending.mode === "packs"}
+                        onChange={() => setPending({ ...pending, mode: "packs", amount: pending.mode === "packs" ? pending.amount : "" })}
+                      />
+                      <span>{t("salesPage.pendingSellPacksLabel")}</span>
+                      <input
+                        ref={pending.mode === "packs" ? amountRef : undefined}
+                        type="number"
+                        min={1}
+                        max={maxPacks}
+                        value={pending.mode === "packs" ? pending.amount : ""}
+                        onFocus={() => { if (pending.mode !== "packs") setPending({ ...pending, mode: "packs", amount: "" }) }}
+                        onChange={e => setPending({ ...pending, mode: "packs", amount: e.target.value })}
+                        onKeyDown={e => { if (e.key === "Enter") confirmPending() }}
+                        style={{ width: 70, padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit" }}
+                      />
+                      <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("salesPage.pendingOfPacks", { max: maxPacks })}</span>
+                    </label>
+                  )}
+
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="sale-mode"
+                      checked={pending.mode === "pieces"}
+                      onChange={() => setPending({ ...pending, mode: "pieces", amount: pending.mode === "pieces" ? pending.amount : "" })}
+                    />
+                    <span>{t("salesPage.pendingSellPiecesLabel")}</span>
+                    <input
+                      ref={pending.mode === "pieces" ? amountRef : undefined}
+                      type="number"
+                      min={1}
+                      max={maxPiecesPerPack}
+                      value={pending.mode === "pieces" ? pending.amount : ""}
+                      onFocus={() => { if (pending.mode !== "pieces") setPending({ ...pending, mode: "pieces", amount: "" }) }}
+                      onChange={e => setPending({ ...pending, mode: "pieces", amount: e.target.value })}
+                      onKeyDown={e => { if (e.key === "Enter") confirmPending() }}
+                      style={{ width: 70, padding: "6px 8px", borderRadius: 6, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit" }}
+                    />
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                      {isCarton ? t("salesPage.pendingOfPiecesCarton", { max: maxPiecesPerPack }) : t("salesPage.pendingOfPieces", { max: maxPiecesPerPack })}
+                    </span>
+                  </label>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12, padding: "10px 12px", background: "var(--bg-alt)", borderRadius: 8, marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.pendingSubtotalPreview", { pieces: t("salesPage.piecesUnit", { count: pieces }), price: fmtRWFExact(pending.item.sellingPrice) })}</span><span>{fmtRWFExact(subtotalPreview)}</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-muted)" }}><span>{t("salesPage.pendingTaxPreview", { pct: pending.item.taxRatePercentage })}</span><span>+{fmtRWFExact(taxPreview)}</span></div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, color: "var(--ink)", borderTop: "1px solid var(--border)", paddingTop: 4, marginTop: 4 }}><span>{t("salesPage.pendingLineTotal")}</span><span>{fmtRWFExact(totalPreview)}</span></div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <Btn variant="ghost" onClick={cancelPending}>{t("salesPage.pendingCancel")}</Btn>
+                  <Btn variant="primary" onClick={confirmPending}>{t("salesPage.pendingAddToCart")}</Btn>
+                </div>
+              </div>
+            )
+          })()}
 
           <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
             {lines.length === 0 ? (
@@ -382,23 +564,9 @@ export default function SalesPage() {
                       <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {line.productName}{line.dosage ? ` · ${line.dosage}` : ""}{line.form ? ` · ${line.form}` : ""}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>{line.code} · {t("salesPage.lineTaxPrefix")} {line.taxRatePercentage}%</div>
-                      {(line.piecesPerPack ?? 1) > 1 ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                          <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>{t("salesPage.sellQtyLabel")}</span>
-                          <input
-                            type="number" min={1} max={line.piecesPerPack ?? 1} value={line.sellQty}
-                            onChange={e => setLineQuantity(line, e.target.value)}
-                            style={{ width: 50, padding: "3px 6px", border: "1px solid var(--border)", borderRadius: 5, fontSize: 11, fontFamily: "inherit" }}
-                          />
-                          <span style={{ fontSize: 10, color: "var(--ink-faint)" }}>{t("salesPage.sellQtyOfTotal", { total: line.piecesPerPack ?? 1 })}</span>
-                          {line.sellQty < (line.piecesPerPack ?? 1) && (
-                            <span style={{ fontSize: 10, color: "#16a34a" }}>{t("salesPage.sellQtyRemainderHint", { remaining: (line.piecesPerPack ?? 1) - line.sellQty })}</span>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 10, color: "var(--ink-faint)", marginTop: 2 }}>{t("salesPage.piecesUnit", { count: 1 })}</div>
-                      )}
+                      <div style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: 'var(--font-mono)' }}>
+                        {line.code} · {describeSale(line)} · {t("salesPage.lineTaxPrefix")} {line.taxRatePercentage}%
+                      </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{fmtRWFExact(line.lineTotal)}</div>

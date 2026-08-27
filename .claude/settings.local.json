@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npx --no-install tsc --noEmit)",
+      "Bash(npx tsc *)",
+      "Bash(clip.exe)"
+    ]
+  },
   "enabledMcpjsonServers": [
     "supabase"
   ]
