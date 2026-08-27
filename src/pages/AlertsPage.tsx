@@ -88,16 +88,10 @@ export default function AlertsPage() {
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         {[
-<<<<<<< HEAD
-          { label: 'Total Notifications', value: alerts.length, c: '#1e5fa8', bg: '#d1fae5' },
-          { label: 'Unread',              value: unreadCount,   c: '#dc2626', bg: '#fef2f2' },
-          { label: 'Batch Recalls',       value: recallCount,   c: '#d97706', bg: '#fef3c7' },
-=======
           { label: 'Total Notifications', value: alerts.length,     c: '#1e8a4a', bg: '#d1fae5' },
           { label: 'Unread',              value: unreadCount,       c: '#dc2626', bg: '#fef2f2' },
           { label: 'Out of Stock (active)', value: outOfStockCount, c: '#dc2626', bg: '#fef2f2' },
           { label: 'Batch Recalls',       value: recallCount,       c: '#d97706', bg: '#fef3c7' },
->>>>>>> 2414cb418147648b460a40867d451a15914ddd77
         ].map(k => (
           <div key={k.label} style={{ background: k.bg, border: `1px solid ${k.c}30`, borderRadius: 10, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 26, fontWeight: 800, color: k.c, fontFamily: 'var(--font-display)' }}>{loading ? '—' : k.value}</div>
