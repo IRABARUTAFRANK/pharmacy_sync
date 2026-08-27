@@ -1242,10 +1242,17 @@
   -- reconsolidated. Not yet called from any client code: sales/POS is still out
   -- of scope, but this is the RPC that scanning a pack barcode at sale time will
   -- call to resolve it back to product, batch, price and supplier info.
+  -- child_pieces_per_pack / active_child_count populate only for cartons so
+  -- the POS can price a "sell N packs from carton" or "sell N pieces from
+  -- carton" choice without a second round trip. See
+  -- src/datatabase/2026-08-27_carton_sales.sql for the migration that
+  -- introduced the fields (and the matching complete_sale() carton support).
+  drop function if exists public.lookup_barcode(text);
   create or replace function public.lookup_barcode(p_code text)
   returns table(
     barcode_id uuid, code text, barcode_type text, status text,
     quantity_available integer, pieces_per_pack integer, child_count integer,
+    child_pieces_per_pack integer, active_child_count integer,
     parent_code text, stock_batch_id uuid, batch_number text, expiry_date date,
     delivery_code text, selling_price numeric, product_name text, dosage text,
     form text, manufacturer_name text, supplier_name text
@@ -1263,6 +1270,22 @@
       bc.quantity_available,
       bc.pieces_per_pack,
       bc.child_count,
+      case when bc.barcode_type = 'box' then (
+        select max(cpp.pieces_per_pack)::integer
+        from public.barcodes cpp
+        where cpp.parent_barcode_id = bc.id
+          and cpp.barcode_type = 'pack'
+          and cpp.status = 'active'
+          and cpp.quantity_available > 0
+      ) end as child_pieces_per_pack,
+      case when bc.barcode_type = 'box' then (
+        select count(*)::integer
+        from public.barcodes cpp
+        where cpp.parent_barcode_id = bc.id
+          and cpp.barcode_type = 'pack'
+          and cpp.status = 'active'
+          and cpp.quantity_available > 0
+      ) end as active_child_count,
       parent.code::text,
       sb.id,
       sb.batch_number::text,
@@ -3050,6 +3073,18 @@ grant execute on function public.admin_clear_insurance_coverage(uuid, uuid) to a
 -- transaction: without it, two cashiers scanning the same physical pack in
 -- the same instant could both pass the "is it still available" check before
 -- either one's update lands, selling the same physical pack twice.
+-- complete_sale supports three shapes of line, chosen with sell_mode:
+--   * pack   + whole  -- retire the pack (existing behaviour, sell_mode
+--                       optional for legacy callers)
+--   * pack   + pieces -- sell N loose pieces from the pack (partial sale)
+--   * carton + whole  -- sell every remaining child pack in one shot
+--   * carton + packs  -- sell N of the carton's active child packs (prefers
+--                       untouched full packs)
+--   * carton + pieces -- open one child pack and sell N pieces (prefers a
+--                       pack that was already opened)
+-- See src/datatabase/2026-08-27_carton_sales.sql for the incremental
+-- migration that introduced carton sales, and 2026-08-27_partial_pack_sales.sql
+-- for the earlier one that added partial-pack sales.
 create or replace function public.complete_sale(p_lines jsonb, p_insurance_provider_id uuid default null)
 returns table(
   sale_id uuid, receipt_number text, total_amount numeric,
@@ -3067,7 +3102,13 @@ declare
   v_receipt_number text;
   line jsonb;
   v_code text;
+  v_mode text;
+  v_quantity integer;
   v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
   v_product_id uuid;
   v_tax_rate_id uuid;
   v_tax_pct numeric;
@@ -3100,7 +3141,7 @@ begin
   v_receipt_number := format('RCT-%s-%s', to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
 
   insert into public.sales (id, branch_id, cashier_id, total_amount)
-  values (v_sale, v_branch, v_user, 0); -- patched below once the real total is known
+  values (v_sale, v_branch, v_user, 0);
 
   for line in select * from jsonb_array_elements(p_lines) loop
     v_code := upper(btrim(coalesce(line->>'code', '')));
@@ -3117,22 +3158,15 @@ begin
       where upper(bc.code) = v_code and sb.branch_id = v_branch
       for update of bc;
 
-    -- Checking `found` here, not `v_barcode.id is null`: v_barcode is a plain
-    -- `record`, and referencing a field on one that has never matched a row
-    -- (e.g. the very first scanned code being invalid) raises "record is not
-    -- assigned yet" instead of comparing as null.
     if not found then
       raise exception 'Barcode % was not found for this branch', v_code;
-    end if;
-    if v_barcode.barcode_type <> 'pack' then
-      raise exception 'Barcode % is a carton, not a sellable pack -- scan an individual pack instead', v_code;
     end if;
     if v_barcode.status <> 'active' then
       raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
     end if;
-    if coalesce(v_barcode.quantity_available, 0) < 1 then
-      raise exception 'Barcode % has already been sold', v_code;
-    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
 
     select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
     select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
@@ -3150,20 +3184,168 @@ begin
       end if;
     end if;
 
-    v_subtotal := v_barcode.selling_price * v_barcode.pieces_per_pack;
-    v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
-    v_line_total := v_subtotal + v_tax_amount;
-    v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
 
-    insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
-    values (v_sale, v_barcode.id, v_tax_rate_id, v_barcode.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
 
-    update public.barcodes
-    set quantity_available = 0, status = 'sold_out'
-    where id = v_barcode.id;
+      v_subtotal := v_barcode.selling_price * v_child_quantity;
+      v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+      v_line_total := v_subtotal + v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
 
-    v_total := v_total + v_line_total;
-    v_covered_total := v_covered_total + v_line_covered;
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_subtotal := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+          v_line_total := v_subtotal + v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_subtotal := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+          v_line_total := v_subtotal + v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_subtotal := v_barcode.selling_price * v_quantity;
+        v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+        v_line_total := v_subtotal + v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
   end loop;
 
   update public.sales set total_amount = v_total where id = v_sale;
