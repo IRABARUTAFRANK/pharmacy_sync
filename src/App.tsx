@@ -23,7 +23,7 @@ import PatientsPage from './pages/PatientsPage'
 import ReportsPage from './pages/ReportsPage'
 import BranchSettingsPage from './pages/BranchSettingsPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
-import { checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 
 // ─── Top-level hash router ──────────────────────────────────────────────────────
 // #admin and #branch are the super-admin console and pharmacy registration —
@@ -300,8 +300,10 @@ export default function App() {
 
   const refreshAlerts = useCallback(async () => {
     // Best-effort and silent: a missed check here just means an overdue
-    // out-of-stock reminder surfaces on the next poll instead of this one.
+    // out-of-stock reminder, or a not-yet-written-off expired batch,
+    // surfaces on the next poll instead of this one.
     try { await checkOutOfStockAlerts() } catch { /* ignore */ }
+    try { await checkExpiredStock() } catch { /* ignore */ }
     try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
   }, [])
 

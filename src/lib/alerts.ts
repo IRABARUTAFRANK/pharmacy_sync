@@ -78,12 +78,24 @@ export async function markAllAlertsRead(ids: string[]): Promise<void> {
 }
 
 // Re-fires an unread "out of stock" notification for any product still at
-// zero stock once the reminder interval (6h, set server-side in
-// check_out_of_stock_alerts()) has elapsed since the last one was read.
+// zero stock once the reminder interval has elapsed since the last one was
+// read -- the interval itself is per-branch now (branches.out_of_stock_
+// reminder_hours, editable from Branch Settings), not a fixed constant.
 // Idempotent and cheap to call often -- see loadLiveAlerts()'s call site in
 // App.tsx's existing poll, which is what actually makes this "recurring"
 // rather than a one-off check on page load.
 export async function checkOutOfStockAlerts(): Promise<void> {
   const { error } = await supabase.rpc("check_out_of_stock_alerts")
+  if (error) throw error
+}
+
+// One-shot, not recurring: writes off (and notifies about, under the
+// existing 'stock_adjustment' source type) any barcode still marked
+// 'active' whose batch has passed its expiry_date. Once written off its
+// status becomes 'expired', so it can never match this check again -- unlike
+// out-of-stock, there's nothing to keep reminding about once the batch is
+// actually gone. Also called from App.tsx's existing poll.
+export async function checkExpiredStock(): Promise<void> {
+  const { error } = await supabase.rpc("check_expired_stock")
   if (error) throw error
 }
