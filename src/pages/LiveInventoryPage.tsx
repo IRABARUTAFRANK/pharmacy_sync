@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Card, SectionHeader, StatusBadge, Btn, Modal, ChartTooltip } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import { packagingSummary } from "../lib/barcodes"
 import { loadInventoryDataset, upsertReorderPoint, type InventoryDataset, type InventoryRow } from "../lib/inventory"
 import { errorMessage } from "../lib/supabase"
@@ -69,7 +70,9 @@ export default function LiveInventoryPage() {
   const [dataset, setDataset] = useState<InventoryDataset>({ rows: [], barcodes: [], supplierUnits: [] })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState("")
+  const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
+  const [query, setQuery] = useState(globalTerm)
+  useEffect(() => setQuery(globalTerm), [globalTerm])
   const [status, setStatus] = useState<"all" | InventoryRow["stock_status"]>("all")
   const [reorderTarget, setReorderTarget] = useState<InventoryRow | null>(null)
 
@@ -109,7 +112,7 @@ export default function LiveInventoryPage() {
       <Card><SectionHeader title={t("inventoryPage.chartUnitsBySupplier")} subtitle={t("inventoryPage.chartUnitsBySupplierSubtitle")} /><ResponsiveContainer width="100%" height={200}><BarChart data={dataset.supplierUnits} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="units" name={t("inventoryPage.chartUnitsReceived")} fill="#60a5fa" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
     </div>
     <Card>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: 14 }}>{t("inventoryPage.tableTitle")}</h2><p style={{ margin: '3px 0 0', color: 'var(--ink-muted)', fontSize: 11 }}>{t("inventoryPage.tableSubtitle")}</p></div><input value={query} onChange={event => setQuery(event.target.value)} placeholder={t("inventoryPage.searchPlaceholder")} style={{ width: 240, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12 }} /><Btn variant="secondary" small onClick={() => void refresh()}>{t("inventoryPage.refresh")}</Btn></div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: 14 }}>{t("inventoryPage.tableTitle")}</h2><p style={{ margin: '3px 0 0', color: 'var(--ink-muted)', fontSize: 11 }}>{t("inventoryPage.tableSubtitle")}</p></div><input value={query} onChange={event => { setQuery(event.target.value); setGlobalTerm(event.target.value) }} placeholder={t("inventoryPage.searchPlaceholder")} style={{ width: 240, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12 }} /><Btn variant="secondary" small onClick={() => void refresh()}>{t("inventoryPage.refresh")}</Btn></div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
           <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{[t("inventoryPage.colProduct"), t("inventoryPage.colBatch"), t("inventoryPage.colExpiry"), t("inventoryPage.colSupplier"), t("inventoryPage.colAvailable"), t("inventoryPage.colCostPrice"), t("inventoryPage.colSellPrice"), t("inventoryPage.colTax"), t("inventoryPage.colStatus"), ""].map(label => <th key={label} style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--ink-muted)', fontSize: 10 }}>{label}</th>)}</tr></thead>

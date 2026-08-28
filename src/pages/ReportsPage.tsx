@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Btn, CenterAlert, Modal, SectionHeader, StatusBadge } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import { adjustStock, listStockAdjustments, type StockAdjustmentRecord, type StockAdjustmentType } from "../lib/adjustments"
 import { BARCODE_STATUS_TITLE_KEYS, packagingSummary } from "../lib/barcodes"
 import { loadInventoryDataset, upsertReorderPoint, type InventoryDataset, type InventoryRow } from "../lib/inventory"
@@ -309,7 +310,9 @@ export default function ReportsPage() {
   const [history, setHistory] = useState<StockAdjustmentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState("")
+  const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
+  const [query, setQuery] = useState(globalTerm)
+  useEffect(() => setQuery(globalTerm), [globalTerm])
   const [adjustTarget, setAdjustTarget] = useState<InventoryRow | null>(null)
   const [reorderTarget, setReorderTarget] = useState<ProductGroup | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -361,7 +364,7 @@ export default function ReportsPage() {
     </div>
 
     <div style={{ display: "flex", gap: 8 }}>
-      <input value={query} onChange={e => setQuery(e.target.value)} placeholder={t("stockAdjustment.searchPlaceholder")}
+      <input value={query} onChange={e => { setQuery(e.target.value); setGlobalTerm(e.target.value) }} placeholder={t("stockAdjustment.searchPlaceholder")}
         style={{ flex: 1, maxWidth: 360, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }} />
     </div>
 

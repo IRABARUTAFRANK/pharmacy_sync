@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { CenterAlert, SectionHeader, Table } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import { getSaleReceipt, listSaleHistory, type ReceiptData, type SaleHistoryRow } from "../lib/sales"
 import { ReceiptView } from "./SalesPage"
 
@@ -14,7 +15,9 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
-  const [query, setQuery] = useState("")
+  const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
+  const [query, setQuery] = useState(globalTerm)
+  useEffect(() => setQuery(globalTerm), [globalTerm])
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
 
@@ -56,7 +59,7 @@ export default function TransactionsPage() {
       <SectionHeader title={t("page.transactions")} subtitle={t("transactions.subtitle")} />
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 10, marginBottom: 14 }}>
         <input
-          value={query} onChange={e => setQuery(e.target.value)}
+          value={query} onChange={e => { setQuery(e.target.value); setGlobalTerm(e.target.value) }}
           placeholder={t("transactions.searchPlaceholder")}
           style={{ maxWidth: 360, flex: "1 1 260px", padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }}
         />

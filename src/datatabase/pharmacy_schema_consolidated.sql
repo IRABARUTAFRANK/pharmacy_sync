@@ -3284,9 +3284,12 @@ begin
         raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
       end if;
 
-      v_subtotal := v_barcode.selling_price * v_child_quantity;
-      v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
-      v_line_total := v_subtotal + v_tax_amount;
+      -- VAT-inclusive: selling_price is what the customer actually pays, so
+      -- line_total comes straight from it and tax_amount is *extracted* from
+      -- that gross figure rather than added on top of a pre-tax base.
+      v_line_total := v_barcode.selling_price * v_child_quantity;
+      v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+      v_subtotal := v_line_total - v_tax_amount;
       v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
 
       insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
@@ -3329,9 +3332,9 @@ begin
           order by bc.created_at
           for update
         loop
-          v_subtotal := v_barcode.selling_price * v_child.pieces_per_pack;
-          v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
-          v_line_total := v_subtotal + v_tax_amount;
+          v_line_total := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
           v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
 
           insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
@@ -3363,9 +3366,9 @@ begin
           limit v_quantity
           for update
         loop
-          v_subtotal := v_barcode.selling_price * v_child.pieces_per_pack;
-          v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
-          v_line_total := v_subtotal + v_tax_amount;
+          v_line_total := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
           v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
 
           insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
@@ -3403,9 +3406,9 @@ begin
           raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
         end if;
 
-        v_subtotal := v_barcode.selling_price * v_quantity;
-        v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
-        v_line_total := v_subtotal + v_tax_amount;
+        v_line_total := v_barcode.selling_price * v_quantity;
+        v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+        v_subtotal := v_line_total - v_tax_amount;
         v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
 
         insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)

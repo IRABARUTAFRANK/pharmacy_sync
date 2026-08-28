@@ -6,6 +6,7 @@ import {
 import { fmtRWFExact, pct, type Role } from '../data'
 import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn } from '../components'
 import { useTranslation } from '../lib/i18n'
+import { useGlobalSearch } from '../lib/search'
 import { loadOverview, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
 import type { LiveAlert } from '../lib/alerts'
 
@@ -127,6 +128,7 @@ export default function OverviewPage({
   onViewAlerts: () => void
 }) {
   const { t } = useTranslation()
+  const { term: searchTerm } = useGlobalSearch()
   const [data, setData] = useState<OverviewData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -203,9 +205,11 @@ export default function OverviewPage({
     ? data.categoryMix.filter(c => c.name === activeCategory)
     : data.categoryMix
 
-  const visibleProducts: TopProduct[] = activeCategory
+  const searchNeedle = searchTerm.trim().toLowerCase()
+  const visibleProducts: TopProduct[] = (activeCategory
     ? data.topProducts.filter(p => p.category === activeCategory)
     : data.topProducts
+  ).filter(p => !searchNeedle || `${p.name} ${p.category}`.toLowerCase().includes(searchNeedle))
 
   return (
     <>
@@ -382,7 +386,7 @@ export default function OverviewPage({
           onAction={onExport}
         />
         {visibleProducts.length === 0 ? (
-          <EmptyChart msg="No products sold in this period." />
+          <EmptyChart msg={searchNeedle ? `No products matching "${searchTerm}" in this period.` : 'No products sold in this period.'} />
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>

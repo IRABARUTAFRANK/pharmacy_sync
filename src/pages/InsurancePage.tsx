@@ -3,6 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recha
 import { CenterAlert, ColumnPicker, SectionHeader, StatusBadge } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import {
   loadBranchInsuranceClaims, loadCoverageOverridesWithNames, loadInsuranceProviders,
   type BranchInsuranceClaim, type CoverageOverrideRow, type InsuranceClaimStatus, type InsuranceProvider,
@@ -133,8 +134,14 @@ function ClaimsTable({ claims, providers }: { claims: BranchInsuranceClaim[]; pr
   const [statusFilter, setStatusFilter] = useState<string>("")
   const [visibleColumns, setVisibleColumns] = useState<Set<ClaimColumn>>(new Set(CLAIM_COLUMNS.map(c => c.key)))
   const providerById = new Map(providers.map(p => [p.id, p]))
+  const { term: searchTerm } = useGlobalSearch()
+  const searchNeedle = searchTerm.trim().toLowerCase()
 
-  const filtered = claims.filter(c => (!providerFilter || c.providerId === providerFilter) && (!statusFilter || c.status === statusFilter))
+  const filtered = claims.filter(c =>
+    (!providerFilter || c.providerId === providerFilter) &&
+    (!statusFilter || c.status === statusFilter) &&
+    (!searchNeedle || (providerById.get(c.providerId)?.name ?? "").toLowerCase().includes(searchNeedle) || c.id.toLowerCase().includes(searchNeedle))
+  )
   const toggleColumn = (key: ClaimColumn) => setVisibleColumns(current => {
     const next = new Set(current)
     if (next.has(key) && next.size > 1) next.delete(key)

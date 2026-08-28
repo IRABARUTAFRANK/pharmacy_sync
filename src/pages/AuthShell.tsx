@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { Logo } from "../components";
 
 // Shared split-screen shell for the public auth/registration pages
@@ -57,6 +58,37 @@ export function AuthShell({
           <div style={{ width: "100%", maxWidth: 440 }}>{children}</div>
         </main>
       </div>
+    </div>
+  );
+}
+
+// Shared password field with a show/hide eye toggle -- every password input
+// across the auth flows (login, set password, reset password) renders through
+// this instead of a bare <input type="password">, so the toggle is the same
+// everywhere rather than reimplemented per form.
+export function PasswordInput({
+  leftIcon, style, ...inputProps
+}: {
+  leftIcon?: ReactNode;
+  style?: React.CSSProperties;
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "style">) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div style={{ position: "relative" }}>
+      {leftIcon}
+      <input {...inputProps} type={visible ? "text" : "password"} style={{ ...style, paddingRight: 38 }} />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible(v => !v)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        style={{
+          position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+          background: "none", border: 0, cursor: "pointer", padding: 4, display: "flex", color: "#9ca3af",
+        }}
+      >
+        {visible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
     </div>
   );
 }

@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Btn, Card, CenterAlert, Modal, SectionHeader, StatusBadge } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
+import { PasswordInput } from "./AuthShell"
 import { createSeller, listBranchStaff, listSellerActivityToday, setSellerActive, type SellerActivityRow, type StaffMember } from "../lib/staff"
 import { errorMessage } from "../lib/supabase"
 
@@ -53,7 +55,7 @@ function CreateSellerModal({ onClose, onCreated }: { onClose: () => void; onCrea
       </div>
       <div>
         <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("team.passwordLabel")}</label>
-        <input type="text" value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} placeholder={t("team.passwordPlaceholder")} />
+        <PasswordInput value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} placeholder={t("team.passwordPlaceholder")} />
         <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--ink-faint)" }}>{t("team.passwordHint")}</p>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -102,6 +104,11 @@ export function StaffRoster({ showHeader = true }: { showHeader?: boolean }) {
   }
 
   const activityByUser = new Map(activity.map(row => [row.userId, row]))
+  const { term: searchTerm } = useGlobalSearch()
+  const visibleStaff = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase()
+    return needle ? staff.filter(m => `${m.fullName} ${m.email}`.toLowerCase().includes(needle)) : staff
+  }, [staff, searchTerm])
 
   return <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
     {error && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>{error}</div>}
@@ -121,7 +128,7 @@ export function StaffRoster({ showHeader = true }: { showHeader?: boolean }) {
             {[t("team.colName"), t("team.colEmail"), t("team.colStatus"), t("team.colSalesToday"), t("team.colRevenueToday"), t("team.colPatientsToday"), ""].map(l => <th key={l} style={{ textAlign: "left", padding: "8px 10px", color: "var(--ink-muted)", fontSize: 10 }}>{l}</th>)}
           </tr></thead>
           <tbody>
-            {staff.map(member => {
+            {visibleStaff.map(member => {
               const a = activityByUser.get(member.id)
               return <tr key={member.id} style={{ borderBottom: "1px solid var(--bg-alt)" }}>
                 <td style={{ padding: "9px 10px", fontWeight: 600 }}>{member.fullName}</td>
@@ -140,7 +147,11 @@ export function StaffRoster({ showHeader = true }: { showHeader?: boolean }) {
                 </td>
               </tr>
             })}
-            {!loading && staff.length === 0 && <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)" }}>{t("team.emptyRoster")}</td></tr>}
+            {!loading && visibleStaff.length === 0 && (
+              <tr><td colSpan={7} style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)" }}>
+                {staff.length === 0 ? t("team.emptyRoster") : `No staff matching "${searchTerm}".`}
+              </td></tr>
+            )}
           </tbody>
         </table>
       </div>

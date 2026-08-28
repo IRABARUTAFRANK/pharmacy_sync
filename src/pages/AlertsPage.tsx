@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, type LiveAlert } from '../lib/alerts'
 import { useTranslation } from '../lib/i18n'
+import { useGlobalSearch } from '../lib/search'
 import { errorMessage } from '../lib/supabase'
 import { Card, StatusBadge, Btn, ColumnPicker } from '../components'
 
@@ -78,13 +79,17 @@ export default function AlertsPage() {
     }
   }
 
+  const { term: searchTerm } = useGlobalSearch()
+
   const filtered = useMemo(() => {
     let ns = alerts
     if (sourceFilter !== 'all') ns = ns.filter(n => n.sourceType === sourceFilter)
     if (readFilter === 'unread') ns = ns.filter(n => !n.isRead)
     if (readFilter === 'read')   ns = ns.filter(n => n.isRead)
+    const needle = searchTerm.trim().toLowerCase()
+    if (needle) ns = ns.filter(n => `${t(n.titleKey)} ${n.msg}`.toLowerCase().includes(needle))
     return ns
-  }, [alerts, sourceFilter, readFilter])
+  }, [alerts, sourceFilter, readFilter, searchTerm, t])
 
   const unreadCount = alerts.filter(n => !n.isRead).length
   const recallCount = alerts.filter(n => n.sourceType === 'batch_recall').length

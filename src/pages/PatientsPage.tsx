@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import { listBranchPatients, type PatientListRow } from "../lib/patients"
 import { listSaleHistory, type SaleHistoryRow } from "../lib/sales"
 import { errorMessage } from "../lib/supabase"
@@ -45,7 +46,9 @@ export default function PatientsPage() {
   const [patients, setPatients] = useState<PatientListRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState("")
+  const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
+  const [query, setQuery] = useState(globalTerm)
+  useEffect(() => setQuery(globalTerm), [globalTerm])
   const [expanded, setExpanded] = useState<string | null>(null)
 
   const genderLabel = (g: PatientListRow["gender"]) =>
@@ -77,7 +80,7 @@ export default function PatientsPage() {
     <SectionHeader title={t("page.patients")} subtitle={t("patients.subtitle")} action={t("patients.refresh")} onAction={() => void refresh()} />
 
     <input
-      value={query} onChange={e => setQuery(e.target.value)}
+      value={query} onChange={e => { setQuery(e.target.value); setGlobalTerm(e.target.value) }}
       placeholder={t("patients.searchPlaceholder")}
       style={{ maxWidth: 360, padding: "8px 12px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }}
     />

@@ -3,6 +3,7 @@ import Barcode from "react-barcode"
 import { Btn, Card, Modal, StatusBadge, BarcodeLabelSheet, type PrintableBarcode } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import {
   BARCODE_STATUSES,
   BARCODE_STATUS_TITLE_KEYS,
@@ -58,7 +59,9 @@ export default function BarcodeManagerPage() {
   const [dataset, setDataset] = useState<BarcodeDataset>(emptyBarcodeDataset)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState("")
+  const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
+  const [query, setQuery] = useState(globalTerm)
+  useEffect(() => setQuery(globalTerm), [globalTerm])
   const [status, setStatus] = useState<"all" | BarcodeStatus>("all")
   const [type, setType] = useState<"all" | BarcodeType>("all")
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -193,7 +196,7 @@ export default function BarcodeManagerPage() {
         </div>
         <input
           value={query}
-          onChange={event => setQuery(event.target.value)}
+          onChange={event => { setQuery(event.target.value); setGlobalTerm(event.target.value) }}
           placeholder={t("barcodeManager.searchPlaceholder")}
           style={{ width: 280, padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12 }}
         />

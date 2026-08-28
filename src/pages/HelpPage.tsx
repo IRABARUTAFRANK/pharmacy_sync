@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import { listMySupportTickets, submitSupportTicket, type MyTicketRow, type TicketPriority } from '../lib/tickets'
 import { useTranslation } from '../lib/i18n'
+import { useGlobalSearch } from '../lib/search'
 import { errorMessage } from '../lib/supabase'
 import { Card, StatusBadge, Modal, Btn, ColumnPicker } from '../components'
 
@@ -142,7 +143,9 @@ export default function HelpPage() {
   const [selected, setSelected]       = useState<MyTicketRow | null>(null)
   const [showNew, setShowNew]         = useState(false)
   const [statusFilter, setStatusFilter] = useState('all')
-  const [search, setSearch]           = useState('')
+  const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
+  const [search, setSearch]           = useState(globalTerm)
+  useEffect(() => setSearch(globalTerm), [globalTerm])
   const [visibleCols, setVisibleCols] = useState<Set<ColKey>>(new Set(DEFAULT_VISIBLE))
 
   const refresh = useCallback(async () => {
@@ -198,7 +201,7 @@ export default function HelpPage() {
           <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{t('helpPage.title')}</h2>
           <div style={{ position: 'relative', width: 200 }}>
             <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'var(--ink-faint)' }}>🔍</span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('helpPage.searchPlaceholder')}
+            <input value={search} onChange={e => { setSearch(e.target.value); setGlobalTerm(e.target.value) }} placeholder={t('helpPage.searchPlaceholder')}
               style={{ width: '100%', padding: '6px 8px 6px 24px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 11, fontFamily: 'inherit', outline: 'none', background: 'var(--bg)', boxSizing: 'border-box' as const }}
               onFocus={e => e.target.style.borderColor = 'var(--primary)'}
               onBlur={e => e.target.style.borderColor = 'var(--border)'}

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, Btn, StatusBadge } from "../components"
 import { useTranslation } from "../lib/i18n"
+import { useGlobalSearch } from "../lib/search"
 import { errorMessage } from "../lib/supabase"
 import {
   listMyProductRequests,
@@ -21,6 +22,11 @@ export default function RequestProductPage() {
   const [requests, setRequests] = useState<ProductRequestRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const { term: searchTerm } = useGlobalSearch()
+  const visibleRequests = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase()
+    return needle ? requests.filter(r => r.message.toLowerCase().includes(needle)) : requests
+  }, [requests, searchTerm])
 
   const [message, setMessage] = useState("")
   const [file, setFile] = useState<File | null>(null)
@@ -105,7 +111,7 @@ export default function RequestProductPage() {
       {loadError && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "10px 14px", fontSize: 12, marginBottom: 10 }}>{loadError}</div>}
       {loading ? <p style={{ fontSize: 11, color: "var(--ink-muted)" }}>{t("requestProduct.loading")}</p> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {requests.map(request => {
+          {visibleRequests.map(request => {
             const meta = statusMeta[request.status]
             return <div key={request.id} style={{ display: "flex", alignItems: "center", gap: 10, border: "1px solid var(--border)", borderRadius: 9, padding: "10px 12px", flexWrap: "wrap" }}>
               {request.image_path && (
@@ -120,8 +126,10 @@ export default function RequestProductPage() {
               <StatusBadge label={meta.label} color={meta.color} bg={meta.bg} />
             </div>
           })}
-          {!loading && requests.length === 0 && (
-            <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: "20px 0" }}>{t("requestProduct.empty")}</p>
+          {!loading && visibleRequests.length === 0 && (
+            <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: "20px 0" }}>
+              {requests.length === 0 ? t("requestProduct.empty") : `No requests matching "${searchTerm}".`}
+            </p>
           )}
         </div>
       )}

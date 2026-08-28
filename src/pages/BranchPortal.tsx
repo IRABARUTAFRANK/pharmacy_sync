@@ -12,7 +12,7 @@ import {
 } from "../lib/onboarding";
 import { updatePassword } from "../lib/auth";
 import type { BranchRecord } from "../lib/store";
-import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton } from "./AuthShell";
+import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell";
 import pharmacyImg from "../assets/stock2.jpg";
 
 type Step = "form" | "pending" | "otp" | "password" | "denied" | "success";
@@ -571,8 +571,8 @@ export default function BranchPortal() {
           <form onSubmit={handleSetPassword} className="text-left space-y-4">
             <div>
               <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>Password</label>
-              <input
-                type="password" autoFocus autoComplete="new-password"
+              <PasswordInput
+                autoFocus autoComplete="new-password"
                 value={password} onChange={e => { setPassword(e.target.value); setPasswordError(""); }}
                 placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                 style={authInput}
@@ -580,8 +580,8 @@ export default function BranchPortal() {
             </div>
             <div>
               <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>Confirm password</label>
-              <input
-                type="password" autoComplete="new-password"
+              <PasswordInput
+                autoComplete="new-password"
                 value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setPasswordError(""); }}
                 placeholder="Re-enter your password"
                 style={authInput}

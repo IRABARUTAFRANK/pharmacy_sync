@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Mail, Lock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react"
 import { signInToBranch, sendBranchPasswordReset, type BranchAccess } from "../lib/auth"
 import { errorMessage as errorText } from "../lib/supabase"
-import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton } from "./AuthShell"
+import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell"
 import MarketingHome from "./MarketingHome"
 import loginImg from "../assets/products.jpg"
 
@@ -116,15 +116,13 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
                     Forgot password?
                   </button>
                 </div>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#9ca3af" }} />
-                  <input
-                    id="branch-password" type="password" autoComplete="current-password"
-                    value={password} onChange={e => { setPassword(e.target.value); setError(null) }}
-                    placeholder="••••••••" disabled={busy}
-                    style={{ ...authInput, paddingLeft: 38, borderColor: error ? "#fca5a5" : "#e2e8f0" }}
-                  />
-                </div>
+                <PasswordInput
+                  id="branch-password" autoComplete="current-password"
+                  value={password} onChange={e => { setPassword(e.target.value); setError(null) }}
+                  placeholder="••••••••" disabled={busy}
+                  leftIcon={<Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#9ca3af" }} />}
+                  style={{ ...authInput, paddingLeft: 38, borderColor: error ? "#fca5a5" : "#e2e8f0" }}
+                />
               </div>
 
               {error && (

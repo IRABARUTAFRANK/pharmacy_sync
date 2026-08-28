@@ -34,10 +34,12 @@ interface CartLine extends CartItem {
   patientOwed: number
 }
 
+// VAT-inclusive: sellingPrice is what the customer pays, so lineTotal comes
+// straight from it and taxAmount is extracted from that gross figure rather
+// than added on top of a pre-tax base — mirrors complete_sale() server-side.
 function priceLine(item: CartItem, coveragePercentage: number): CartLine {
-  const subtotal = item.sellingPrice * item.piecesSold
-  const taxAmount = Math.round(subtotal * item.taxRatePercentage) / 100
-  const lineTotal = subtotal + taxAmount
+  const lineTotal = item.sellingPrice * item.piecesSold
+  const taxAmount = Math.round((lineTotal * item.taxRatePercentage / (100 + item.taxRatePercentage)) * 100) / 100
   const insuranceCovered = Math.round(lineTotal * coveragePercentage) / 100
   return { ...item, taxAmount, lineTotal, coveragePercentage, insuranceCovered, patientOwed: lineTotal - insuranceCovered }
 }
@@ -359,10 +361,10 @@ export default function SalesPage() {
   }
 
   const lines = cart.map(item => priceLine(item, selectedProvider ? effectiveCoveragePercentage(selectedProvider, overrides, item.productId) : 0))
-  const subtotal = lines.reduce((sum, l) => sum + l.sellingPrice * l.piecesSold, 0)
+  const grandTotal = lines.reduce((sum, l) => sum + l.lineTotal, 0)
   const taxTotal = lines.reduce((sum, l) => sum + l.taxAmount, 0)
+  const subtotal = grandTotal - taxTotal
   const insuranceCoveredTotal = lines.reduce((sum, l) => sum + l.insuranceCovered, 0)
-  const grandTotal = subtotal + taxTotal
   const patientOwedTotal = grandTotal - insuranceCoveredTotal
 
   function describeSale(item: CartItem): string {
@@ -459,9 +461,9 @@ export default function SalesPage() {
               ? Math.min(typed, maxPacks)
               : Math.min(typed, maxPiecesPerPack)
             const pieces = piecesFromMode(pending.item, pending.mode, boundedTyped)
-            const subtotalPreview = pending.item.sellingPrice * pieces
-            const taxPreview = Math.round(subtotalPreview * pending.item.taxRatePercentage) / 100
-            const totalPreview = subtotalPreview + taxPreview
+            const totalPreview = pending.item.sellingPrice * pieces
+            const taxPreview = Math.round((totalPreview * pending.item.taxRatePercentage / (100 + pending.item.taxRatePercentage)) * 100) / 100
+            const subtotalPreview = totalPreview - taxPreview
             const wholeLabel = isCarton
               ? t("salesPage.pendingWholeCarton", { packs: maxPacks, pieces: maxPacks * maxPiecesPerPack })
               : t("salesPage.pendingWholePack", { pieces: maxPiecesPerPack })

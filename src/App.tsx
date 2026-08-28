@@ -1,29 +1,37 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react'
 import { NAV_ITEMS, type Role } from './data'
 import { useTranslation, LanguageSwitcher } from './lib/i18n'
+import { useGlobalSearch } from './lib/search'
 import type { TranslationKey } from './lib/i18n/en'
-import OverviewPage from './pages/OverviewPage'
-import LiveInventoryPage from './pages/LiveInventoryPage'
-import StockReceivingPage from './pages/StockReceivingPage'
-import BarcodeManagerPage from './pages/BarcodeManagerPage'
-import SalesPage from './pages/SalesPage'
-import TransactionsPage from './pages/TransactionsPage'
-import InsurancePage from './pages/InsurancePage'
-import RequestProductPage from './pages/RequestProductPage'
-import AlertsPage from './pages/AlertsPage'
-import HelpPage from './pages/HelpPage'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
-import AdminPortal from './pages/AdminPortal'
-import BranchPortal from './pages/BranchPortal'
-import ResetPassword from './pages/ResetPassword'
 import { Logo } from './components'
-import TeamPage from './pages/TeamPage'
-import PatientsPage from './pages/PatientsPage'
-import ReportsPage from './pages/ReportsPage'
-import BranchSettingsPage from './pages/BranchSettingsPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+
+// Code-split every page behind the sidebar (and the admin/branch/reset
+// top-level routes) so the first load only ships what's needed to sign in --
+// each page's own JS is fetched the first time it's actually opened, not
+// bundled into the initial download. BranchAccessPage stays a static import
+// above: it's needed immediately for anyone who isn't signed in yet, so
+// lazy-loading it would only add a waterfall in the most latency-sensitive path.
+const OverviewPage        = lazy(() => import('./pages/OverviewPage'))
+const LiveInventoryPage   = lazy(() => import('./pages/LiveInventoryPage'))
+const StockReceivingPage  = lazy(() => import('./pages/StockReceivingPage'))
+const BarcodeManagerPage  = lazy(() => import('./pages/BarcodeManagerPage'))
+const SalesPage           = lazy(() => import('./pages/SalesPage'))
+const TransactionsPage    = lazy(() => import('./pages/TransactionsPage'))
+const InsurancePage       = lazy(() => import('./pages/InsurancePage'))
+const RequestProductPage  = lazy(() => import('./pages/RequestProductPage'))
+const AlertsPage          = lazy(() => import('./pages/AlertsPage'))
+const HelpPage            = lazy(() => import('./pages/HelpPage'))
+const TeamPage             = lazy(() => import('./pages/TeamPage'))
+const PatientsPage         = lazy(() => import('./pages/PatientsPage'))
+const ReportsPage          = lazy(() => import('./pages/ReportsPage'))
+const BranchSettingsPage   = lazy(() => import('./pages/BranchSettingsPage'))
+const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
+const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
+const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
 
 // ─── Top-level hash router ──────────────────────────────────────────────────────
 // #admin and #branch are the super-admin console and pharmacy registration —
@@ -170,6 +178,56 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
   )
 }
 
+// ─── Search "go to section" dropdown ──────────────────────────────────────────
+// Not a content filter — a jump list. Typing "inventory dash" (or just "inv")
+// narrows to the matching sidebar section live, on every keystroke; picking
+// one (click, or Enter) navigates straight there and clears the box.
+
+function HighlightedLabel({ label, needle }: { label: string; needle: string }) {
+  const i = label.toLowerCase().indexOf(needle)
+  if (i === -1) return <>{label}</>
+  return (
+    <>
+      {label.slice(0, i)}
+      <strong style={{ color: 'var(--primary)', fontWeight: 700 }}>{label.slice(i, i + needle.length)}</strong>
+      {label.slice(i + needle.length)}
+    </>
+  )
+}
+
+function SearchNavDropdown({ matches, needle, highlight, onSelect }: {
+  matches: { item: { id: string; icon: string }; label: string }[]
+  needle: string
+  highlight: number
+  onSelect: (id: string) => void
+}) {
+  return (
+    <div style={{
+      position: 'absolute', left: 0, right: 0, top: '110%', zIndex: 100,
+      background: '#fff', border: '1px solid var(--border)', borderRadius: 12,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
+    }}>
+      <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+        {matches.map(({ item, label }, i) => (
+          <button
+            key={item.id}
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onSelect(item.id)}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+              padding: '9px 14px', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+              background: i === highlight ? 'var(--bg)' : 'transparent', textAlign: 'left',
+            }}
+          >
+            <span style={{ fontSize: 15, flexShrink: 0 }}>{item.icon}</span>
+            <span style={{ fontSize: 13, color: 'var(--ink)' }}><HighlightedLabel label={label} needle={needle} /></span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── User Menu ────────────────────────────────────────────────────────────────
 
 function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: BranchAccess; role: Role; onRoleChange: (r: Role) => void; onSignOut: () => void; onClose: () => void }) {
@@ -274,7 +332,9 @@ export default function App() {
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
   const [accessLoading, setAccessLoading] = useState(true)
-  const [search, setSearch]         = useState('')
+  const { term: search, setTerm: setSearch } = useGlobalSearch()
+  const [showSearchNav, setShowSearchNav] = useState(false)
+  const [searchNavHighlight, setSearchNavHighlight] = useState(0)
   const [dateRange, setDateRange]   = useState<DateRangeOption>('thisMonth')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showNotif, setShowNotif]   = useState(false)
@@ -320,6 +380,22 @@ export default function App() {
     ? access.role
     : 'seller'
 
+  // A role only ever sees the pages listed for it in NAV_ITEMS -- this guard
+  // makes that true regardless of how `page` got its current value. It
+  // matters most on session restore (restoreBranchAccess() → setAccess(),
+  // above): that path never calls setPage, so without this a seller whose
+  // browser still holds a valid session would land on `page`'s stale
+  // 'overview' default despite Overview never appearing in their sidebar.
+  // useLayoutEffect (not useEffect) so the correction lands before paint --
+  // no single-frame flash of a page this role shouldn't see.
+  useLayoutEffect(() => {
+    if (!access) return
+    const allowed = NAV_ITEMS.filter(n => n.roles.includes(role))
+    if (!allowed.some(n => n.id === page)) {
+      setPage(allowed[0]?.id ?? 'help')
+    }
+  }, [access, role, page])
+
   async function handleSignOut() {
     await signOutFromBranch()
     setAccess(null)
@@ -327,14 +403,16 @@ export default function App() {
     setShowUser(false)
   }
 
-  if (hashRoute === 'admin') return <AdminPortal />
-  if (hashRoute === 'branch') return <BranchPortal />
-  if (hashRoute === 'reset') return <ResetPassword />
+  const loadingFallback = <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'var(--font-body)' }}>{t('shell.loadingWorkspace')}</main>
+
+  if (hashRoute === 'admin') return <Suspense fallback={loadingFallback}><AdminPortal /></Suspense>
+  if (hashRoute === 'branch') return <Suspense fallback={loadingFallback}><BranchPortal /></Suspense>
+  if (hashRoute === 'reset') return <Suspense fallback={loadingFallback}><ResetPassword /></Suspense>
 
   if (introPhase !== 'done') return <IntroSplash exiting={introPhase === 'exiting'} />
 
   if (accessLoading) {
-    return <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'var(--font-body)' }}>{t('shell.loadingWorkspace')}</main>
+    return loadingFallback
   }
 
   if (!access) {
@@ -345,6 +423,28 @@ export default function App() {
   const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(role))
   const alertCount = alerts.filter(a => !a.isRead).length
   const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
+
+  // "Go to a section as you type": ranks a label that STARTS WITH what's been
+  // typed so far above one that merely contains it somewhere in the middle —
+  // typing "inv" should surface "Inventory Dashboard" before something like
+  // "Receive Stock" would ever tie on a looser match.
+  const searchNeedle = search.trim().toLowerCase()
+  const searchNavMatches = searchNeedle
+    ? visibleNav
+        .map(item => ({ item, label: t(`nav.${item.id}` as TranslationKey) }))
+        .filter(({ label }) => label.toLowerCase().includes(searchNeedle))
+        .sort((a, b) => {
+          const aStarts = a.label.toLowerCase().startsWith(searchNeedle)
+          const bStarts = b.label.toLowerCase().startsWith(searchNeedle)
+          return aStarts === bStarts ? 0 : aStarts ? -1 : 1
+        })
+    : []
+
+  function goToSearchResult(pageId: string) {
+    setPage(pageId)
+    setSearch('')
+    setShowSearchNav(false)
+  }
 
   // Opening the bell marks whatever was unread at that instant as read —
   // no separate click required. The dropdown itself still renders from a
@@ -367,7 +467,7 @@ export default function App() {
     setShowUser(false)
   }
 
-  const closeMenus = () => { setShowNotif(false); setShowUser(false) }
+  const closeMenus = () => { setShowNotif(false); setShowUser(false); setShowSearchNav(false) }
 
   function renderPage() {
     switch (page) {
@@ -544,11 +644,15 @@ export default function App() {
 
           <div style={{ flex: 1 }} />
 
-          {/* Global Search */}
+          {/* Global Search — doubles as a "go to section" jump list. Typing
+              narrows the sidebar sections that match live; Enter or a click
+              jumps straight there. The typed term also still reaches every
+              page's own filter (src/lib/search.tsx) for pages that have one. */}
           <div style={{ position: 'relative', width: 280, flexShrink: 1, minWidth: 160 }}>
             <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--ink-faint)', pointerEvents: 'none' }}>🔍</span>
             <input
-              value={search} onChange={e => setSearch(e.target.value)}
+              value={search}
+              onChange={e => { setSearch(e.target.value); setSearchNavHighlight(0); setShowSearchNav(true) }}
               placeholder={t('shell.searchPlaceholder')}
               style={{
                 width: '100%', padding: '7px 10px 7px 28px', borderRadius: 8,
@@ -556,9 +660,18 @@ export default function App() {
                 fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
                 transition: 'border 0.15s',
               }}
-              onFocus={e => { (e.target as HTMLInputElement).style.borderColor = 'var(--primary)'; closeMenus() }}
+              onFocus={e => { (e.target as HTMLInputElement).style.borderColor = 'var(--primary)'; setShowNotif(false); setShowUser(false); setShowSearchNav(true) }}
               onBlur={e => { (e.target as HTMLInputElement).style.borderColor = 'var(--border)' }}
+              onKeyDown={e => {
+                if (e.key === 'ArrowDown') { e.preventDefault(); setSearchNavHighlight(h => Math.min(h + 1, searchNavMatches.length - 1)) }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); setSearchNavHighlight(h => Math.max(h - 1, 0)) }
+                else if (e.key === 'Enter') { const hit = searchNavMatches[searchNavHighlight]; if (hit) { e.preventDefault(); goToSearchResult(hit.item.id) } }
+                else if (e.key === 'Escape') { setShowSearchNav(false); (e.target as HTMLInputElement).blur() }
+              }}
             />
+            {showSearchNav && searchNavMatches.length > 0 && (
+              <SearchNavDropdown matches={searchNavMatches} needle={searchNeedle} highlight={searchNavHighlight} onSelect={goToSearchResult} />
+            )}
           </div>
 
           {/* Date filter */}
@@ -629,7 +742,9 @@ export default function App() {
           style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}
           onClick={closeMenus}
         >
-          {renderPage()}
+          <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>{t('shell.loadingWorkspace')}</div>}>
+            {renderPage()}
+          </Suspense>
         </main>
       </div>
 

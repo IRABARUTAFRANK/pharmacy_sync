@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Lock, AlertCircle, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
 import { updatePassword } from "../lib/auth";
-import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton } from "./AuthShell";
+import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell";
 import loginImg from "../assets/products.jpg";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -100,8 +100,8 @@ export default function ResetPassword() {
             <form onSubmit={submit} className="space-y-4">
               <div>
                 <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>New password</label>
-                <input
-                  type="password" autoFocus autoComplete="new-password"
+                <PasswordInput
+                  autoFocus autoComplete="new-password"
                   value={password} onChange={e => { setPassword(e.target.value); setError(""); }}
                   placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
                   style={authInput}
@@ -109,8 +109,8 @@ export default function ResetPassword() {
               </div>
               <div>
                 <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>Confirm new password</label>
-                <input
-                  type="password" autoComplete="new-password"
+                <PasswordInput
+                  autoComplete="new-password"
                   value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(""); }}
                   placeholder="Re-enter your password"
                   style={authInput}
