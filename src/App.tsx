@@ -6,8 +6,13 @@ import type { TranslationKey } from './lib/i18n/en'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
 import { Logo } from './components'
+
+
+
+import HistoryPage from './pages/HistoryPage'
+
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
-import { checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 
 // Code-split every page behind the sidebar (and the admin/branch/reset
 // top-level routes) so the first load only ships what's needed to sign in --
@@ -360,8 +365,10 @@ export default function App() {
 
   const refreshAlerts = useCallback(async () => {
     // Best-effort and silent: a missed check here just means an overdue
-    // out-of-stock reminder surfaces on the next poll instead of this one.
+    // out-of-stock reminder, or a not-yet-written-off expired batch,
+    // surfaces on the next poll instead of this one.
     try { await checkOutOfStockAlerts() } catch { /* ignore */ }
+    try { await checkExpiredStock() } catch { /* ignore */ }
     try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
   }, [])
 
@@ -491,6 +498,7 @@ export default function App() {
       case 'team':          return <TeamPage />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage />
+      case 'history':       return <HistoryPage />
       case 'help':          return <HelpPage />
       default:              return null
     }

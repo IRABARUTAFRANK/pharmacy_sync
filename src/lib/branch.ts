@@ -11,6 +11,10 @@ export interface BranchDetails {
   bankAccountNumber: string | null
   bankAccountName: string | null
   momoPayNumber: string | null
+  outOfStockReminderHours: number
+  branchCode: string | null
+  status: string
+  createdAt: string
 }
 
 export async function getMyBranchDetails(): Promise<BranchDetails> {
@@ -21,16 +25,21 @@ export async function getMyBranchDetails(): Promise<BranchDetails> {
     name: row?.name ?? "", address: row?.address ?? null, phone: row?.phone ?? null, tin: row?.tin ?? null,
     logoPath: row?.logo_path ?? null, bankAccountNumber: row?.bank_account_number ?? null,
     bankAccountName: row?.bank_account_name ?? null, momoPayNumber: row?.momo_pay_number ?? null,
+    outOfStockReminderHours: row?.out_of_stock_reminder_hours ?? 6, branchCode: row?.branch_code ?? null,
+    status: row?.status ?? "active", createdAt: row?.created_at ?? "",
   }
 }
 
+// out_of_stock_reminder_hours omitted (undefined) leaves it unchanged server-side.
 export async function updateBranchDetails(
   address: string, phone: string, tin: string, logoPath: string | null,
   bankAccountNumber: string, bankAccountName: string, momoPayNumber: string,
+  outOfStockReminderHours?: number,
 ): Promise<void> {
   const { error } = await supabase.rpc("update_branch_details", {
     p_address: address, p_phone: phone, p_tin: tin, p_logo_path: logoPath,
     p_bank_account_number: bankAccountNumber, p_bank_account_name: bankAccountName, p_momo_pay_number: momoPayNumber,
+    p_out_of_stock_reminder_hours: outOfStockReminderHours ?? null,
   })
   if (error) throw error
 }

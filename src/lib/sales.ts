@@ -164,6 +164,15 @@ export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<S
     throw new Error(`Barcode "${trimmed}" is not sellable.`)
   }
   if (row.status !== "active") throw new Error(STATUS_MESSAGE[row.status as string] ?? `This barcode is ${row.status} and cannot be sold.`)
+  // A friendlier, earlier version of the same check complete_sale() makes
+  // authoritatively against the real expiry_date at sale time -- this just
+  // saves a round trip to the "Complete Sale" click by rejecting it the
+  // moment it's scanned. A batch that expired since the last check_expired_
+  // stock() sweep may still show status "active" here; the date comparison
+  // catches that regardless of status.
+  if (row.expiry_date && row.expiry_date < new Date().toISOString().slice(0, 10)) {
+    throw new Error(`This item expired on ${row.expiry_date} and cannot be sold.`)
+  }
   if (row.barcode_type === "pack" && (!row.quantity_available || row.quantity_available < 1)) {
     throw new Error("This pack has already been sold.")
   }

@@ -4032,3 +4032,638 @@ create unique index if not exists users_one_owner_per_branch
 -- case, merged alongside a collaborator's carton-sale support), so this
 -- redundant, pack-only, carton-unaware redeclaration was removed rather
 -- than left here to silently overwrite the more capable version below it.
+
+-- ============================================================================
+-- EXPIRED STOCK — automatic write-off + a hard sell-time gate
+-- ============================================================================
+-- Two separate mechanisms, both needed:
+--  1. check_expired_stock() below actively finds anything past its expiry
+--     date and still marked 'active', writes a real stock_adjustments row
+--     (adjustment_type 'expired_writeoff', same table/shape adjust_stock()
+--     already uses for a manual write-off) and a notification, and flips the
+--     barcode to 'expired' -- so it shows up on its own, even if nobody ever
+--     tries to scan it.
+--  2. complete_sale() (re-declared below, same signature, no drop needed)
+--     gets a direct expiry_date check right after it locks the scanned
+--     barcode's row -- independent of #1 and independent of whatever the
+--     barcode's stored `status` currently says. This is the actual "deny the
+--     sale" guarantee: even in the few minutes/hours before #1's next poll
+--     has caught a freshly-expired item, a sale of it is still rejected,
+--     because the check is against the real date, not a flag that might be
+--     stale. A carton and every pack inside it share one stock_batches row
+--     (and therefore one expiry_date), so this single check at the top --
+--     before branching into pack/box-specific logic -- already covers every
+--     sell_mode (whole pack, partial pieces, whole carton, N packs from a
+--     carton, N loose pieces from a carton) without repeating it per branch.
+
+alter table public.branches
+  add column if not exists out_of_stock_reminder_hours integer not null default 6 check (out_of_stock_reminder_hours between 1 and 168);
+
+create or replace function public.check_out_of_stock_alerts()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_interval interval;
+  v_created integer := 0;
+  rec record;
+  v_last record;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  select (out_of_stock_reminder_hours || ' hours')::interval into v_interval
+    from public.branches where id = v_branch;
+
+  for rec in
+    select pv.id as variant_id, p.name as product_name, pv.dosage
+    from public.stock_batches sb
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    left join public.barcodes bc on bc.stock_batch_id = sb.id and bc.barcode_type = 'pack'
+    where sb.branch_id = v_branch
+    group by pv.id, p.name, pv.dosage
+    having coalesce(sum(bc.quantity_available * bc.pieces_per_pack), 0) = 0
+  loop
+    select id, is_read, created_at into v_last
+      from public.notifications
+      where branch_id = v_branch and source_type = 'out_of_stock' and source_id = rec.variant_id
+      order by created_at desc
+      limit 1;
+
+    if not found then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (v_branch, 'out_of_stock', rec.variant_id, format('%s is out of stock.', concat_ws(' ', rec.product_name, rec.dosage)));
+      v_created := v_created + 1;
+    elsif v_last.is_read and v_last.created_at < now() - v_interval then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (v_branch, 'out_of_stock', rec.variant_id, format('%s is still out of stock.', concat_ws(' ', rec.product_name, rec.dosage)));
+      v_created := v_created + 1;
+    end if;
+  end loop;
+
+  return v_created;
+end;
+$$;
+
+-- Finds every barcode at this branch that is still 'active' but whose
+-- batch's expiry_date has already passed, and writes it off: one
+-- stock_adjustments row per barcode (adjustment_type = 'expired_writeoff',
+-- quantity = the real remaining piece count for a pack, matching
+-- adjust_stock()'s own positive-magnitude convention -- direction is
+-- conveyed by adjustment_type, not sign), a notification (reusing the
+-- existing 'stock_adjustment' source type rather than inventing a new one),
+-- and flips status to 'expired'. A carton and its child packs share the
+-- same stock_batches row, so both the carton barcode and each child pack
+-- barcode are found and written off independently in the same pass -- no
+-- special-casing needed for barcode_type. One-shot per barcode, not
+-- recurring like check_out_of_stock_alerts(): once status is 'expired' it
+-- can never match this query's `status = 'active'` filter again, so there is
+-- nothing to re-remind about -- the write-off itself is the resolution.
+-- Callable by any active branch user (unlike adjust_stock(), which is
+-- owner/manager only for a human's discretionary call) since this has no
+-- discretion in it: a batch is either past its expiry_date or it isn't.
+create or replace function public.check_expired_stock()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_user uuid := (select auth.uid());
+  v_flagged integer := 0;
+  rec record;
+  v_adjustment uuid;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  for rec in
+    select bc.id as barcode_id, bc.code, bc.quantity_available, bc.pieces_per_pack,
+           sb.id as stock_batch_id, sb.expiry_date, p.name as product_name, pv.dosage
+    from public.barcodes bc
+    join public.stock_batches sb on sb.id = bc.stock_batch_id
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    where sb.branch_id = v_branch
+      and bc.status = 'active'
+      and sb.expiry_date < current_date
+    for update of bc
+  loop
+    update public.barcodes set status = 'expired' where id = rec.barcode_id;
+
+    insert into public.stock_adjustments (stock_batch_id, barcode_id, adjustment_type, quantity, reason, performed_by)
+    values (
+      rec.stock_batch_id, rec.barcode_id, 'expired_writeoff',
+      greatest(coalesce(rec.quantity_available, 0) * coalesce(rec.pieces_per_pack, 1), 1),
+      format('Automatically written off -- batch expired on %s', rec.expiry_date),
+      v_user
+    )
+    returning id into v_adjustment;
+
+    insert into public.notifications (branch_id, source_type, source_id, message)
+    values (
+      v_branch, 'stock_adjustment', v_adjustment,
+      format('Expired Writeoff: %s (%s) expired on %s and was automatically written off.',
+        concat_ws(' ', rec.product_name, rec.dosage), rec.code, rec.expiry_date)
+    );
+
+    v_flagged := v_flagged + 1;
+  end loop;
+
+  return v_flagged;
+end;
+$$;
+
+revoke all on function public.check_expired_stock() from public;
+grant execute on function public.check_expired_stock() to authenticated;
+
+-- complete_sale(), re-declared with the same 3-argument signature and the
+-- same RETURNS TABLE shape (no drop needed): identical to the version above
+-- except for the expiry guard added right after the barcode is locked, and
+-- `sb.expiry_date` added to the initial select so it's available to check.
+create or replace function public.complete_sale(p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  line jsonb;
+  v_code text;
+  v_mode text;
+  v_quantity integer;
+  v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  v_receipt_number := format('RCT-%s-%s', to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id, sb.expiry_date
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    -- Checked against the batch's real expiry_date, not the barcode's stored
+    -- `status` -- catches an item that expired since the last periodic
+    -- check_expired_stock() sweep, so a sale can never slip through in that
+    -- window. A carton and every child pack under it share this same
+    -- expiry_date, so this one check covers every sell_mode below.
+    if v_barcode.expiry_date < current_date then
+      raise exception 'Barcode %: this batch expired on % and cannot be sold', v_code, v_barcode.expiry_date;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
+
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
+
+      v_subtotal := v_barcode.selling_price * v_child_quantity;
+      v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+      v_line_total := v_subtotal + v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_subtotal := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+          v_line_total := v_subtotal + v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_subtotal := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+          v_line_total := v_subtotal + v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_subtotal := v_barcode.selling_price * v_quantity;
+        v_tax_amount := round(v_subtotal * coalesce(v_tax_pct, 0) / 100, 2);
+        v_line_total := v_subtotal + v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
+  end loop;
+
+  update public.sales set total_amount = v_total where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total, v_covered_total, v_total - v_covered_total;
+end;
+$$;
+
+-- ============================================================================
+-- BRANCH SETTINGS — out-of-stock reminder cadence + read-only profile fields
+-- ============================================================================
+-- Both dropped first: update_branch_details gains a new parameter, and
+-- get_my_branch_details gains new return columns -- the same "different
+-- overload identity" / "cannot change return type" reasons documented above
+-- update_branch_details's first declaration.
+
+drop function if exists public.update_branch_details(text, text, text, text, text, text, text);
+create or replace function public.update_branch_details(
+  p_address text, p_phone text, p_tin text, p_logo_path text default null,
+  p_bank_account_number text default null, p_bank_account_name text default null, p_momo_pay_number text default null,
+  p_out_of_stock_reminder_hours integer default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then raise exception 'Only the branch owner may update branch settings'; end if;
+
+  if p_out_of_stock_reminder_hours is not null and (p_out_of_stock_reminder_hours < 1 or p_out_of_stock_reminder_hours > 168) then
+    raise exception 'Reminder interval must be between 1 and 168 hours';
+  end if;
+
+  update public.branches
+  set address = nullif(btrim(coalesce(p_address, '')), ''),
+      phone = nullif(btrim(coalesce(p_phone, '')), ''),
+      tin = nullif(btrim(coalesce(p_tin, '')), ''),
+      logo_path = nullif(btrim(coalesce(p_logo_path, '')), ''),
+      bank_account_number = nullif(btrim(coalesce(p_bank_account_number, '')), ''),
+      bank_account_name = nullif(btrim(coalesce(p_bank_account_name, '')), ''),
+      momo_pay_number = nullif(btrim(coalesce(p_momo_pay_number, '')), ''),
+      out_of_stock_reminder_hours = coalesce(p_out_of_stock_reminder_hours, out_of_stock_reminder_hours)
+  where id = v_branch;
+end;
+$$;
+
+revoke all on function public.update_branch_details(text, text, text, text, text, text, text, integer) from public, anon;
+grant execute on function public.update_branch_details(text, text, text, text, text, text, text, integer) to authenticated;
+
+drop function if exists public.get_my_branch_details();
+create or replace function public.get_my_branch_details()
+returns table(
+  name text, address text, phone text, tin text, logo_path text, bank_account_number text, bank_account_name text, momo_pay_number text,
+  out_of_stock_reminder_hours integer, branch_code text, status text, created_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select b.name::text, b.address, b.phone, b.tin, b.logo_path, b.bank_account_number, b.bank_account_name, b.momo_pay_number,
+         b.out_of_stock_reminder_hours, b.branch_code::text, b.status::text, b.created_at
+  from public.branches b
+  where b.id = public.current_branch_id()
+$$;
+
+revoke all on function public.get_my_branch_details() from public, anon;
+grant execute on function public.get_my_branch_details() to authenticated;
+
+-- ============================================================================
+-- BRANCH HISTORY — one owner-only view across every kind of event
+-- ============================================================================
+-- Everything that has ever happened at this branch, in one place: sales,
+-- stock adjustments (manual and the automatic expiry write-off), stock
+-- deliveries received, insurance claims filed, patients registered, product
+-- requests submitted, seller accounts created, and batch recalls that
+-- touched this branch's own stock. Each source already has its own detail
+-- page (Transactions, Stock Adjustments, Receiving, Insurance, Patients,
+-- Product Requests, Team) -- this is deliberately not a replacement for any
+-- of them, it's the one page that reads across all of them at once, so nothing
+-- requires the owner to remember which page a given event lives on.
+--
+-- Owner-only is enforced HERE, not just by hiding the nav link client-side:
+-- a seller calling this RPC directly gets the same "Only the branch owner..."
+-- rejection adjust_stock()/update_branch_details() already use for their own
+-- owner/manager-only actions.
+create or replace function public.list_branch_history(p_from timestamptz default null, p_to timestamptz default null)
+returns table(
+  event_at timestamptz, category text, title text, description text, amount numeric, actor_name text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then
+    raise exception 'Only the branch owner may view the full history';
+  end if;
+
+  return query
+  select s.sold_at, 'sale'::text, 'Sale completed'::text,
+    format('Receipt %s%s', r.receipt_number, case when p.full_name is not null then ' -- ' || p.full_name else '' end),
+    s.total_amount, u1.full_name::text
+  from public.sales s
+  join public.receipts r on r.sale_id = s.id
+  left join public.patients p on p.id = s.patient_id
+  left join public.users u1 on u1.id = s.cashier_id
+  where s.branch_id = v_branch and (p_from is null or s.sold_at >= p_from) and (p_to is null or s.sold_at <= p_to)
+
+  union all
+
+  select sa.adjusted_at, 'stock_adjustment'::text, initcap(sa.adjustment_type),
+    format('%s -- %s piece(s)%s', concat_ws(' ', pr1.name, pv1.dosage), sa.quantity, case when sa.reason is not null then ' -- ' || sa.reason else '' end),
+    null::numeric, u2.full_name::text
+  from public.stock_adjustments sa
+  join public.stock_batches sb1 on sb1.id = sa.stock_batch_id
+  join public.product_variants pv1 on pv1.id = sb1.product_variant_id
+  join public.products pr1 on pr1.id = pv1.product_id
+  left join public.users u2 on u2.id = sa.performed_by
+  where sb1.branch_id = v_branch and (p_from is null or sa.adjusted_at >= p_from) and (p_to is null or sa.adjusted_at <= p_to)
+
+  union all
+
+  select sd.received_at, 'stock_received'::text, 'Stock delivery received'::text,
+    format('%s from %s', sd.delivery_code, sup.supplier_name), null::numeric, u3.full_name::text
+  from public.stock_deliveries sd
+  join public.suppliers sup on sup.id = sd.supplier_id
+  left join public.users u3 on u3.id = sd.received_by
+  where sd.branch_id = v_branch and (p_from is null or sd.received_at >= p_from) and (p_to is null or sd.received_at <= p_to)
+
+  union all
+
+  select ic.submitted_at, 'insurance_claim'::text, 'Insurance claim filed'::text,
+    format('%s -- %s', ip.name, initcap(ic.status)), ic.claim_amount, null::text
+  from public.insurance_claims ic
+  join public.sales s2 on s2.id = ic.sale_id
+  join public.insurance_providers ip on ip.id = ic.insurance_provider_id
+  where s2.branch_id = v_branch and (p_from is null or ic.submitted_at >= p_from) and (p_to is null or ic.submitted_at <= p_to)
+
+  union all
+
+  select pt.created_at, 'patient'::text, 'Patient registered'::text,
+    pt.full_name::text, null::numeric, u4.full_name::text
+  from public.patients pt
+  left join public.users u4 on u4.id = pt.created_by
+  where pt.branch_id = v_branch and (p_from is null or pt.created_at >= p_from) and (p_to is null or pt.created_at <= p_to)
+
+  union all
+
+  select pq.created_at, 'product_request'::text, 'Product request submitted'::text,
+    left(pq.message, 140), null::numeric, u5.full_name::text
+  from public.product_requests pq
+  left join public.users u5 on u5.id = pq.requested_by
+  where pq.branch_id = v_branch and (p_from is null or pq.created_at >= p_from) and (p_to is null or pq.created_at <= p_to)
+
+  union all
+
+  select us.created_at, 'staff'::text, 'Seller account created'::text,
+    concat_ws(' ', us.full_name, '(' || us.email || ')'), null::numeric, null::text
+  from public.users us
+  where us.branch_id = v_branch and us.role = 'seller' and (p_from is null or us.created_at >= p_from) and (p_to is null or us.created_at <= p_to)
+
+  union all
+
+  select br.recalled_at, 'batch_recall'::text, 'Batch recalled'::text,
+    format('%s -- %s', concat_ws(' ', pr2.name, pv2.dosage), br.reason), null::numeric, u6.full_name::text
+  from public.batch_recalls br
+  join public.product_variants pv2 on pv2.id = br.product_variant_id
+  join public.products pr2 on pr2.id = pv2.product_id
+  left join public.users u6 on u6.id = br.recalled_by
+  where exists (
+    select 1 from public.stock_batches sb2
+    where sb2.product_variant_id = br.product_variant_id and sb2.batch_number = br.batch_number and sb2.branch_id = v_branch
+  ) and (p_from is null or br.recalled_at >= p_from) and (p_to is null or br.recalled_at <= p_to)
+
+  order by 1 desc
+  limit 2000;
+end;
+$$;
+
+revoke all on function public.list_branch_history(timestamptz, timestamptz) from public, anon;
+grant execute on function public.list_branch_history(timestamptz, timestamptz) to authenticated;

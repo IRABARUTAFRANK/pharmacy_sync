@@ -229,6 +229,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'help',        label: 'Help & Support',       icon: '💬', roles: ['owner', 'manager', 'seller'] },
   // ── Owner only ───────────────────────────────────────────────
   { id: 'branch',      label: 'Branch Settings',      icon: '⚙️', roles: ['owner'] },
+  { id: 'history',     label: 'History',              icon: '🕓', roles: ['owner'] },
 ]
 
 // ─── KPIs ─────────────────────────────────────────────────────────────────────
