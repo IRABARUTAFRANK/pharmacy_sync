@@ -24,6 +24,7 @@ const en = {
   "nav.patients": "Patients",
   "nav.reports": "Products in Stock",
   "nav.branch": "Branch Settings",
+  "nav.history": "History",
   "nav.help": "Help & Support",
 
   // ── Dashboard shell — page titles (App.tsx top bar, keyed by page id) ────
@@ -43,6 +44,7 @@ const en = {
   "page.patients": "Patients",
   "page.reports": "Products in Stock",
   "page.branch": "Branch Settings",
+  "page.history": "Full History",
   "page.help": "Help & Support",
 
   // ── Dashboard shell — chrome ──────────────────────────────────────────────
@@ -1057,6 +1059,34 @@ const en = {
   "branchSettings.passwordTooShort": "Password must be at least 8 characters.",
   "branchSettings.passwordChangeSuccess": "Password changed.",
   "branchSettings.passwordChangeError": "Could not change your password.",
+
+  // ── Full History (owner-only) ─────────────────────────────────────────────
+  "history.subtitle": "Every sale, stock change, claim, and record this branch has ever created, in one place.",
+  "history.loadError": "Could not load history — this page is only available to the branch owner.",
+  "history.searchPlaceholder": "Search this history…",
+  "history.dateFromLabel": "From",
+  "history.dateToLabel": "To",
+  "history.clearDates": "Clear dates",
+  "history.categoriesLabel": "Show",
+  "history.loading": "Loading…",
+  "history.empty": "No history recorded yet.",
+  "history.emptyFiltered": "Nothing matches these filters.",
+  "history.downloadCsv": "Download CSV",
+  "history.print": "Print",
+  "history.rowCount": "{count} event(s)",
+  "history.colDate": "Date & Time",
+  "history.colCategory": "Category",
+  "history.colEvent": "Event",
+  "history.colAmount": "Amount",
+  "history.colBy": "By",
+  "history.category.sale": "Sale",
+  "history.category.stock_adjustment": "Stock Adjustment",
+  "history.category.stock_received": "Stock Received",
+  "history.category.insurance_claim": "Insurance Claim",
+  "history.category.patient": "Patient",
+  "history.category.product_request": "Product Request",
+  "history.category.staff": "Staff",
+  "history.category.batch_recall": "Batch Recall",
 } as const;
 
 export default en;

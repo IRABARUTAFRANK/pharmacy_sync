@@ -22,6 +22,7 @@ import TeamPage from './pages/TeamPage'
 import PatientsPage from './pages/PatientsPage'
 import ReportsPage from './pages/ReportsPage'
 import BranchSettingsPage from './pages/BranchSettingsPage'
+import HistoryPage from './pages/HistoryPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 
@@ -393,6 +394,7 @@ export default function App() {
       case 'team':          return <TeamPage />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage />
+      case 'history':       return <HistoryPage />
       case 'help':          return <HelpPage />
       default:              return null
     }

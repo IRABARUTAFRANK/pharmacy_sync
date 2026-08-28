@@ -4545,3 +4545,122 @@ $$;
 
 revoke all on function public.get_my_branch_details() from public, anon;
 grant execute on function public.get_my_branch_details() to authenticated;
+
+-- ============================================================================
+-- BRANCH HISTORY — one owner-only view across every kind of event
+-- ============================================================================
+-- Everything that has ever happened at this branch, in one place: sales,
+-- stock adjustments (manual and the automatic expiry write-off), stock
+-- deliveries received, insurance claims filed, patients registered, product
+-- requests submitted, seller accounts created, and batch recalls that
+-- touched this branch's own stock. Each source already has its own detail
+-- page (Transactions, Stock Adjustments, Receiving, Insurance, Patients,
+-- Product Requests, Team) -- this is deliberately not a replacement for any
+-- of them, it's the one page that reads across all of them at once, so nothing
+-- requires the owner to remember which page a given event lives on.
+--
+-- Owner-only is enforced HERE, not just by hiding the nav link client-side:
+-- a seller calling this RPC directly gets the same "Only the branch owner..."
+-- rejection adjust_stock()/update_branch_details() already use for their own
+-- owner/manager-only actions.
+create or replace function public.list_branch_history(p_from timestamptz default null, p_to timestamptz default null)
+returns table(
+  event_at timestamptz, category text, title text, description text, amount numeric, actor_name text
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then
+    raise exception 'Only the branch owner may view the full history';
+  end if;
+
+  return query
+  select s.sold_at, 'sale'::text, 'Sale completed'::text,
+    format('Receipt %s%s', r.receipt_number, case when p.full_name is not null then ' -- ' || p.full_name else '' end),
+    s.total_amount, u1.full_name::text
+  from public.sales s
+  join public.receipts r on r.sale_id = s.id
+  left join public.patients p on p.id = s.patient_id
+  left join public.users u1 on u1.id = s.cashier_id
+  where s.branch_id = v_branch and (p_from is null or s.sold_at >= p_from) and (p_to is null or s.sold_at <= p_to)
+
+  union all
+
+  select sa.adjusted_at, 'stock_adjustment'::text, initcap(sa.adjustment_type),
+    format('%s -- %s piece(s)%s', concat_ws(' ', pr1.name, pv1.dosage), sa.quantity, case when sa.reason is not null then ' -- ' || sa.reason else '' end),
+    null::numeric, u2.full_name::text
+  from public.stock_adjustments sa
+  join public.stock_batches sb1 on sb1.id = sa.stock_batch_id
+  join public.product_variants pv1 on pv1.id = sb1.product_variant_id
+  join public.products pr1 on pr1.id = pv1.product_id
+  left join public.users u2 on u2.id = sa.performed_by
+  where sb1.branch_id = v_branch and (p_from is null or sa.adjusted_at >= p_from) and (p_to is null or sa.adjusted_at <= p_to)
+
+  union all
+
+  select sd.received_at, 'stock_received'::text, 'Stock delivery received'::text,
+    format('%s from %s', sd.delivery_code, sup.supplier_name), null::numeric, u3.full_name::text
+  from public.stock_deliveries sd
+  join public.suppliers sup on sup.id = sd.supplier_id
+  left join public.users u3 on u3.id = sd.received_by
+  where sd.branch_id = v_branch and (p_from is null or sd.received_at >= p_from) and (p_to is null or sd.received_at <= p_to)
+
+  union all
+
+  select ic.submitted_at, 'insurance_claim'::text, 'Insurance claim filed'::text,
+    format('%s -- %s', ip.name, initcap(ic.status)), ic.claim_amount, null::text
+  from public.insurance_claims ic
+  join public.sales s2 on s2.id = ic.sale_id
+  join public.insurance_providers ip on ip.id = ic.insurance_provider_id
+  where s2.branch_id = v_branch and (p_from is null or ic.submitted_at >= p_from) and (p_to is null or ic.submitted_at <= p_to)
+
+  union all
+
+  select pt.created_at, 'patient'::text, 'Patient registered'::text,
+    pt.full_name::text, null::numeric, u4.full_name::text
+  from public.patients pt
+  left join public.users u4 on u4.id = pt.created_by
+  where pt.branch_id = v_branch and (p_from is null or pt.created_at >= p_from) and (p_to is null or pt.created_at <= p_to)
+
+  union all
+
+  select pq.created_at, 'product_request'::text, 'Product request submitted'::text,
+    left(pq.message, 140), null::numeric, u5.full_name::text
+  from public.product_requests pq
+  left join public.users u5 on u5.id = pq.requested_by
+  where pq.branch_id = v_branch and (p_from is null or pq.created_at >= p_from) and (p_to is null or pq.created_at <= p_to)
+
+  union all
+
+  select us.created_at, 'staff'::text, 'Seller account created'::text,
+    concat_ws(' ', us.full_name, '(' || us.email || ')'), null::numeric, null::text
+  from public.users us
+  where us.branch_id = v_branch and us.role = 'seller' and (p_from is null or us.created_at >= p_from) and (p_to is null or us.created_at <= p_to)
+
+  union all
+
+  select br.recalled_at, 'batch_recall'::text, 'Batch recalled'::text,
+    format('%s -- %s', concat_ws(' ', pr2.name, pv2.dosage), br.reason), null::numeric, u6.full_name::text
+  from public.batch_recalls br
+  join public.product_variants pv2 on pv2.id = br.product_variant_id
+  join public.products pr2 on pr2.id = pv2.product_id
+  left join public.users u6 on u6.id = br.recalled_by
+  where exists (
+    select 1 from public.stock_batches sb2
+    where sb2.product_variant_id = br.product_variant_id and sb2.batch_number = br.batch_number and sb2.branch_id = v_branch
+  ) and (p_from is null or br.recalled_at >= p_from) and (p_to is null or br.recalled_at <= p_to)
+
+  order by 1 desc
+  limit 2000;
+end;
+$$;
+
+revoke all on function public.list_branch_history(timestamptz, timestamptz) from public, anon;
+grant execute on function public.list_branch_history(timestamptz, timestamptz) to authenticated;

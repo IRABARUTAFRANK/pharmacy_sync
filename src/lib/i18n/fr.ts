@@ -24,6 +24,7 @@ const fr: Record<TranslationKey, string> = {
   "nav.patients": "Patients",
   "nav.reports": "Produits en Stock",
   "nav.branch": "Paramètres de la pharmacie",
+  "nav.history": "Historique",
   "nav.help": "Aide & Support",
 
   // ── Dashboard shell — page titles ─────────────────────────────────────────
@@ -43,6 +44,7 @@ const fr: Record<TranslationKey, string> = {
   "page.patients": "Patients",
   "page.reports": "Produits en Stock",
   "page.branch": "Paramètres de la pharmacie",
+  "page.history": "Historique complet",
   "page.help": "Aide & Support",
 
   // ── Dashboard shell — chrome ───────────────────────────────────────────────
@@ -1057,6 +1059,34 @@ const fr: Record<TranslationKey, string> = {
   "branchSettings.passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères.",
   "branchSettings.passwordChangeSuccess": "Mot de passe modifié.",
   "branchSettings.passwordChangeError": "Impossible de modifier votre mot de passe.",
+
+  // ── Full History (owner-only) ─────────────────────────────────────────────
+  "history.subtitle": "Chaque vente, changement de stock, réclamation et enregistrement que cette pharmacie a jamais créé, au même endroit.",
+  "history.loadError": "Impossible de charger l'historique — cette page n'est accessible qu'au propriétaire de la pharmacie.",
+  "history.searchPlaceholder": "Rechercher dans cet historique…",
+  "history.dateFromLabel": "Du",
+  "history.dateToLabel": "Au",
+  "history.clearDates": "Effacer les dates",
+  "history.categoriesLabel": "Afficher",
+  "history.loading": "Chargement…",
+  "history.empty": "Aucun historique enregistré pour le moment.",
+  "history.emptyFiltered": "Rien ne correspond à ces filtres.",
+  "history.downloadCsv": "Télécharger en CSV",
+  "history.print": "Imprimer",
+  "history.rowCount": "{count} événement(s)",
+  "history.colDate": "Date et heure",
+  "history.colCategory": "Catégorie",
+  "history.colEvent": "Événement",
+  "history.colAmount": "Montant",
+  "history.colBy": "Par",
+  "history.category.sale": "Vente",
+  "history.category.stock_adjustment": "Ajustement de stock",
+  "history.category.stock_received": "Stock reçu",
+  "history.category.insurance_claim": "Réclamation d'assurance",
+  "history.category.patient": "Patient",
+  "history.category.product_request": "Demande de produit",
+  "history.category.staff": "Personnel",
+  "history.category.batch_recall": "Rappel de lot",
 };
 
 export default fr;

@@ -24,6 +24,7 @@ const rw: Record<TranslationKey, string> = {
   "nav.patients": "Abarwayi",
   "nav.reports": "Ibiri mu Bubiko",
   "nav.branch": "Igenamiterere ry'Ishami",
+  "nav.history": "Amateka",
   "nav.help": "Ubufasha",
 
   // ── Dashboard shell — page titles ─────────────────────────────────────────
@@ -43,6 +44,7 @@ const rw: Record<TranslationKey, string> = {
   "page.patients": "Abarwayi",
   "page.reports": "Ibiri mu Bubiko",
   "page.branch": "Igenamiterere ry'Ishami",
+  "page.history": "Amateka Yuzuye",
   "page.help": "Ubufasha",
 
   // ── Dashboard shell — chrome ───────────────────────────────────────────────
@@ -1057,6 +1059,34 @@ const rw: Record<TranslationKey, string> = {
   "branchSettings.passwordTooShort": "Ijambo ry'ibanga rigomba kuba rifite byibuze inyuguti 8.",
   "branchSettings.passwordChangeSuccess": "Ijambo ry'ibanga ryahinduwe.",
   "branchSettings.passwordChangeError": "Ntibyashobotse guhindura ijambo ryawe ry'ibanga.",
+
+  // ── Amateka Yuzuye (nyir'ishami gusa) ─────────────────────────────────────
+  "history.subtitle": "Buri kugurisha, impinduka z'ububiko, ubusabe bw'ubwishingizi, n'inyandiko byose iri shami ryigeze gukora, ahantu hamwe.",
+  "history.loadError": "Ntibyashobotse gutangaza amateka — iyi paji ibonwa gusa na nyir'ishami.",
+  "history.searchPlaceholder": "Shakisha muri aya mateka…",
+  "history.dateFromLabel": "Guhera",
+  "history.dateToLabel": "Kugeza",
+  "history.clearDates": "Siba amatariki",
+  "history.categoriesLabel": "Erekana",
+  "history.loading": "Birimo gutangazwa…",
+  "history.empty": "Nta mateka yanditswe ubu.",
+  "history.emptyFiltered": "Nta kintu kihuye n'iyi mucungi.",
+  "history.downloadCsv": "Kuramo CSV",
+  "history.print": "Kuboneza",
+  "history.rowCount": "ibintu {count}",
+  "history.colDate": "Itariki n'Isaha",
+  "history.colCategory": "Icyiciro",
+  "history.colEvent": "Igikorwa",
+  "history.colAmount": "Amafaranga",
+  "history.colBy": "Uwabikoze",
+  "history.category.sale": "Kugurisha",
+  "history.category.stock_adjustment": "Ihindurwa ry'Ububiko",
+  "history.category.stock_received": "Ububiko Bwakiriwe",
+  "history.category.insurance_claim": "Ubusabe bw'Ubwishingizi",
+  "history.category.patient": "Umurwayi",
+  "history.category.product_request": "Ubusabe bw'Igicuruzwa",
+  "history.category.staff": "Abakozi",
+  "history.category.batch_recall": "Gukura Umuti ku Isoko",
 };
 
 export default rw;
