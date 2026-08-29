@@ -32,6 +32,8 @@ const RequestProductPage  = lazy(() => import('./pages/RequestProductPage'))
 const AlertsPage          = lazy(() => import('./pages/AlertsPage'))
 const HelpPage            = lazy(() => import('./pages/HelpPage'))
 const TeamPage             = lazy(() => import('./pages/TeamPage'))
+const AnalystPage           = lazy(() => import('./pages/AnalystPage'))
+const AnalyticsPage         = lazy(() => import('./pages/AnalyticsPage'))
 const PatientsPage         = lazy(() => import('./pages/PatientsPage'))
 const ReportsPage          = lazy(() => import('./pages/ReportsPage'))
 const BranchSettingsPage   = lazy(() => import('./pages/BranchSettingsPage'))
@@ -513,6 +515,8 @@ export default function App() {
       case 'transactions':  return <TransactionsPage />
       case 'insurance':     return <InsurancePage />
       case 'team':          return <TeamPage />
+      case 'analyst':       return <AnalystPage />
+      case 'analytics':     return <AnalyticsPage />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage />
       case 'history':       return <HistoryPage />

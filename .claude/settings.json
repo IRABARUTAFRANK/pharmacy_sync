@@ -12,7 +12,20 @@
       "WebSearch",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(node verify_sales.mjs)"
+      "Bash(node verify_sales.mjs)",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Bash(node -e \"require\\('playwright'\\)\")",
+      "Bash(supabase login *)",
+      "Bash(supabase projects *)",
+      "Bash(supabase link *)",
+      "Bash(supabase functions *)",
+      "Bash(supabase secrets *)",
+      "Bash(curl -s -X POST \"https://hboavkngruumpdunbhvw.supabase.co/functions/v1/ai-analyst\" -H \"Authorization: Bearer test\" -H \"Content-Type: application/json\" -d '{\"question\":\"test\"}' -w \"\\\\nHTTP_STATUS:%{http_code}\\\\n\")",
+      "Bash(supabase db *)",
+      "Bash(node -e \"require.resolve\\('playwright'\\)\")",
+      "Bash(node -e \"console.log\\(require\\('@supabase/supabase-js/package.json'\\).version\\)\")",
+      "Bash(git fetch *)"
     ]
   }
 }

@@ -223,6 +223,11 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager'] },
   { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager'] },
   { id: 'team',        label: 'Team',                 icon: '👥', roles: ['owner', 'manager'] },
+  // 'analyst' (AI Analyst) is intentionally left out of NAV_ITEMS -- the
+  // feature works end-to-end but needs Anthropic billing/credits the owner
+  // hasn't set up yet. The page, route, Edge Function, and SQL tools are all
+  // still in place; re-add this row to bring it back once billing is on.
+  { id: 'analytics',   label: 'Analytics & Forecasting', icon: '📊', roles: ['owner', 'manager'] },
   // ── Shared with seller ──────────────────────────────────────
   { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'seller'] },
   { id: 'patients',    label: 'Patients',              icon: '🩺', roles: ['owner', 'manager', 'seller'] },
