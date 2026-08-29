@@ -5,12 +5,15 @@ import './index.css'
 import './lib/supabase'
 import { I18nProvider } from './lib/i18n'
 import { SearchProvider } from './lib/search'
+import { ScannerProvider } from './lib/scanner'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <I18nProvider>
       <SearchProvider>
-        <App />
+        <ScannerProvider>
+          <App />
+        </ScannerProvider>
       </SearchProvider>
     </I18nProvider>
   </React.StrictMode>,

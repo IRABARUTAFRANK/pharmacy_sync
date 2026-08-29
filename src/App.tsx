@@ -13,6 +13,7 @@ import HistoryPage from './pages/HistoryPage'
 
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 
 // Code-split every page behind the sidebar (and the admin/branch/reset
 // top-level routes) so the first load only ships what's needed to sign in --
@@ -403,6 +404,22 @@ export default function App() {
     }
   }, [access, role, page])
 
+  // Global barcode scanner: active only inside the authenticated pharmacy
+  // app (never during sign-in, the admin console, branch registration, or
+  // password reset -- hashRoute is anything other than 'home' there). The
+  // listener itself lives in lib/scanner.tsx; this is only the navigation
+  // half -- if a scan is recognized while on any other page, jump to Sales
+  // so it can be picked up there. Consuming (and clearing) the scanned code
+  // is SalesPage's own responsibility once mounted, not this effect's.
+  const scanner = useScanner()
+  const scannerEnabled = !!access && hashRoute === 'home'
+  const scannerCatcher = useBarcodeScannerListener(scannerEnabled)
+  useEffect(() => {
+    if (scannerEnabled && scanner.barcode && page !== 'sales') {
+      setPage('sales')
+    }
+  }, [scanner.barcode, scannerEnabled, page])
+
   async function handleSignOut() {
     await signOutFromBranch()
     setAccess(null)
@@ -757,6 +774,26 @@ export default function App() {
       </div>
 
       {showExport && <ExportModal onClose={() => setShowExport(false)} />}
+
+      {/* The global-scanner catcher: one real, invisible <input> that
+          lib/scanner.tsx keeps focused whenever nothing else legitimately
+          holds focus (see claimFocusIfIdle() there). Its normal browser text
+          composition is what reliably handles "Barcode to PC"-style input
+          (confirmed against a real device -- a hand-rolled keydown parser
+          did not, since that app types via Alt+Numpad Unicode entry) -- this
+          element exists so that composition happens somewhere even when the
+          user isn't looking at Sales. tabIndex={-1} keeps it out of normal
+          Tab navigation; it is never visible and never intercepts a click. */}
+      {scannerEnabled && (
+        <input
+          ref={scannerCatcher.inputRef}
+          onKeyDown={scannerCatcher.onKeyDown}
+          tabIndex={-1}
+          aria-hidden="true"
+          autoComplete="off"
+          style={{ position: 'fixed', top: 0, left: 0, width: 1, height: 1, opacity: 0, border: 'none', padding: 0, pointerEvents: 'none' }}
+        />
+      )}
     </div>
   )
 }

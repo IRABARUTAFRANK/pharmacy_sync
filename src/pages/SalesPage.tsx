@@ -4,6 +4,7 @@ import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { findPatientByIdentifier, upsertPatient, type PatientGender } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
+import { useScanner } from "../lib/scanner"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, loadCoverageOverrides, loadInsuranceProviders, scanBarcode,
   type InsuranceProvider, type ReceiptData, type ScannedBarcode, type SellMode,
@@ -283,6 +284,7 @@ export default function SalesPage() {
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(BLANK_PATIENT)
   const scanRef = useRef<HTMLInputElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
+  const scanner = useScanner()
 
   useEffect(() => {
     void Promise.all([listTaxRates(), loadInsuranceProviders()]).then(([rates, provs]) => { setTaxRates(rates); setProviders(provs) })
@@ -318,6 +320,47 @@ export default function SalesPage() {
       setScanning(false)
     }
   }
+
+  // Global-scanner hand-off (App.tsx / lib/scanner.tsx). Deliberately a
+  // separate function from handleScan() -- not a modification of it -- so
+  // the local scan box and its Add button keep working exactly as before.
+  // Reuses the same scanBarcode() call and the same guards handleScan()
+  // already enforces (scanning/pending/duplicate-in-cart), and lands in the
+  // exact same `pending` confirmation step: a global scan never skips
+  // quantity selection, it only skips having to type the code by hand.
+  async function processGlobalScan(code: string) {
+    if (!code || scanning || pending) return
+    if (cart.some(item => item.code.toUpperCase() === code.toUpperCase())) {
+      setError(t("salesPage.cartDuplicateError", { code }))
+      return
+    }
+    setScanning(true)
+    setError("")
+    try {
+      const item = await scanBarcode(code, taxRates)
+      setPending({ item, mode: "whole", amount: "1" })
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  // Consumes a code the global listener recognized (App.tsx has already
+  // navigated here if needed). The barcode is cleared from context the
+  // instant it's picked up -- before the async lookup even starts -- so a
+  // re-render triggered by setScanning(true) can't re-trigger this effect
+  // against the same value. If scanning/pending is already true when a scan
+  // arrives, this simply does nothing yet: scanner.barcode stays put in
+  // context (untouched), and this effect re-checks the moment either of
+  // those clears, so nothing is silently dropped -- it just waits its turn,
+  // same as a second physical scan would today.
+  useEffect(() => {
+    if (!scanner.barcode || scanning || pending) return
+    const code = scanner.barcode
+    scanner.clearBarcode()
+    void processGlobalScan(code)
+  }, [scanner.barcode, scanning, pending])
 
   function confirmPending() {
     if (!pending) return
@@ -443,12 +486,11 @@ export default function SalesPage() {
                 value={scanInput}
                 onChange={e => setScanInput(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") void handleScan() }}
-                placeholder={pending ? t("salesPage.pendingScanBlockedPlaceholder") : t("salesPage.scanPlaceholder")}
+                placeholder={pending ? t("salesPage.pendingScanBlockedPlaceholder") : scanning ? t("salesPage.scanLookingUp") : t("salesPage.scanPlaceholder")}
                 disabled={scanning || pending !== null}
                 autoFocus
                 style={{ flex: 1, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 14, fontFamily: "inherit", outline: "none", opacity: pending ? 0.55 : 1 }}
               />
-              <Btn variant="primary" onClick={() => void handleScan()}>{scanning ? t("salesPage.scanLookingUp") : t("salesPage.scanAdd")}</Btn>
             </div>
           </div>
 
