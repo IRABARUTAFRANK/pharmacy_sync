@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense, type ComponentType } from 'react'
 import { NAV_ITEMS, type Role } from './data'
 import { useTranslation, LanguageSwitcher } from './lib/i18n'
 import { useGlobalSearch } from './lib/search'
@@ -21,25 +21,68 @@ import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 // bundled into the initial download. BranchAccessPage stays a static import
 // above: it's needed immediately for anyone who isn't signed in yet, so
 // lazy-loading it would only add a waterfall in the most latency-sensitive path.
-const OverviewPage        = lazy(() => import('./pages/OverviewPage'))
-const LiveInventoryPage   = lazy(() => import('./pages/LiveInventoryPage'))
-const StockReceivingPage  = lazy(() => import('./pages/StockReceivingPage'))
-const BarcodeManagerPage  = lazy(() => import('./pages/BarcodeManagerPage'))
-const SalesPage           = lazy(() => import('./pages/SalesPage'))
-const TransactionsPage    = lazy(() => import('./pages/TransactionsPage'))
-const InsurancePage       = lazy(() => import('./pages/InsurancePage'))
-const RequestProductPage  = lazy(() => import('./pages/RequestProductPage'))
-const AlertsPage          = lazy(() => import('./pages/AlertsPage'))
-const HelpPage            = lazy(() => import('./pages/HelpPage'))
-const TeamPage             = lazy(() => import('./pages/TeamPage'))
-const AnalystPage           = lazy(() => import('./pages/AnalystPage'))
-const AnalyticsPage         = lazy(() => import('./pages/AnalyticsPage'))
-const PatientsPage         = lazy(() => import('./pages/PatientsPage'))
-const ReportsPage          = lazy(() => import('./pages/ReportsPage'))
-const BranchSettingsPage   = lazy(() => import('./pages/BranchSettingsPage'))
+//
+// PAGE_LOADERS is the single source of truth for each nav page's dynamic
+// import -- lazy() below wraps it for React, and prefetchPage() (used on nav
+// hover and for idle warm-up, further down this file) calls the exact same
+// function so the browser fetches/parses the chunk BEFORE the click that
+// needs it, rather than starting cold at click time. Keying both off one map
+// means a page added here only needs a route case in renderPage(), not a
+// second place to remember for prefetching.
+const PAGE_LOADERS = {
+  overview: () => import('./pages/OverviewPage'),
+  inventory: () => import('./pages/LiveInventoryPage'),
+  receiving: () => import('./pages/StockReceivingPage'),
+  barcode: () => import('./pages/BarcodeManagerPage'),
+  sales: () => import('./pages/SalesPage'),
+  transactions: () => import('./pages/TransactionsPage'),
+  insurance: () => import('./pages/InsurancePage'),
+  requestProduct: () => import('./pages/RequestProductPage'),
+  alerts: () => import('./pages/AlertsPage'),
+  help: () => import('./pages/HelpPage'),
+  team: () => import('./pages/TeamPage'),
+  analyst: () => import('./pages/AnalystPage'),
+  analytics: () => import('./pages/AnalyticsPage'),
+  patients: () => import('./pages/PatientsPage'),
+  reports: () => import('./pages/ReportsPage'),
+  branch: () => import('./pages/BranchSettingsPage'),
+} satisfies Record<string, () => Promise<{ default: ComponentType<any> }>>
+
+const OverviewPage        = lazy(PAGE_LOADERS.overview)
+const LiveInventoryPage   = lazy(PAGE_LOADERS.inventory)
+const StockReceivingPage  = lazy(PAGE_LOADERS.receiving)
+const BarcodeManagerPage  = lazy(PAGE_LOADERS.barcode)
+const SalesPage           = lazy(PAGE_LOADERS.sales)
+const TransactionsPage    = lazy(PAGE_LOADERS.transactions)
+const InsurancePage       = lazy(PAGE_LOADERS.insurance)
+const RequestProductPage  = lazy(PAGE_LOADERS.requestProduct)
+const AlertsPage          = lazy(PAGE_LOADERS.alerts)
+const HelpPage            = lazy(PAGE_LOADERS.help)
+const TeamPage             = lazy(PAGE_LOADERS.team)
+const AnalystPage           = lazy(PAGE_LOADERS.analyst)
+const AnalyticsPage         = lazy(PAGE_LOADERS.analytics)
+const PatientsPage         = lazy(PAGE_LOADERS.patients)
+const ReportsPage          = lazy(PAGE_LOADERS.reports)
+const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
 const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
 const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
+
+// Fetches a page's chunk ahead of the click that needs it -- on nav-button
+// hover, and once more as a background warm-up shortly after sign-in (see
+// the effect below). Calling the same dynamic import() a lazy() component
+// already uses just resolves against the browser's in-flight/cached request
+// for that chunk, so a hover-prefetch followed by an actual click never
+// double-fetches. The Set only prevents re-triggering the *request*, not
+// re-renders -- it's fine for it to never shrink for the life of the tab.
+const prefetchedPages = new Set<string>()
+function prefetchPage(id: string) {
+  if (prefetchedPages.has(id)) return
+  const loader = (PAGE_LOADERS as Record<string, (() => Promise<unknown>) | undefined>)[id]
+  if (!loader) return
+  prefetchedPages.add(id)
+  loader().catch(() => { prefetchedPages.delete(id) }) // let a failed prefetch (e.g. offline) retry later
+}
 
 // ─── Top-level hash router ──────────────────────────────────────────────────────
 // #admin and #branch are the super-admin console and pharmacy registration —
@@ -406,6 +449,25 @@ export default function App() {
     }
   }, [access, role, page])
 
+  // Background warm-up: once signed in, prefetch every page chunk this role
+  // can navigate to, so clicking around later never pays a per-page fetch
+  // cost -- not right away (that would compete with the current page's own
+  // data requests), and not on a metered/data-saver connection. Runs once
+  // per role per tab; prefetchPage()'s own Set makes a second run harmless.
+  useEffect(() => {
+    if (!access) return
+    const saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData
+    if (saveData) return
+    const allowed = NAV_ITEMS.filter(n => n.roles.includes(role))
+    const warmUp = () => { allowed.forEach(item => prefetchPage(item.id)) }
+    const hasIdleCallback = typeof window.requestIdleCallback === 'function'
+    const handle = hasIdleCallback ? window.requestIdleCallback(warmUp, { timeout: 4000 }) : window.setTimeout(warmUp, 1500)
+    return () => {
+      if (hasIdleCallback) window.cancelIdleCallback(handle as number)
+      else window.clearTimeout(handle as number)
+    }
+  }, [access, role])
+
   // Global barcode scanner: active only inside the authenticated pharmacy
   // app (never during sign-in, the admin console, branch registration, or
   // password reset -- hashRoute is anything other than 'home' there). The
@@ -595,7 +657,7 @@ export default function App() {
                 marginBottom: 2, fontFamily: 'inherit', transition: 'all 0.14s',
                 position: 'relative',
               }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)'; prefetchPage(item.id) }}
                 onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
                 title={!sidebarOpen ? navLabel : undefined}
               >

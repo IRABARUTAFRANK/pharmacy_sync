@@ -25,7 +25,10 @@
       "Bash(supabase db *)",
       "Bash(node -e \"require.resolve\\('playwright'\\)\")",
       "Bash(node -e \"console.log\\(require\\('@supabase/supabase-js/package.json'\\).version\\)\")",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(ping -n 1 github.com)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8443)",
+      "Bash(git add *)"
     ]
   }
 }
