@@ -550,7 +550,12 @@ export function CenterAlert({ message, tone = 'error', durationMs = 4000 }: {
 // Shared between StockReceivingPage (the sheet right after receiving a
 // delivery) and BarcodeManagerPage (individual/bulk reprints from history) so
 // a printed label looks the same everywhere and only needs to carry price in
-// one place.
+// one place. Pharmacy owners print on different hardware -- a laser/inkjet
+// printer onto adhesive label sheets, a dedicated thermal barcode printer, or
+// sometimes just plain paper as a reference list -- so BarcodeLabelSheet
+// offers a layout picker rather than one fixed layout; whichever layout is
+// picked is remembered (localStorage) since it matches whatever printer
+// someone actually owns, not something that changes print to print.
 
 export interface PrintableBarcode {
   id: string
@@ -563,59 +568,322 @@ export interface PrintableBarcode {
   price?: number | null
 }
 
-// Fixed 4-per-row layout, not CSS Grid's auto-fill: percentage widths on a
-// flex-wrap container lay out the same way in every browser's print engine,
-// where Grid's page-break handling is inconsistent. The horizontal + bottom
-// margin on every cell (not a parent `gap`) is what actually keeps adjacent
-// barcodes from touching once a row breaks across a printed page boundary --
-// gap alone can collapse right at that boundary in some engines.
-const LABEL_COLUMNS = 4
-const LABEL_MARGIN_PCT = 1
-const LABEL_WIDTH_PCT = 100 / LABEL_COLUMNS - LABEL_MARGIN_PCT * 2
+export type BarcodeLabelLayout = 'sheet4' | 'sheet2' | 'thermal' | 'list'
+export type ThermalLabelSize = '58-continuous' | 'custom'
 
-export function BarcodeLabel({ label }: { label: PrintableBarcode }) {
+export interface BarcodePrintDefault {
+  layout: BarcodeLabelLayout
+  thermalSize: ThermalLabelSize
+  customWidthMm?: number
+  customHeightMm?: number | null // null = continuous roll (no fixed label height)
+}
+
+// 'thermal' isn't listed here -- it gets its own bespoke block in the
+// chooser modal below (a size sub-picker, not just a label+hint), so this
+// array only needs to cover the options that are one plain clickable card.
+const BARCODE_LAYOUT_OPTIONS: { id: Exclude<BarcodeLabelLayout, 'thermal'>; label: string; hint: string }[] = [
+  { id: 'sheet4', label: 'Sheet — 4 per row', hint: 'Regular printer + adhesive label sheet (A4/Letter), cut apart' },
+  { id: 'sheet2', label: 'Sheet — 2 per row (larger)', hint: 'Regular printer, bigger labels, fewer per sheet' },
+  { id: 'list', label: 'Plain list — no stickers', hint: 'Any printer, plain paper -- a reference printout, not adhesive labels' },
+]
+
+const THERMAL_SIZE_PRESETS: { id: Exclude<ThermalLabelSize, 'custom'>; label: string; widthMm: number; heightMm: number | null }[] = [
+  { id: '58-continuous', label: '58mm continuous roll', widthMm: 58, heightMm: null },
+]
+
+const DEFAULT_PRINT_PREF: BarcodePrintDefault = { layout: 'sheet4', thermalSize: '58-continuous' }
+
+// One JSON blob, not several loose keys -- layout and thermal size are
+// always chosen together, so they should never end up desynced (e.g. an old
+// layout paired with a size picked for a different one) the way independent
+// keys could drift after a partial write.
+const BARCODE_PRINT_PREF_KEY = 'psync_barcode_print_pref_v2'
+
+function loadStoredPrintPref(): BarcodePrintDefault | null {
+  try {
+    const raw = localStorage.getItem(BARCODE_PRINT_PREF_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object' && typeof parsed.layout === 'string' && typeof parsed.thermalSize === 'string') {
+      return parsed as BarcodePrintDefault
+    }
+  } catch {
+    // corrupt value or storage blocked (private browsing) -- treat as "no default set yet"
+  }
+  return null
+}
+
+function saveStoredPrintPref(pref: BarcodePrintDefault) {
+  try {
+    localStorage.setItem(BARCODE_PRINT_PREF_KEY, JSON.stringify(pref))
+  } catch {
+    // per-viewer convenience only; a failed write just means the choice
+    // doesn't persist across reloads, not worth surfacing to the user
+  }
+}
+
+function resolveThermalSize(pref: BarcodePrintDefault): { widthMm: number; heightMm: number | null } {
+  if (pref.thermalSize === 'custom') {
+    return { widthMm: pref.customWidthMm && pref.customWidthMm > 0 ? pref.customWidthMm : 50, heightMm: pref.customHeightMm ?? null }
+  }
+  const preset = THERMAL_SIZE_PRESETS.find(p => p.id === pref.thermalSize)
+  // Falls back to the one built-in preset for a stale stored value (e.g.
+  // from before this only offered one size), not a crash.
+  return preset ? { widthMm: preset.widthMm, heightMm: preset.heightMm } : { widthMm: THERMAL_SIZE_PRESETS[0].widthMm, heightMm: THERMAL_SIZE_PRESETS[0].heightMm }
+}
+
+// Percentage widths on a flex-wrap container, not CSS Grid's auto-fill: they
+// lay out the same way in every browser's print engine, where Grid's
+// page-break handling is inconsistent. The horizontal + bottom margin on
+// every cell (not a parent `gap`) is what actually keeps adjacent barcodes
+// from touching once a row breaks across a printed page boundary -- gap
+// alone can collapse right at that boundary in some engines.
+const SHEET_MARGIN_PCT = 1
+
+function SheetBarcodeLabel({ label, columns }: { label: PrintableBarcode; columns: 2 | 4 }) {
   const isBox = label.barcode_type === 'box'
+  const widthPct = 100 / columns - SHEET_MARGIN_PCT * 2
+  const big = columns === 2
   return <div style={{
-    width: `${LABEL_WIDTH_PCT}%`, margin: `0 ${LABEL_MARGIN_PCT}% 20px ${LABEL_MARGIN_PCT}%`,
+    width: `${widthPct}%`, margin: `0 ${SHEET_MARGIN_PCT}% 20px ${SHEET_MARGIN_PCT}%`,
     boxSizing: 'border-box', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
     breakInside: 'avoid', pageBreakInside: 'avoid',
   }}>
-    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.25, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
-    {label.variant_label && <div style={{ fontSize: 8, color: 'var(--ink-muted)' }}>{label.variant_label}</div>}
-    <Barcode value={label.code} width={1.2} height={36} fontSize={9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
-    {label.price != null && <div style={{ fontSize: 10, fontWeight: 800, color: 'var(--primary, #1e5fa8)' }}>Sell: {fmtRWFExact(label.price)}</div>}
-    <div style={{ fontSize: 7, color: isBox ? 'var(--primary)' : 'var(--ink-muted)', textAlign: 'center', fontWeight: isBox ? 700 : 400 }}>
+    <div style={{ fontSize: big ? 12 : 9, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.25, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
+    {label.variant_label && <div style={{ fontSize: big ? 10 : 8, color: 'var(--ink-muted)' }}>{label.variant_label}</div>}
+    <Barcode value={label.code} width={big ? 1.8 : 1.2} height={big ? 52 : 36} fontSize={big ? 11 : 9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
+    {label.price != null && <div style={{ fontSize: big ? 13 : 10, fontWeight: 800, color: 'var(--primary, #1e5fa8)' }}>Sell: {fmtRWFExact(label.price)}</div>}
+    <div style={{ fontSize: big ? 9 : 7, color: isBox ? 'var(--primary)' : 'var(--ink-muted)', textAlign: 'center', fontWeight: isBox ? 700 : 400 }}>
       {isBox ? `Carton · ${label.child_count ?? 0} packs` : `Pack · ${label.pieces_per_pack ?? 0} pcs`}
     </div>
   </div>
 }
 
+// One label per physical thermal label, sized in real mm (from the picked
+// preset or a custom size) so it prints close to true size regardless of
+// screen DPI. Pure black (no CSS color vars) since thermal print heads are
+// monochrome and a themed color can dither into noise that hurts scan
+// reliability. break-after: page (+ the vendor-prefixed fallback) advances
+// the roll between labels -- but that alone isn't enough: without the
+// @page size rule BarcodeLabelSheet injects alongside this, "page" defaults
+// to a full A4/Letter sheet, stranding one tiny barcode per giant page
+// instead of the roll's own small label size. The two only work together.
+function ThermalBarcodeLabel({ label, widthMm, heightMm }: { label: PrintableBarcode; widthMm: number; heightMm: number | null }) {
+  const isBox = label.barcode_type === 'box'
+  // A fixed heightMm means physically separate die-cut labels -- each one
+  // IS its own page, so the printer advances/cuts between them (paired with
+  // the @page size rule above). A continuous roll (heightMm null) has no
+  // die-cut separation at all: forcing a page break per label there just
+  // fragments one strip into many auto-height PDF "pages" with visible gaps
+  // between them, instead of flowing as one unbroken roll -- so it gets a
+  // plain bottom margin instead, no break.
+  const continuous = heightMm == null
+  return <div style={{
+    width: `${widthMm}mm`, minHeight: heightMm != null ? `${heightMm}mm` : undefined, boxSizing: 'border-box', padding: '2mm',
+    marginBottom: continuous ? '2mm' : undefined,
+    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+    ...(continuous ? {} : { breakAfter: 'page', pageBreakAfter: 'always' }),
+    breakInside: 'avoid', pageBreakInside: 'avoid',
+  }}>
+    <div style={{ fontSize: 10, fontWeight: 700, color: '#000', textAlign: 'center', lineHeight: 1.2, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
+    {label.variant_label && <div style={{ fontSize: 8, color: '#000' }}>{label.variant_label}</div>}
+    <Barcode value={label.code} width={1.6} height={40} fontSize={10} margin={1} background="transparent" lineColor="#000" displayValue />
+    <div style={{ fontSize: 9, fontWeight: 700, color: '#000', display: 'flex', gap: 6 }}>
+      {label.price != null && <span>Sell: {fmtRWFExact(label.price)}</span>}
+      <span>{isBox ? `Carton · ${label.child_count ?? 0}pk` : `${label.pieces_per_pack ?? 0}pcs`}</span>
+    </div>
+  </div>
+}
+
+// Dense table, not stickers -- for someone who just wants a paper reference
+// (audit, delivery checklist) rather than adhesive labels, on whatever
+// printer/paper they already have.
+function BarcodeListRow({ label }: { label: PrintableBarcode }) {
+  const isBox = label.barcode_type === 'box'
+  return <tr style={{ borderBottom: '1px solid var(--border)' }}>
+    <td style={{ padding: '6px 8px' }}>
+      <Barcode value={label.code} width={1} height={24} fontSize={8} margin={0} displayValue={false} background="transparent" lineColor="#000" />
+    </td>
+    <td style={{ padding: '6px 8px', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{label.code}</td>
+    <td style={{ padding: '6px 8px', fontSize: 11 }}>{label.product_name}{label.variant_label ? ` · ${label.variant_label}` : ''}</td>
+    <td style={{ padding: '6px 8px', fontSize: 11 }}>{isBox ? `Carton (${label.child_count ?? 0} packs)` : `Pack (${label.pieces_per_pack ?? 0} pcs)`}</td>
+    <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>{label.price != null ? fmtRWFExact(label.price) : '—'}</td>
+  </tr>
+}
+
+function BarcodeListLayout({ labels }: { labels: PrintableBarcode[] }) {
+  return <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <thead>
+      <tr style={{ borderBottom: '2px solid var(--ink)' }}>
+        {['Barcode', 'Code', 'Product', 'Type', 'Price'].map((h, i) => (
+          <th key={h} style={{ padding: '6px 8px', textAlign: i === 4 ? 'right' : 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink-muted)' }}>{h}</th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>{labels.map(l => <BarcodeListRow key={l.id} label={l} />)}</tbody>
+  </table>
+}
+
 // One printable sheet: a title (delivery code, carton code, or "Selected
-// barcode"), a print button, and the labels laid out 4-per-row. `title` is
-// shown both on screen and on the printed page so a cut-apart sheet can
-// still be traced back to its source.
-export function BarcodeLabelSheet({ title, labels, loading, error }: {
-  title: string; labels: PrintableBarcode[]; loading?: boolean; error?: string | null
+// barcode") and the labels rendered in whichever print preference (layout +
+// thermal size, if applicable) is currently the default. Printing always
+// opens the layout-choice modal -- the previously-used option is
+// pre-highlighted there, so confirming the same one again is still one
+// click, but the choice is always visible rather than silently reused.
+// `title` is shown both on screen and on the printed page so a cut-apart
+// sheet can still be traced back to its source.
+//
+// `autoTrigger` (set by BarcodeManagerPage, via a fresh `key` per print job
+// so this re-opens on every click even back-to-back) opens that same modal
+// the instant this mounts, instead of waiting for someone to find and click
+// this component's own Print button. BarcodeManagerPage's several
+// "Print ___" buttons live scattered through a long list; without this,
+// clicking one only rendered this sheet somewhere further down the page,
+// and reaching the actual print action meant scrolling down to find it --
+// the click and the print action were two separate steps in two different
+// places. With it, clicking "Print group" IS the print action: the chooser
+// pops up right there (an overlay, not a distant section of the page), and
+// in this mode the sheet itself renders print-only (`.print-only` in
+// index.css -- screen-hidden, still real content once printing starts) so
+// there's no redundant on-page section sitting below the list once the
+// modal can do everything the old always-visible toolbar did.
+export function BarcodeLabelSheet({ title, labels, loading, error, autoTrigger }: {
+  title: string; labels: PrintableBarcode[]; loading?: boolean; error?: string | null; autoTrigger?: boolean
 }) {
+  const [pref, setPref] = useState<BarcodePrintDefault>(() => loadStoredPrintPref() ?? DEFAULT_PRINT_PREF)
+  const [choosingLayout, setChoosingLayout] = useState(() => !!autoTrigger)
+  const [showCustomThermal, setShowCustomThermal] = useState(false)
+  const [customWidth, setCustomWidth] = useState('50')
+  const [customHeight, setCustomHeight] = useState('30')
+  const [pendingPrint, setPendingPrint] = useState(false)
+
+  // Printing must wait one render past a preference change -- window.print()
+  // called synchronously in the click handler would capture whatever layout
+  // was on screen a moment ago, not the one just picked.
+  useEffect(() => {
+    if (!pendingPrint) return
+    const id = requestAnimationFrame(() => { window.print(); setPendingPrint(false) })
+    return () => cancelAnimationFrame(id)
+  }, [pendingPrint])
+
+  function commitAndPrint(next: BarcodePrintDefault) {
+    setPref(next)
+    saveStoredPrintPref(next)
+    setChoosingLayout(false)
+    setShowCustomThermal(false)
+    setPendingPrint(true)
+  }
+
   if (loading) return <p style={{ fontSize: 12, color: 'var(--ink-muted)', textAlign: 'center', marginTop: 16 }}>Loading barcode labels…</p>
   if (error) return <p style={{ fontSize: 12, color: '#b91c1c', textAlign: 'center', marginTop: 16 }}>Could not load the barcode labels: {error}</p>
   if (labels.length === 0) return null
 
-  return <div style={{ marginTop: 20 }}>
-    <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-      <p style={{ fontSize: 11, color: 'var(--ink-muted)', margin: 0 }}>
-        {labels.length} barcode{labels.length === 1 ? '' : 's'} on one sheet, ready to print and cut apart.
-      </p>
-      <Btn variant="primary" small onClick={() => window.print()}>🖨 Print / Save as PDF</Btn>
-    </div>
-    <div className="no-print" style={{ fontSize: 10, color: 'var(--ink-faint, #9ab8a0)', marginBottom: 10 }}>
-      "Print" opens your browser's print dialog — choose "Save as PDF" there to download the sheet instead of printing it.
-    </div>
-    <div style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: '14px 14px 0' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>{title}</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-        {labels.map(label => <BarcodeLabel key={label.id} label={label} />)}
+  const thermalSize = resolveThermalSize(pref)
+
+  return <div style={autoTrigger ? undefined : { marginTop: 20 }}>
+    {pref.layout === 'thermal' && (
+      // Without this, "page" defaults to a full A4/Letter sheet and each
+      // ThermalBarcodeLabel's own page-break-after strands one barcode per
+      // giant page instead of advancing the roll by one small label.
+      <style>{`@media print { @page { size: ${thermalSize.widthMm}mm ${thermalSize.heightMm != null ? `${thermalSize.heightMm}mm` : 'auto'}; margin: 0; } }`}</style>
+    )}
+    {!autoTrigger && (
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <p style={{ fontSize: 11, color: 'var(--ink-muted)', margin: 0 }}>
+          {labels.length} barcode{labels.length === 1 ? '' : 's'} ready to print.
+        </p>
+        <Btn variant="primary" small onClick={() => setChoosingLayout(true)}>🖨 Print / Save as PDF</Btn>
       </div>
+    )}
+    <div className={autoTrigger ? 'print-only' : undefined} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: pref.layout === 'list' ? 14 : '14px 14px 0' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>{title}</div>
+      {(pref.layout === 'sheet4' || pref.layout === 'sheet2') && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+          {labels.map(label => <SheetBarcodeLabel key={label.id} label={label} columns={pref.layout === 'sheet2' ? 2 : 4} />)}
+        </div>
+      )}
+      {pref.layout === 'thermal' && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {labels.map(label => <ThermalBarcodeLabel key={label.id} label={label} widthMm={thermalSize.widthMm} heightMm={thermalSize.heightMm} />)}
+        </div>
+      )}
+      {pref.layout === 'list' && <BarcodeListLayout labels={labels} />}
     </div>
+
+    {choosingLayout && (
+      <Modal title="Choose a print layout" onClose={() => setChoosingLayout(false)} width={480}>
+        <p style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 0, marginBottom: 14 }}>
+          Picking one here prints right away, and it's remembered as the highlighted choice next time. Choose "Save as PDF" in your browser's print dialog to download instead of printing.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {BARCODE_LAYOUT_OPTIONS.map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => commitAndPrint({ ...pref, layout: opt.id })}
+              style={{
+                textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
+                border: `1.5px solid ${opt.id === pref.layout ? 'var(--primary)' : 'var(--border)'}`,
+                background: opt.id === pref.layout ? 'var(--primary-light)' : '#fff',
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{opt.label}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>{opt.hint}</div>
+            </button>
+          ))}
+
+          <div style={{
+            padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${pref.layout === 'thermal' ? 'var(--primary)' : 'var(--border)'}`,
+            background: pref.layout === 'thermal' ? 'var(--primary-light)' : '#fff',
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Thermal roll — one per label</div>
+            <div style={{ fontSize: 11, color: 'var(--ink-muted)', margin: '2px 0 8px' }}>Dedicated barcode/thermal label printer — pick your label size:</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {THERMAL_SIZE_PRESETS.map(preset => {
+                const active = pref.layout === 'thermal' && pref.thermalSize === preset.id
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => commitAndPrint({ ...pref, layout: 'thermal', thermalSize: preset.id })}
+                    style={{
+                      padding: '6px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      border: `1px solid ${active ? 'var(--primary)' : 'var(--border-strong)'}`,
+                      background: active ? '#fff' : 'var(--bg)', color: active ? 'var(--primary)' : 'var(--ink-mid)',
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                )
+              })}
+              <button
+                onClick={() => setShowCustomThermal(s => !s)}
+                style={{ padding: '6px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px dashed var(--border-strong)', background: '#fff', color: 'var(--ink-mid)' }}
+              >
+                Custom size…
+              </button>
+            </div>
+            {showCustomThermal && (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 9, color: 'var(--ink-muted)', marginBottom: 2 }}>Width (mm)</label>
+                  <input type="number" min={10} max={200} value={customWidth} onChange={e => setCustomWidth(e.target.value)} style={{ width: 60, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 9, color: 'var(--ink-muted)', marginBottom: 2 }}>Height (mm)</label>
+                  <input type="number" min={10} max={200} value={customHeight} onChange={e => setCustomHeight(e.target.value)} placeholder="blank = continuous" style={{ width: 100, padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 11, fontFamily: 'inherit' }} />
+                </div>
+                <Btn variant="secondary" small onClick={() => {
+                  const w = Number(customWidth)
+                  if (!w || w <= 0) return
+                  const h = customHeight.trim() ? Number(customHeight) : null
+                  commitAndPrint({ ...pref, layout: 'thermal', thermalSize: 'custom', customWidthMm: w, customHeightMm: h })
+                }}>
+                  Use this size
+                </Btn>
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+    )}
   </div>
 }

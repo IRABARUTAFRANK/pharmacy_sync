@@ -67,17 +67,20 @@ export default function BarcodeManagerPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<BarcodeRow | null>(null)
   const [printJob, setPrintJob] = useState<{ title: string; labels: PrintableBarcode[] } | null>(null)
+  // Bumped on every print click so BarcodeLabelSheet's `key` below always
+  // changes, even for two clicks on the exact same group back-to-back (same
+  // title, same label ids). A key derived only from the job's own content
+  // stays identical for a repeat click on the same thing, so React reuses
+  // the existing instance instead of remounting it -- which means
+  // autoTrigger's "open the chooser" only fires once, ever, for that
+  // content: cancel the print dialog, click the same "Print Group" again,
+  // and nothing visibly happens the second time.
+  const [printJobSeq, setPrintJobSeq] = useState(0)
+  function openPrintJob(job: { title: string; labels: PrintableBarcode[] }) {
+    setPrintJob(job)
+    setPrintJobSeq(seq => seq + 1)
+  }
   const [printDeliveryCode, setPrintDeliveryCode] = useState("")
-
-  // A "Print" click should feel like one action, not "click Print, notice a
-  // sheet appeared below, click a second Print button" -- so the browser's
-  // print dialog opens itself as soon as the sheet has actually rendered
-  // (rAF, so it's after the DOM update from setPrintJob above lands).
-  useEffect(() => {
-    if (!printJob) return
-    const id = requestAnimationFrame(() => window.print())
-    return () => cancelAnimationFrame(id)
-  }, [printJob])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -117,7 +120,7 @@ export default function BarcodeManagerPage() {
   function printDelivery() {
     if (!printDeliveryCode) return
     const labels = dataset.rows.filter(row => row.delivery_code === printDeliveryCode).map(toPrintable)
-    setPrintJob({ title: t("barcodeManager.printDeliveryTitle", { code: printDeliveryCode }), labels })
+    openPrintJob({ title: t("barcodeManager.printDeliveryTitle", { code: printDeliveryCode }), labels })
   }
 
   const toggle = (key: string) => setExpanded(current => {
@@ -262,7 +265,7 @@ export default function BarcodeManagerPage() {
                 />
                 {group.statuses.map(entry => <StatusBadge key={entry} label={statusLabel(entry)} color={statusColor[entry].color} bg={statusColor[entry].background} />)}
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink)" }}>{t("barcodeManager.piecesCount", { count: group.pieces.toLocaleString() })}</span>
-                <Btn variant="secondary" small onClick={() => setPrintJob({ title: t("barcodeManager.printGroupTitle", { product: group.productName, batch: group.batchNumber }), labels: groupToPrintable(group) })}>🖨 {t("barcodeManager.printGroup")}</Btn>
+                <Btn variant="secondary" small onClick={() => openPrintJob({ title: t("barcodeManager.printGroupTitle", { product: group.productName, batch: group.batchNumber }), labels: groupToPrintable(group) })}>🖨 {t("barcodeManager.printGroup")}</Btn>
               </div>
             </div>
 
@@ -272,7 +275,7 @@ export default function BarcodeManagerPage() {
               <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>{t("barcodeManager.holdsPacks", { count: group.parent.child_count ?? 0 })} · {group.parent.code_source}</span>
               <div style={{ flex: 1 }} />
               <StatusBadge label={statusLabel(group.parent.status)} color={statusColor[group.parent.status].color} bg={statusColor[group.parent.status].background} />
-              <Btn variant="ghost" small onClick={() => setPrintJob({ title: t("barcodeManager.printCartonTitle", { code: group.parent!.code }), labels: groupToPrintable(group) })}>{t("barcodeManager.printCartonAction")}</Btn>
+              <Btn variant="ghost" small onClick={() => openPrintJob({ title: t("barcodeManager.printCartonTitle", { code: group.parent!.code }), labels: groupToPrintable(group) })}>{t("barcodeManager.printCartonAction")}</Btn>
               <Btn variant="ghost" small onClick={() => setSelected(group.parent)}>{t("barcodeManager.view")}</Btn>
             </div>}
 
@@ -291,7 +294,7 @@ export default function BarcodeManagerPage() {
                 <span style={{ fontSize: 10, color: "var(--ink-muted)" }}>{t("barcodeManager.piecesPerPack", { count: child.pieces_per_pack ?? 0 })} · {t("barcodeManager.availableCount", { count: child.quantity_available })} · {t("barcodeManager.sellPrefix")}: {fmtRWFExact(child.selling_price)}</span>
                 <div style={{ flex: 1 }} />
                 <StatusBadge label={statusLabel(child.status)} color={statusColor[child.status].color} bg={statusColor[child.status].background} />
-                <Btn variant="ghost" small onClick={() => setPrintJob({ title: t("barcodeManager.printBarcodeTitle", { code: child.code }), labels: [toPrintable(child)] })}>{t("barcodeManager.print")}</Btn>
+                <Btn variant="ghost" small onClick={() => openPrintJob({ title: t("barcodeManager.printBarcodeTitle", { code: child.code }), labels: [toPrintable(child)] })}>{t("barcodeManager.print")}</Btn>
                 <Btn variant="ghost" small onClick={() => setSelected(child)}>{t("barcodeManager.view")}</Btn>
               </div>)}
               {children.length === 0 && <div style={{ padding: "12px 46px", fontSize: 11, color: "var(--ink-muted)" }}>
@@ -336,18 +339,25 @@ export default function BarcodeManagerPage() {
         {t("barcodeManager.detailFooterNote")}
       </p>
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
-        <Btn variant="primary" small onClick={() => { setPrintJob({ title: t("barcodeManager.printBarcodeTitle", { code: selected.code }), labels: [toPrintable(selected)] }); setSelected(null) }}>🖨 {t("barcodeManager.printThisBarcode")}</Btn>
+        <Btn variant="primary" small onClick={() => { openPrintJob({ title: t("barcodeManager.printBarcodeTitle", { code: selected.code }), labels: [toPrintable(selected)] }); setSelected(null) }}>🖨 {t("barcodeManager.printThisBarcode")}</Btn>
       </div>
     </Modal>}
    </div>
 
+    {/* autoTrigger renders this print-only (screen-hidden, see index.css) --
+        there's nothing visible here to show or close, just the choice modal
+        it opens immediately and the content window.print() needs once a
+        layout's picked. key is printJobSeq, not anything derived from the
+        job's own content -- two clicks on the very same group (same title,
+        same label ids) still need a fresh mount so autoTrigger's "open the
+        modal" state fires again the second time too. */}
     {printJob && (
-      <div style={{ marginTop: 4 }}>
-        <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-          <button onClick={() => setPrintJob(null)} style={{ fontSize: 11, color: "var(--ink-muted)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}>{t("barcodeManager.closePreview")}</button>
-        </div>
-        <BarcodeLabelSheet title={printJob.title} labels={printJob.labels} />
-      </div>
+      <BarcodeLabelSheet
+        key={printJobSeq}
+        title={printJob.title}
+        labels={printJob.labels}
+        autoTrigger
+      />
     )}
   </div>
 }

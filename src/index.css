@@ -256,6 +256,12 @@ button:focus:not(:focus-visible) { outline: none; }
   transform: translateY(-3px);
 }
 
+/* .print-only is .no-print's mirror image: hidden on screen, shown only
+   when printing. Used for content that exists purely to be the source of a
+   print job (BarcodeManagerPage's barcode sheet, triggered by a "Print"
+   click elsewhere on the page) with no on-screen section of its own. */
+.print-only { display: none; }
+
 /* Printing a page (e.g. a barcode sheet) should show only that page's own
    content, not the app shell around it, and must not be clipped to one
    viewport-height screen the way the on-screen layout is. */
@@ -264,6 +270,7 @@ button:focus:not(:focus-visible) { outline: none; }
   .app-shell { display: block !important; height: auto !important; overflow: visible !important; }
   .app-main { overflow: visible !important; padding: 0 !important; }
   .no-print { display: none !important; }
+  .print-only { display: block !important; }
 }
 
 /* App-open intro splash (App.tsx) -- shown once per browser session (gated
