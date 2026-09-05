@@ -216,7 +216,6 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager'] },
   { id: 'inventory',   label: 'Inventory Dashboard',  icon: '📦', roles: ['owner', 'manager'] },
   { id: 'receiving',   label: 'Receive Stock',        icon: '📥', roles: ['owner', 'manager'] },
-  { id: 'requestProduct', label: 'Request Product',   icon: '🙋', roles: ['owner', 'manager'] },
   { id: 'barcode',     label: 'Barcode Manager',      icon: '▦',  roles: ['owner', 'manager'] },
   { id: 'reports',     label: 'Products in Stock',    icon: '📦', roles: ['owner', 'manager'] },
   { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager'] },

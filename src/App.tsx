@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense, type ComponentType } from 'react'
-import { NAV_ITEMS, type Role } from './data'
+import { NAV_ITEMS, fmtRWFExact, type Role } from './data'
 import { useTranslation, LanguageSwitcher } from './lib/i18n'
 import { useGlobalSearch } from './lib/search'
 import type { TranslationKey } from './lib/i18n/en'
@@ -14,6 +14,7 @@ import HistoryPage from './pages/HistoryPage'
 
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
+import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
 import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 
@@ -39,7 +40,6 @@ const PAGE_LOADERS = {
   sales: () => import('./pages/SalesPage'),
   transactions: () => import('./pages/TransactionsPage'),
   insurance: () => import('./pages/InsurancePage'),
-  requestProduct: () => import('./pages/RequestProductPage'),
   alerts: () => import('./pages/AlertsPage'),
   help: () => import('./pages/HelpPage'),
   team: () => import('./pages/TeamPage'),
@@ -57,7 +57,6 @@ const BarcodeManagerPage  = lazy(PAGE_LOADERS.barcode)
 const SalesPage           = lazy(PAGE_LOADERS.sales)
 const TransactionsPage    = lazy(PAGE_LOADERS.transactions)
 const InsurancePage       = lazy(PAGE_LOADERS.insurance)
-const RequestProductPage  = lazy(PAGE_LOADERS.requestProduct)
 const AlertsPage          = lazy(PAGE_LOADERS.alerts)
 const HelpPage            = lazy(PAGE_LOADERS.help)
 const TeamPage             = lazy(PAGE_LOADERS.team)
@@ -390,6 +389,12 @@ export default function App() {
   // null). Every role sees it, not just the owner -- it's branch branding,
   // not an owner-only setting, and getMyBranchDetails() has no role gate.
   const [pharmacyLogoUrl, setPharmacyLogoUrl] = useState<string | null>(null)
+  // Sidebar's "today so far" card, replacing what used to be a role/branch
+  // pill that just repeated info already shown in the top bar (branch name)
+  // and the avatar (who's signed in). ai_branch_snapshot() is owner/manager-
+  // gated -- a seller's fetch fails, caught silently below, and the card
+  // just doesn't render for them rather than showing an error.
+  const [todaySnapshot, setTodaySnapshot] = useState<BranchSnapshot | null>(null)
   const { term: search, setTerm: setSearch } = useGlobalSearch()
   const [showSearchNav, setShowSearchNav] = useState(false)
   const [searchNavHighlight, setSearchNavHighlight] = useState(0)
@@ -445,6 +450,17 @@ export default function App() {
     const id = setInterval(() => void refreshAlerts(), 30000)
     return () => clearInterval(id)
   }, [access, refreshAlerts])
+
+  const refreshTodaySnapshot = useCallback(async () => {
+    try { setTodaySnapshot(await loadBranchSnapshot()) } catch { setTodaySnapshot(null) }
+  }, [])
+
+  useEffect(() => { if (access) void refreshTodaySnapshot() }, [access, refreshTodaySnapshot])
+  useEffect(() => {
+    if (!access) return
+    const id = setInterval(() => void refreshTodaySnapshot(), 30000)
+    return () => clearInterval(id)
+  }, [access, refreshTodaySnapshot])
 
   // Falls back to the least-privileged role, not the broadest one, for any
   // legacy/unrecognized role value (pharmacist/staff exist in the database's
@@ -590,7 +606,6 @@ export default function App() {
                                    />
       case 'inventory':     return <LiveInventoryPage />
       case 'receiving':     return <StockReceivingPage />
-      case 'requestProduct': return <RequestProductPage />
       case 'barcode':       return <BarcodeManagerPage />
       case 'sales':         return <SalesPage />
       case 'reports':       return <ReportsPage />
@@ -644,21 +659,34 @@ export default function App() {
         )}
         topContent={expanded => expanded && (
           <>
-            {/* Role pill */}
-            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
-              <div style={{
-                background: currentRole.color + '14', border: `1px solid ${currentRole.color}30`,
-                borderRadius: 8, padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 8,
-              }}>
-                <div style={{ width: 26, height: 26, borderRadius: 6, background: currentRole.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: currentRole.color }}>
-                  {currentRole.abbr}
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: currentRole.color }}>{t(roleLabelKey(currentRole.id))}</div>
-                  <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{access.branchName}</div>
-                </div>
+            {/* "Today so far" -- replaces a role/branch pill that only ever
+                repeated info already shown in the top bar (branch name) and
+                the avatar (who's signed in). Not shown at all if the fetch
+                failed, which is expected for a seller (ai_branch_snapshot()
+                is owner/manager-only) rather than an error worth surfacing. */}
+            {todaySnapshot && (
+              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
+                <button
+                  onClick={() => setPage('overview')}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
+                    background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px',
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {t('shell.todaySnapshotLabel')}
+                  </div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
+                    {fmtRWFExact(todaySnapshot.todayRevenue)}
+                  </div>
+                  {(todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount) > 0 && (
+                    <div style={{ fontSize: 11, color: '#d97706', fontWeight: 600, marginTop: 3 }}>
+                      ⚠ {t('shell.todaySnapshotAttention', { count: todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount })}
+                    </div>
+                  )}
+                </button>
               </div>
-            </div>
+            )}
 
             {/* Language switcher — lives here, not the top bar, because the top
                 bar's search box + date filter + branch badge + notif bell +
