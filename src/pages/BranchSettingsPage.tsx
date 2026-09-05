@@ -35,7 +35,11 @@ const STATUS_LABEL_KEY: Record<string, "admin.statusPending" | "admin.statusOtpS
   pending: "admin.statusPending", otp_sent: "admin.statusOtpSent", active: "admin.statusActive", locked: "admin.statusLocked", denied: "admin.statusDenied",
 }
 
-export default function BranchSettingsPage() {
+// `onLogoSaved` (App.tsx) lets the sidebar's own logo update the moment a
+// save here actually persists a new one -- without it, the sidebar would
+// only pick up the change on the next sign-in/reload, same staleness the
+// receipt doesn't have (it re-fetches the branch row fresh every print).
+export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url: string | null) => void }) {
   const { t } = useTranslation()
   const [branchName, setBranchName] = useState("")
   const [address, setAddress] = useState("")
@@ -55,12 +59,21 @@ export default function BranchSettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  // CenterAlert is keyed off this, not successMsg itself: the save/change
+  // success text is the same constant string every time, so calling
+  // setSuccessMsg(sameString) twice in a row is a no-op to React (identical
+  // state, no re-render) -- the toast would only ever appear on the FIRST
+  // save, silently stop showing on every one after that. A bump-on-every-
+  // success counter guarantees a fresh key regardless of whether the
+  // message text repeats.
+  const [successSeq, setSuccessSeq] = useState(0)
 
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [changingPassword, setChangingPassword] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
+  const [passwordSuccessSeq, setPasswordSuccessSeq] = useState(0)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -109,6 +122,8 @@ export default function BranchSettingsPage() {
     try {
       await updateBranchDetails(address.trim(), phone.trim(), tin.trim(), logoPath, bankAccountNumber.trim(), bankAccountName.trim(), momoPayNumber.trim(), reminderHours)
       setSuccessMsg(t("branchSettings.saveSuccess"))
+      setSuccessSeq(seq => seq + 1)
+      onLogoSaved?.(logoPath ? branchLogoUrl(logoPath) : null)
     } catch (reason) {
       setError(errorMessage(reason, t("branchSettings.saveError")))
     } finally {
@@ -126,6 +141,7 @@ export default function BranchSettingsPage() {
       setNewPassword("")
       setConfirmPassword("")
       setPasswordSuccess(t("branchSettings.passwordChangeSuccess"))
+      setPasswordSuccessSeq(seq => seq + 1)
     } catch (reason) {
       setPasswordError(errorMessage(reason, t("branchSettings.passwordChangeError")))
     } finally {
@@ -138,8 +154,8 @@ export default function BranchSettingsPage() {
 
   return <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 860 }}>
     {error && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>{error}</div>}
-    {successMsg && <CenterAlert key={successMsg} message={successMsg} tone="success" />}
-    {passwordSuccess && <CenterAlert key={passwordSuccess} message={passwordSuccess} tone="success" />}
+    {successMsg && <CenterAlert key={successSeq} message={successMsg} tone="success" />}
+    {passwordSuccess && <CenterAlert key={passwordSuccessSeq} message={passwordSuccess} tone="success" />}
 
     <SectionHeader title={t("page.branch")} subtitle={t("branchSettings.subtitle")} />
 

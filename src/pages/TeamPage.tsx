@@ -77,6 +77,12 @@ export function StaffRoster({ showHeader = true }: { showHeader?: boolean }) {
   const [error, setError] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
+  // Keyed separately from successMsg itself (same fix as BranchSettingsPage):
+  // "Seller created" is the same constant string every time, so creating a
+  // second seller right after the first would call setSuccessMsg with an
+  // identical value -- a no-op to React, so the toast would silently stop
+  // appearing after the first success.
+  const [successSeq, setSuccessSeq] = useState(0)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -112,13 +118,17 @@ export function StaffRoster({ showHeader = true }: { showHeader?: boolean }) {
 
   return <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
     {error && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>{error}</div>}
-    {successMsg && <CenterAlert key={successMsg} message={successMsg} tone="success" />}
+    {successMsg && <CenterAlert key={successSeq} message={successMsg} tone="success" />}
 
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10, gap: 8 }}>
         <div>
-          <h2 style={{ margin: 0, fontSize: 14 }}>{t("team.rosterTitle")}</h2>
-          {showHeader && <p style={{ margin: "3px 0 0", color: "var(--ink-muted)", fontSize: 11 }}>{t("team.rosterSubtitle")}</p>}
+          {showHeader && (
+            <>
+              <h2 style={{ margin: 0, fontSize: 14 }}>{t("team.rosterTitle")}</h2>
+              <p style={{ margin: "3px 0 0", color: "var(--ink-muted)", fontSize: 11 }}>{t("team.rosterSubtitle")}</p>
+            </>
+          )}
         </div>
         <Btn variant="secondary" small onClick={() => setShowCreate(true)}>{t("team.createAction")}</Btn>
       </div>
@@ -157,7 +167,7 @@ export function StaffRoster({ showHeader = true }: { showHeader?: boolean }) {
       </div>
     </Card>
 
-    {showCreate && <CreateSellerModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); setSuccessMsg(t("team.createSuccess")); void refresh() }} />}
+    {showCreate && <CreateSellerModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); setSuccessMsg(t("team.createSuccess")); setSuccessSeq(seq => seq + 1); void refresh() }} />}
   </div>
 }
 

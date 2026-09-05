@@ -28,7 +28,8 @@
       "Bash(git fetch *)",
       "Bash(ping -n 1 github.com)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8443)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(grep -oE '\"branchSettings\\\\.[A-Za-z0-9]+\"|t\\\\\\(`?branchSettings\\\\.[A-Za-z0-9]+`?' src/pages/BranchSettingsPage.tsx)"
     ]
   }
 }

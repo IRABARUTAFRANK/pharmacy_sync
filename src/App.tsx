@@ -13,6 +13,7 @@ import { Sidebar } from './Sidebar'
 import HistoryPage from './pages/HistoryPage'
 
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
+import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 
@@ -384,6 +385,11 @@ export default function App() {
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
   const [accessLoading, setAccessLoading] = useState(true)
+  // The pharmacy's own uploaded logo, shown in the sidebar in place of the
+  // generic PharmSync mark once one exists (falls back to the mark when
+  // null). Every role sees it, not just the owner -- it's branch branding,
+  // not an owner-only setting, and getMyBranchDetails() has no role gate.
+  const [pharmacyLogoUrl, setPharmacyLogoUrl] = useState<string | null>(null)
   const { term: search, setTerm: setSearch } = useGlobalSearch()
   const [showSearchNav, setShowSearchNav] = useState(false)
   const [searchNavHighlight, setSearchNavHighlight] = useState(0)
@@ -410,6 +416,19 @@ export default function App() {
   useEffect(() => {
     void restoreBranchAccess().then(setAccess).finally(() => setAccessLoading(false))
   }, [])
+
+  // Fetched fresh on sign-in/session restore; BranchSettingsPage's
+  // onLogoSaved callback (passed to it below) keeps this live after that
+  // without requiring a reload, the same way the receipt already picks up a
+  // saved logo change on its own next fetch.
+  useEffect(() => {
+    if (!access) { setPharmacyLogoUrl(null); return }
+    let cancelled = false
+    void getMyBranchDetails()
+      .then(details => { if (!cancelled) setPharmacyLogoUrl(details.logoPath ? branchLogoUrl(details.logoPath) : null) })
+      .catch(() => { /* sidebar just keeps the default PharmSync mark */ })
+    return () => { cancelled = true }
+  }, [access])
 
   const refreshAlerts = useCallback(async () => {
     // Best-effort and silent: a missed check here just means an overdue
@@ -582,7 +601,7 @@ export default function App() {
       case 'analyst':       return <AnalystPage />
       case 'analytics':     return <AnalyticsPage period={dateRange} />
       case 'patients':      return <PatientsPage />
-      case 'branch':        return <BranchSettingsPage />
+      case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} />
       case 'history':       return <HistoryPage period={dateRange} />
       case 'help':          return <HelpPage />
       default:              return null
@@ -605,9 +624,14 @@ export default function App() {
         getLabel={id => t(`nav.${id}` as TranslationKey)}
         onItemHover={prefetchPage}
         header={expanded => (
-          // Logo — the shared <Logo /> mark, same as the home page and sign-in
+          // The pharmacy's own uploaded logo (Branch Settings) replaces the
+          // shared <Logo /> mark once one exists -- same mark used on the
+          // home page and sign-in otherwise. The "PharmSync" wordmark next
+          // to it always stays the product name, not the pharmacy's own.
           <div style={{ height: 60, padding: expanded ? '0 16px' : '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <Logo size={32} showWordmark={false} />
+            {pharmacyLogoUrl
+              ? <img src={pharmacyLogoUrl} alt="" width={32} height={32} style={{ objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
+              : <Logo size={32} showWordmark={false} />}
             {expanded && (
               <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
@@ -660,11 +684,13 @@ export default function App() {
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
             >
-              <div style={{
-                width: 32, height: 32, borderRadius: '50%', background: currentRole.color,
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 12, fontWeight: 700, flexShrink: 0,
-              }}>{currentRole.abbr}</div>
+              {pharmacyLogoUrl
+                ? <img src={pharmacyLogoUrl} alt="" width={32} height={32} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                : <div style={{
+                    width: 32, height: 32, borderRadius: '50%', background: currentRole.color,
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, fontWeight: 700, flexShrink: 0,
+                  }}>{currentRole.abbr}</div>}
               {expanded && (
                 <div style={{ overflow: 'hidden', textAlign: 'left' }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
@@ -786,14 +812,17 @@ export default function App() {
             {showNotif && <NotifDropdown alerts={notifSnapshot} onClose={() => setShowNotif(false)} />}
           </div>
 
-          {/* User avatar */}
+          {/* User avatar -- the pharmacy's own uploaded logo once one exists,
+              same as the sidebar footer's copy of this same button. */}
           <div style={{ position: 'relative', flexShrink: 0 }}>
             <button onClick={() => { setShowUser(u => !u); setShowNotif(false) }} style={{
-              width: 34, height: 34, borderRadius: '50%', background: currentRole.color,
-              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', flexShrink: 0,
+              width: 34, height: 34, borderRadius: '50%', background: pharmacyLogoUrl ? '#fff' : currentRole.color,
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+              fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none', flexShrink: 0, padding: 0,
               boxShadow: showUser ? `0 0 0 3px ${currentRole.color}30` : 'none', transition: 'box-shadow 0.15s',
-            }}>{currentRole.abbr}</button>
+            }}>
+              {pharmacyLogoUrl ? <img src={pharmacyLogoUrl} alt="" width={34} height={34} style={{ objectFit: 'cover' }} /> : currentRole.abbr}
+            </button>
             {showUser && <UserMenu access={access} role={role} onRoleChange={() => undefined} onSignOut={() => { void handleSignOut() }} onClose={() => setShowUser(false)} />}
           </div>
         </header>
