@@ -88,6 +88,17 @@ export function resolveRange(period: OverviewPeriod, now: Date = new Date()): Ra
   }
 }
 
+// For <input type="date"> values -- local calendar date, not toISOString()'s
+// UTC one. resolveRange()'s start/end are built from local Y/M/D components
+// (see startOfDay/startOfWeek above), so converting through UTC here could
+// shift the date by one depending on the viewer's timezone offset.
+export function toDateInputValue(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
 // ── Shapes ──────────────────────────────────────────────────────────────────
 
 export interface Delta {

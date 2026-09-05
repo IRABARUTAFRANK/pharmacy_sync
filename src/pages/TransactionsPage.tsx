@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { CenterAlert, SectionHeader, Table } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
 import { useGlobalSearch } from "../lib/search"
 import { getSaleReceipt, listSaleHistory, type ReceiptData, type SaleHistoryRow } from "../lib/sales"
 import { ReceiptView } from "./SalesPage"
@@ -9,7 +10,7 @@ import { ReceiptView } from "./SalesPage"
 // Every completed sale is written atomically by complete_sale() — this page
 // reads that same stored record back, so "stored receipt" means a real trip
 // to the database, not anything cached from the moment of sale.
-export default function TransactionsPage() {
+export default function TransactionsPage({ period }: { period?: OverviewPeriod }) {
   const { t } = useTranslation()
   const [rows, setRows] = useState<SaleHistoryRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -20,6 +21,17 @@ export default function TransactionsPage() {
   useEffect(() => setQuery(globalTerm), [globalTerm])
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+
+  // The top bar's date-range dropdown pre-fills the fields below; picking
+  // "Custom Range" up there leaves whatever the user already typed here
+  // alone instead of stomping it, since resolveRange() has no real "custom"
+  // behavior of its own yet (it falls back to "this month").
+  useEffect(() => {
+    if (!period || period === "custom") return
+    const range = resolveRange(period)
+    setDateFrom(toDateInputValue(range.start))
+    setDateTo(toDateInputValue(range.end))
+  }, [period])
 
   useEffect(() => {
     setLoading(true)

@@ -66,6 +66,8 @@ const en = {
   "shell.rolePharmacist": "Pharmacist",
   "shell.roleSeller": "Seller",
   "shell.loadingWorkspace": "Loading workspace…",
+  "shell.pinSidebar": "Pin sidebar open",
+  "shell.unpinSidebar": "Unpin sidebar",
   "shell.dateToday": "Today",
   "shell.dateThisWeek": "This Week",
   "shell.dateThisMonth": "This Month",

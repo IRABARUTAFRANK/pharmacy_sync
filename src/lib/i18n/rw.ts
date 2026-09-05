@@ -66,6 +66,8 @@ const rw: Record<TranslationKey, string> = {
   "shell.rolePharmacist": "Umufarumasiye",
   "shell.roleSeller": "Umucuruzi",
   "shell.loadingWorkspace": "Turi gutegura ikigo cyawe…",
+  "shell.pinSidebar": "Komeka umurongo w'ibikoresho ufunguye",
+  "shell.unpinSidebar": "Kuraho gukomeka umurongo w'ibikoresho",
   "shell.dateToday": "Uyu munsi",
   "shell.dateThisWeek": "Iki cyumweru",
   "shell.dateThisMonth": "Uku kwezi",

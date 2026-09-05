@@ -4968,8 +4968,12 @@ begin
   stats as (
     select
       coalesce(avg(y), 0) as avg_qty,
-      coalesce(regr_slope(y, x), 0) as slope,
-      coalesce(regr_intercept(y, x), avg(y), 0) as intercept,
+      -- regr_slope/regr_intercept always return double precision in Postgres,
+      -- regardless of the input types (x/y are already cast to numeric above)
+      -- -- cast back to numeric here so every round(x, n) below resolves to
+      -- round(numeric, integer); round(double precision, integer) doesn't exist.
+      coalesce(regr_slope(y, x), 0)::numeric as slope,
+      coalesce(regr_intercept(y, x), avg(y), 0)::numeric as intercept,
       coalesce(sum(revenue) / nullif(sum(y), 0), 0) as avg_unit_revenue,
       coalesce(max(x), 0) as max_x
     from numbered

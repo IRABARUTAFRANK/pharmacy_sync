@@ -3,6 +3,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveCo
 import { Card, CenterAlert, ChartTooltip, SectionHeader, StatusBadge, Table } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
 import { loadReceivingReference, type ReceivingCategory, type ReceivingProduct } from "../lib/receiving"
 import {
   loadBasketSize, loadBranchSnapshot, loadCategoryBreakdown, loadDeadStock, loadDiscountUsage, loadInsuranceClaimAging,
@@ -47,7 +48,7 @@ const EMPTY_STATE_STYLE = { padding: 20, textAlign: "center" as const, color: "v
 // functions the AI analyst uses as tools -- directly, no LLM involved. Real
 // numbers (the forecast is real linear regression, computed in Postgres),
 // zero API cost, and it works even when the AI analyst doesn't.
-export default function AnalyticsPage() {
+export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
   const { t, lang } = useTranslation()
   const [error, setError] = useState("")
 
@@ -75,6 +76,16 @@ export default function AnalyticsPage() {
   const [bucket, setBucket] = useState<TrendBucket>("day")
   const [trend, setTrend] = useState<SalesTrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(true)
+
+  // Top-bar date-range dropdown pre-fills From/To below, same as
+  // Transactions/History -- "Custom Range" leaves whatever's already picked
+  // here alone, since this page's own inputs already are the custom range.
+  useEffect(() => {
+    if (!period || period === "custom") return
+    const range = resolveRange(period)
+    setDateFrom(toDateInputValue(range.start))
+    setDateTo(toDateInputValue(range.end))
+  }, [period])
 
   const [topMetric, setTopMetric] = useState<"revenue" | "quantity">("revenue")
   const [topDirection, setTopDirection] = useState<"asc" | "desc">("desc")

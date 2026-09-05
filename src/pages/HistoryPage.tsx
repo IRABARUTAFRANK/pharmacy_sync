@@ -3,6 +3,7 @@ import { Btn, CenterAlert, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { HISTORY_CATEGORIES, loadBranchHistory, type HistoryCategory, type HistoryEvent } from "../lib/history"
+import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
 
 // Fixed order, not cycled — the same validated 8-slot categorical palette
 // used for the Insurance donut chart. Every use here is a badge with its own
@@ -30,7 +31,7 @@ function csvEscape(value: string): string {
 // Owner-only, enforced by list_branch_history() itself (raises if the caller
 // isn't the branch owner) — App.tsx's nav also hides this page from anyone
 // else, but that's convenience, not the actual gate.
-export default function HistoryPage() {
+export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
   const { t } = useTranslation()
   const [events, setEvents] = useState<HistoryEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,6 +40,15 @@ export default function HistoryPage() {
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
   const [activeCategories, setActiveCategories] = useState<Set<HistoryCategory>>(new Set(HISTORY_CATEGORIES))
+
+  // Same top-bar-drives-the-fields behavior as TransactionsPage -- "Custom
+  // Range" leaves the user's own dateFrom/dateTo untouched.
+  useEffect(() => {
+    if (!period || period === "custom") return
+    const range = resolveRange(period)
+    setDateFrom(toDateInputValue(range.start))
+    setDateTo(toDateInputValue(range.end))
+  }, [period])
 
   const refresh = useMemo(() => async () => {
     setLoading(true)

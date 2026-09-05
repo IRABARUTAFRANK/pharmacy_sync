@@ -66,6 +66,8 @@ const fr: Record<TranslationKey, string> = {
   "shell.rolePharmacist": "Pharmacien",
   "shell.roleSeller": "Vendeur",
   "shell.loadingWorkspace": "Chargement de l'espace de travail…",
+  "shell.pinSidebar": "Épingler la barre latérale",
+  "shell.unpinSidebar": "Détacher la barre latérale",
   "shell.dateToday": "Aujourd'hui",
   "shell.dateThisWeek": "Cette semaine",
   "shell.dateThisMonth": "Ce mois-ci",

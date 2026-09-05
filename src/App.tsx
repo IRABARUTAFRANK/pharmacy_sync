@@ -6,6 +6,7 @@ import type { TranslationKey } from './lib/i18n/en'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
 import { Logo } from './components'
+import { Sidebar } from './Sidebar'
 
 
 
@@ -387,7 +388,8 @@ export default function App() {
   const [showSearchNav, setShowSearchNav] = useState(false)
   const [searchNavHighlight, setSearchNavHighlight] = useState(0)
   const [dateRange, setDateRange]   = useState<DateRangeOption>('thisMonth')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Sidebar defaults to collapsed (hover-to-expand); this only "pins" it open.
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showNotif, setShowNotif]   = useState(false)
   const [notifSnapshot, setNotifSnapshot] = useState<LiveAlert[]>([])
   const [showUser, setShowUser]     = useState(false)
@@ -574,141 +576,105 @@ export default function App() {
       case 'sales':         return <SalesPage />
       case 'reports':       return <ReportsPage />
       case 'alerts':        return <AlertsPage />
-      case 'transactions':  return <TransactionsPage />
+      case 'transactions':  return <TransactionsPage period={dateRange} />
       case 'insurance':     return <InsurancePage />
       case 'team':          return <TeamPage />
       case 'analyst':       return <AnalystPage />
-      case 'analytics':     return <AnalyticsPage />
+      case 'analytics':     return <AnalyticsPage period={dateRange} />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage />
-      case 'history':       return <HistoryPage />
+      case 'history':       return <HistoryPage period={dateRange} />
       case 'help':          return <HelpPage />
       default:              return null
     }
   }
 
-  const sidebarW = sidebarOpen ? 240 : 60
-
   return (
     <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg)', fontFamily: 'var(--font-body)', fontSize: 13 }}>
 
       {/* ── Sidebar ──────────────────────────────────────────────────────────── */}
-      <aside className="app-chrome" style={{
-        width: sidebarW, minWidth: sidebarW, background: '#fff',
-        borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column',
-        transition: 'width 0.22s, min-width 0.22s', overflow: 'hidden', flexShrink: 0, zIndex: 10,
-      }}>
-        {/* Logo — the shared <Logo /> mark, same as the home page and sign-in */}
-        <div style={{ height: 60, padding: sidebarOpen ? '0 16px' : '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-          <Logo size={32} showWordmark={false} />
-          {sidebarOpen && (
-            <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
-                Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>{t('shell.tagline')}</div>
-            </div>
-          )}
-        </div>
-
-        {/* Role pill */}
-        {sidebarOpen && (
-          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
-            <div style={{
-              background: currentRole.color + '14', border: `1px solid ${currentRole.color}30`,
-              borderRadius: 8, padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              <div style={{ width: 26, height: 26, borderRadius: 6, background: currentRole.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: currentRole.color }}>
-                {currentRole.abbr}
-              </div>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: currentRole.color }}>{t(roleLabelKey(currentRole.id))}</div>
-                <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{access.branchName}</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Language switcher — lives here, not the top bar, because the top
-            bar's search box + date filter + branch badge + notif bell +
-            avatar already crowd a laptop-width screen; anything appended
-            after them there risked being squeezed past the app-shell's
-            overflow:hidden and never rendering at all. The sidebar has its
-            own space that isn't competing with anything else. */}
-        {sidebarOpen && (
-          <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
-            <LanguageSwitcher />
-          </div>
-        )}
-
-        {/* Nav items */}
-        <nav style={{ flex: 1, padding: '10px 8px', overflowY: 'auto', overflowX: 'hidden' }}>
-          {visibleNav.map(item => {
-            const active = page === item.id
-            const navLabel = t(`nav.${item.id}` as TranslationKey)
-            return (
-              <button key={item.id} onClick={() => setPage(item.id)} style={{
-                width: '100%', display: 'flex', alignItems: 'center',
-                gap: sidebarOpen ? 10 : 0, justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                padding: sidebarOpen ? '9px 10px' : '9px 12px', borderRadius: 8,
-                border: 'none', background: active ? 'var(--primary-light)' : 'transparent',
-                color: active ? 'var(--primary)' : 'var(--ink-mid)',
-                fontWeight: active ? 600 : 400, fontSize: 13, cursor: 'pointer',
-                marginBottom: 2, fontFamily: 'inherit', transition: 'all 0.14s',
-                position: 'relative',
-              }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)'; prefetchPage(item.id) }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-                title={!sidebarOpen ? navLabel : undefined}
-              >
-                <span style={{ fontSize: 16, flexShrink: 0 }}>{item.icon}</span>
-                {sidebarOpen && (
-                  <>
-                    <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{navLabel}</span>
-                    {!!navBadge(item.id) && (
-                      <span style={{
-                        background: '#dc2626',
-                        color: '#fff', fontSize: 10, fontWeight: 700,
-                        borderRadius: 10, padding: '1px 6px', flexShrink: 0,
-                      }}>{navBadge(item.id)}</span>
-                    )}
-                  </>
-                )}
-                {!sidebarOpen && !!navBadge(item.id) && (
-                  <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, borderRadius: '50%', background: '#dc2626' }} />
-                )}
-              </button>
-            )
-          })}
-        </nav>
-
-        {/* User footer */}
-        <div style={{ padding: '10px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-          <button
-            onClick={() => { setShowUser(u => !u); setShowNotif(false) }}
-            style={{
-              width: '100%', display: 'flex', alignItems: 'center', gap: sidebarOpen ? 8 : 0,
-              justifyContent: sidebarOpen ? 'flex-start' : 'center',
-              padding: '7px 8px', borderRadius: 8, border: 'none', background: 'transparent',
-              cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.14s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-          >
-            <div style={{
-              width: 32, height: 32, borderRadius: '50%', background: currentRole.color,
-              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 700, flexShrink: 0,
-            }}>{currentRole.abbr}</div>
-            {sidebarOpen && (
-              <div style={{ overflow: 'hidden', textAlign: 'left' }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
-                <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{t(roleLabelKey(currentRole.id))}</div>
+      {/* Hover-to-expand by default; the collapse/expand button in the top
+          bar sets `pinned`, which locks it open regardless of hover -- for a
+          large monitor, or anyone who'd rather not re-hover constantly. */}
+      <Sidebar
+        className="app-chrome"
+        pinned={sidebarOpen}
+        items={visibleNav.map(item => ({ id: item.id, icon: item.icon, badge: navBadge(item.id) }))}
+        activeId={page}
+        onSelect={setPage}
+        getLabel={id => t(`nav.${id}` as TranslationKey)}
+        onItemHover={prefetchPage}
+        header={expanded => (
+          // Logo — the shared <Logo /> mark, same as the home page and sign-in
+          <div style={{ height: 60, padding: expanded ? '0 16px' : '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+            <Logo size={32} showWordmark={false} />
+            {expanded && (
+              <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
+                  Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>{t('shell.tagline')}</div>
               </div>
             )}
-          </button>
-        </div>
-      </aside>
+          </div>
+        )}
+        topContent={expanded => expanded && (
+          <>
+            {/* Role pill */}
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
+              <div style={{
+                background: currentRole.color + '14', border: `1px solid ${currentRole.color}30`,
+                borderRadius: 8, padding: '7px 10px', display: 'flex', alignItems: 'center', gap: 8,
+              }}>
+                <div style={{ width: 26, height: 26, borderRadius: 6, background: currentRole.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: currentRole.color }}>
+                  {currentRole.abbr}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: currentRole.color }}>{t(roleLabelKey(currentRole.id))}</div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{access.branchName}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Language switcher — lives here, not the top bar, because the top
+                bar's search box + date filter + branch badge + notif bell +
+                avatar already crowd a laptop-width screen; anything appended
+                after them there risked being squeezed past the app-shell's
+                overflow:hidden and never rendering at all. The sidebar has its
+                own space that isn't competing with anything else. */}
+            <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
+              <LanguageSwitcher />
+            </div>
+          </>
+        )}
+        footer={expanded => (
+          <div style={{ padding: '10px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+            <button
+              onClick={() => { setShowUser(u => !u); setShowNotif(false) }}
+              style={{
+                width: '100%', display: 'flex', alignItems: 'center', gap: expanded ? 8 : 0,
+                justifyContent: expanded ? 'flex-start' : 'center',
+                padding: '7px 8px', borderRadius: 8, border: 'none', background: 'transparent',
+                cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.14s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+            >
+              <div style={{
+                width: 32, height: 32, borderRadius: '50%', background: currentRole.color,
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, flexShrink: 0,
+              }}>{currentRole.abbr}</div>
+              {expanded && (
+                <div style={{ overflow: 'hidden', textAlign: 'left' }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
+                  <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{t(roleLabelKey(currentRole.id))}</div>
+                </div>
+              )}
+            </button>
+          </div>
+        )}
+      />
 
       {/* ── Main area ─────────────────────────────────────────────────────────── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
@@ -718,15 +684,20 @@ export default function App() {
           height: 60, background: '#fff', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0,
         }}>
-          {/* Collapse button */}
-          <button onClick={() => setSidebarOpen(o => !o)} style={{
-            width: 32, height: 32, background: 'none', border: '1px solid var(--border)',
-            borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', fontSize: 14, color: 'var(--ink-muted)', flexShrink: 0,
-            transition: 'background 0.14s',
-          }}
+          {/* Pins the sidebar expanded, overriding hover-to-collapse (Sidebar.tsx's `pinned` prop) --
+              not a plain show/hide toggle anymore, so it's visually "on" while pinned. */}
+          <button
+            onClick={() => setSidebarOpen(o => !o)}
+            title={sidebarOpen ? t('shell.unpinSidebar') : t('shell.pinSidebar')}
+            style={{
+              width: 32, height: 32, background: sidebarOpen ? 'var(--primary-light)' : 'none',
+              border: `1px solid ${sidebarOpen ? 'var(--border-strong)' : 'var(--border)'}`,
+              borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', fontSize: 14, color: sidebarOpen ? 'var(--primary)' : 'var(--ink-muted)', flexShrink: 0,
+              transition: 'background 0.14s',
+            }}
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = sidebarOpen ? 'var(--primary-light)' : 'none' }}
           >☰</button>
 
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
