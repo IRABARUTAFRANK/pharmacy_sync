@@ -395,6 +395,21 @@ export default function App() {
   // gated -- a seller's fetch fails, caught silently below, and the card
   // just doesn't render for them rather than showing an error.
   const [todaySnapshot, setTodaySnapshot] = useState<BranchSnapshot | null>(null)
+  // Set only by the "N need attention" click, and cleared as soon as the
+  // user leaves the Inventory Dashboard page again -- so a later, ordinary
+  // sidebar-nav visit to Inventory starts back on "all" rather than getting
+  // stuck on "attention" forever. `seq` (not just presence of the object) is
+  // LiveInventoryPage's key below: it forces a fresh mount, and therefore a
+  // re-applied initialStatus, even in the one case setPage('inventory')
+  // alone wouldn't cover -- already being on that page when "N need
+  // attention" is clicked, where setPage is a no-op and the page would
+  // otherwise keep whatever filter a manual tile click had already set.
+  const [inventoryFocus, setInventoryFocus] = useState<{ seq: number } | null>(null)
+  function goToInventoryAttention() {
+    setInventoryFocus(prev => ({ seq: (prev?.seq ?? 0) + 1 }))
+    setPage('inventory')
+  }
+  useEffect(() => { if (page !== 'inventory') setInventoryFocus(null) }, [page])
   const { term: search, setTerm: setSearch } = useGlobalSearch()
   const [showSearchNav, setShowSearchNav] = useState(false)
   const [searchNavHighlight, setSearchNavHighlight] = useState(0)
@@ -604,7 +619,7 @@ export default function App() {
                                      onExport={() => setShowExport(true)}
                                      onViewAlerts={() => setPage('alerts')}
                                    />
-      case 'inventory':     return <LiveInventoryPage />
+      case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} />
       case 'receiving':     return <StockReceivingPage />
       case 'barcode':       return <BarcodeManagerPage />
       case 'sales':         return <SalesPage />
@@ -666,25 +681,32 @@ export default function App() {
                 is owner/manager-only) rather than an error worth surfacing. */}
             {todaySnapshot && (
               <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
-                <button
-                  onClick={() => setPage('overview')}
-                  style={{
-                    display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
-                    background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px',
-                  }}
-                >
-                  <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {t('shell.todaySnapshotLabel')}
-                  </div>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
-                    {fmtRWFExact(todaySnapshot.todayRevenue)}
-                  </div>
-                  {(todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount) > 0 && (
-                    <div style={{ fontSize: 11, color: '#d97706', fontWeight: 600, marginTop: 3 }}>
-                      ⚠ {t('shell.todaySnapshotAttention', { count: todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount })}
+                <div style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <button
+                    onClick={() => setPage('overview')}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                  >
+                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {t('shell.todaySnapshotLabel')}
                     </div>
+                    <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
+                      {fmtRWFExact(todaySnapshot.todayRevenue)}
+                    </div>
+                  </button>
+                  {(todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount) > 0 && (
+                    <button
+                      onClick={goToInventoryAttention}
+                      title={t('shell.todaySnapshotAttentionHint')}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
+                        background: 'none', border: 'none', padding: 0, fontSize: 11, color: '#b45309', fontWeight: 600,
+                        textDecoration: 'underline', textUnderlineOffset: 2,
+                      }}
+                    >
+                      ⚠ {t('shell.todaySnapshotAttention', { count: todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount })}
+                    </button>
                   )}
-                </button>
+                </div>
               </div>
             )}
 
@@ -833,8 +855,18 @@ export default function App() {
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = showNotif ? 'var(--bg)' : 'none' }}
             >
               🔔
+              {/* The count itself, not just a dot -- clicking it (the whole
+                  button) already opens the dropdown AND marks everything
+                  read immediately, see toggleNotif() above; this just makes
+                  that number visible instead of a plain unread indicator. */}
               {alertCount > 0 && (
-                <span style={{ position: 'absolute', top: 6, right: 6, width: 8, height: 8, background: '#dc2626', borderRadius: '50%', border: '2px solid #fff' }} />
+                <span style={{
+                  position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, padding: '0 3px',
+                  background: '#dc2626', color: '#fff', borderRadius: 999, border: '2px solid #fff',
+                  fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                }}>
+                  {alertCount > 99 ? '99+' : alertCount}
+                </span>
               )}
             </button>
             {showNotif && <NotifDropdown alerts={notifSnapshot} onClose={() => setShowNotif(false)} />}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Card, SectionHeader, StatusBadge, Btn, Modal, ChartTooltip } from "../components"
 import { fmtRWFExact } from "../data"
@@ -58,7 +58,10 @@ export function ReorderPointModal({ row, onClose, onSaved }: { row: InventoryRow
   </Modal>
 }
 
-export default function LiveInventoryPage() {
+// `initialStatus` lets a caller (the sidebar's "Today so far" card) deep-link
+// straight into a filtered view instead of landing on "all" and making
+// someone re-click a tile themselves.
+export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "attention" | InventoryRow["stock_status"] } = {}) {
   const { t } = useTranslation()
   const statusMeta = {
     ok: { label: t("inventoryPage.statusOk"), color: "#16a34a", background: "#d1fae5" },
@@ -66,6 +69,12 @@ export default function LiveInventoryPage() {
     zero: { label: t("inventoryPage.statusZero"), color: "#dc2626", background: "#fef2f2" },
     expiry: { label: t("inventoryPage.statusExpiry"), color: "#9333ea", background: "#f5f3ff" },
   }
+  // Not a real stock_status value -- "low", "zero", and "expiry" combined,
+  // matching the same three counts the sidebar's "N need attention" figure
+  // adds together (ai_branch_snapshot()'s outOfStockCount + lowStockCount +
+  // expiringSoonCount), so clicking through there and clicking this tile
+  // land on the exact same set of rows.
+  const attentionMeta = { label: t("inventoryPage.statusAttention"), color: "#b45309", background: "#fef9c3" }
 
   const [dataset, setDataset] = useState<InventoryDataset>({ rows: [], barcodes: [], supplierUnits: [] })
   const [loading, setLoading] = useState(true)
@@ -73,8 +82,25 @@ export default function LiveInventoryPage() {
   const { term: globalTerm, setTerm: setGlobalTerm } = useGlobalSearch()
   const [query, setQuery] = useState(globalTerm)
   useEffect(() => setQuery(globalTerm), [globalTerm])
-  const [status, setStatus] = useState<"all" | InventoryRow["stock_status"]>("all")
+  const [status, setStatus] = useState<"all" | "attention" | InventoryRow["stock_status"]>(initialStatus ?? "all")
   const [reorderTarget, setReorderTarget] = useState<InventoryRow | null>(null)
+
+  // Clicking a status tile filters the table below, but the table sits
+  // beneath the summary tiles AND two charts -- without this, "filter
+  // applied" and "actually seeing the matching products" were two separate
+  // steps (click, then scroll down yourself). Also fires once on mount when
+  // arriving here already pre-filtered (initialStatus, from the sidebar's
+  // "N need attention" link), so that deep link lands on the products too,
+  // not just back at the top of the page.
+  const tableRef = useRef<HTMLDivElement>(null)
+  function selectStatus(next: "attention" | InventoryRow["stock_status"]) {
+    setStatus(status === next ? "all" : next)
+    requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+  }
+  useEffect(() => {
+    if (initialStatus) requestAnimationFrame(() => tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -91,19 +117,23 @@ export default function LiveInventoryPage() {
   useEffect(() => { void refresh() }, [refresh])
 
   const filtered = useMemo(() => dataset.rows.filter(row => {
-    const matchesStatus = status === "all" || row.stock_status === status
+    const matchesStatus = status === "all" || (status === "attention" ? row.stock_status !== "ok" : row.stock_status === status)
     const text = `${row.name} ${row.generic_name ?? ""} ${row.batch_number} ${row.supplier_name}`.toLowerCase()
     return matchesStatus && text.includes(query.toLowerCase())
   }), [dataset.rows, query, status])
   const summary = Object.fromEntries(Object.keys(statusMeta).map(key => [key, dataset.rows.filter(row => row.stock_status === key).length])) as Record<InventoryRow["stock_status"], number>
+  const attentionCount = summary.low + summary.zero + summary.expiry
   const categoryData = Object.entries(dataset.rows.reduce<Record<string, number>>((totals, row) => ({ ...totals, [row.category]: (totals[row.category] ?? 0) + row.selling_price * row.quantity_available }), {})).map(([name, sales]) => ({ name, sales }))
 
   return <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
     {error && <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 14px', fontSize: 12 }}>
       {t("inventoryPage.loadErrorPrefix")}: {error}. {t("inventoryPage.loadErrorHint")}
     </div>}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-      {(Object.entries(statusMeta) as Array<[InventoryRow["stock_status"], typeof statusMeta.ok]>).map(([key, meta], i) => <button key={key} onClick={() => setStatus(status === key ? "all" : key)} className="animate-fade-up" style={{ animationDelay: `${i * 60}ms`, textAlign: 'left', border: `1.5px solid ${status === key ? meta.color : "var(--border)"}`, background: status === key ? meta.background : "#fff", borderRadius: 10, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+      <button onClick={() => selectStatus("attention")} className="animate-fade-up" style={{ textAlign: 'left', border: `1.5px solid ${status === "attention" ? attentionMeta.color : "var(--border)"}`, background: status === "attention" ? attentionMeta.background : "#fff", borderRadius: 10, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
+        <div style={{ fontSize: 22, color: attentionMeta.color, fontWeight: 800 }}>{loading ? "—" : attentionCount}</div><div style={{ fontSize: 11, fontWeight: 600 }}>{attentionMeta.label}</div>
+      </button>
+      {(Object.entries(statusMeta) as Array<[InventoryRow["stock_status"], typeof statusMeta.ok]>).map(([key, meta], i) => <button key={key} onClick={() => selectStatus(key)} className="animate-fade-up" style={{ animationDelay: `${(i + 1) * 60}ms`, textAlign: 'left', border: `1.5px solid ${status === key ? meta.color : "var(--border)"}`, background: status === key ? meta.background : "#fff", borderRadius: 10, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
         <div style={{ fontSize: 22, color: meta.color, fontWeight: 800 }}>{loading ? "—" : summary[key]}</div><div style={{ fontSize: 11, fontWeight: 600 }}>{meta.label}</div>
       </button>)}
     </div>
@@ -111,6 +141,7 @@ export default function LiveInventoryPage() {
       <Card><SectionHeader title={t("inventoryPage.chartValueByCategory")} subtitle={t("inventoryPage.chartValueByCategorySubtitle")} /><ResponsiveContainer width="100%" height={200}><BarChart data={categoryData} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="sales" name={t("inventoryPage.chartInventoryValue")} fill="#1e5fa8" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
       <Card><SectionHeader title={t("inventoryPage.chartUnitsBySupplier")} subtitle={t("inventoryPage.chartUnitsBySupplierSubtitle")} /><ResponsiveContainer width="100%" height={200}><BarChart data={dataset.supplierUnits} margin={{ bottom: 28 }}><CartesianGrid strokeDasharray="4 4" /><XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} angle={-25} textAnchor="end" height={50} /><YAxis tick={{ fontSize: 10 }} /><Tooltip content={<ChartTooltip />} /><Bar dataKey="units" name={t("inventoryPage.chartUnitsReceived")} fill="#60a5fa" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></Card>
     </div>
+    <div ref={tableRef}>
     <Card>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: 14 }}>{t("inventoryPage.tableTitle")}</h2><p style={{ margin: '3px 0 0', color: 'var(--ink-muted)', fontSize: 11 }}>{t("inventoryPage.tableSubtitle")}</p></div><input value={query} onChange={event => { setQuery(event.target.value); setGlobalTerm(event.target.value) }} placeholder={t("inventoryPage.searchPlaceholder")} style={{ width: 240, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12 }} /><Btn variant="secondary" small onClick={() => void refresh()}>{t("inventoryPage.refresh")}</Btn></div>
       <div style={{ overflowX: 'auto' }}>
@@ -149,6 +180,7 @@ export default function LiveInventoryPage() {
         </table>
       </div>
     </Card>
+    </div>
     {reorderTarget && (
       <ReorderPointModal row={reorderTarget} onClose={() => setReorderTarget(null)} onSaved={() => { setReorderTarget(null); void refresh() }} />
     )}
