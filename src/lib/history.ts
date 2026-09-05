@@ -7,11 +7,13 @@ import { supabase } from "./supabase"
 // the owner-only gate lives server-side, not just in the client nav.
 
 export type HistoryCategory =
-  | "sale" | "stock_adjustment" | "stock_received" | "insurance_claim"
+  | "sale" | "stock_adjustment" | "stock_batch" | "insurance_claim"
   | "patient" | "product_request" | "staff" | "batch_recall"
+  | "barcode_created" | "notification" | "support_ticket"
 
 export const HISTORY_CATEGORIES: HistoryCategory[] = [
-  "sale", "stock_adjustment", "stock_received", "insurance_claim", "patient", "product_request", "staff", "batch_recall",
+  "stock_batch", "stock_adjustment", "batch_recall", "sale", "insurance_claim",
+  "barcode_created", "notification", "support_ticket", "patient", "product_request", "staff",
 ]
 
 export interface HistoryEvent {
@@ -21,6 +23,11 @@ export interface HistoryEvent {
   description: string
   amount: number | null
   actorName: string | null
+  // Real where the category has one (claim status, adjustment type, barcode
+  // status, read/unread, ticket status...); null where it wouldn't add real
+  // information (every sale row is equally "completed" -- there's no
+  // pending/refunded concept in this schema).
+  status: string | null
 }
 
 function raise(error: { message: string } | null, fallback: string): never {
@@ -33,5 +40,6 @@ export async function loadBranchHistory(from?: string, to?: string): Promise<His
   return (data ?? []).map((row: any) => ({
     eventAt: row.event_at, category: row.category as HistoryCategory, title: row.title,
     description: row.description, amount: row.amount === null ? null : Number(row.amount), actorName: row.actor_name,
+    status: row.status ?? null,
   }))
 }

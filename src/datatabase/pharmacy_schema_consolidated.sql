@@ -4571,7 +4571,7 @@ grant execute on function public.get_my_branch_details() to authenticated;
 -- owner/manager-only actions.
 create or replace function public.list_branch_history(p_from timestamptz default null, p_to timestamptz default null)
 returns table(
-  event_at timestamptz, category text, title text, description text, amount numeric, actor_name text
+  event_at timestamptz, category text, title text, description text, amount numeric, actor_name text, status text
 )
 language plpgsql
 security definer
@@ -4588,20 +4588,22 @@ begin
   end if;
 
   return query
-  select s.sold_at, 'sale'::text, 'Sale completed'::text,
-    format('Receipt %s%s', r.receipt_number, case when p.full_name is not null then ' -- ' || p.full_name else '' end),
-    s.total_amount, u1.full_name::text
+  select s.sold_at, 'sale'::text, format('Sale — %s', r.receipt_number)::text,
+    format('%s item%s%s', si.cnt, case when si.cnt = 1 then '' else 's' end, case when p.full_name is not null then ' · ' || p.full_name else '' end),
+    s.total_amount, u1.full_name::text, null::text
   from public.sales s
   join public.receipts r on r.sale_id = s.id
   left join public.patients p on p.id = s.patient_id
   left join public.users u1 on u1.id = s.cashier_id
+  join lateral (select count(*) cnt from public.sale_items si2 where si2.sale_id = s.id) si on true
   where s.branch_id = v_branch and (p_from is null or s.sold_at >= p_from) and (p_to is null or s.sold_at <= p_to)
 
   union all
 
-  select sa.adjusted_at, 'stock_adjustment'::text, initcap(sa.adjustment_type),
-    format('%s -- %s piece(s)%s', concat_ws(' ', pr1.name, pv1.dosage), sa.quantity, case when sa.reason is not null then ' -- ' || sa.reason else '' end),
-    null::numeric, u2.full_name::text
+  select sa.adjusted_at, 'stock_adjustment'::text,
+    format('Stock adjustment — %s', replace(sa.adjustment_type, '_', ' '))::text,
+    format('Qty %s%s%s%s', sa.quantity, ' · ', concat_ws(' ', pr1.name, pv1.dosage), case when sa.reason is not null then ' — ' || sa.reason else '' end),
+    null::numeric, u2.full_name::text, sa.adjustment_type::text
   from public.stock_adjustments sa
   join public.stock_batches sb1 on sb1.id = sa.stock_batch_id
   join public.product_variants pv1 on pv1.id = sb1.product_variant_id
@@ -4611,17 +4613,20 @@ begin
 
   union all
 
-  select sd.received_at, 'stock_received'::text, 'Stock delivery received'::text,
-    format('%s from %s', sd.delivery_code, sup.supplier_name), null::numeric, u3.full_name::text
-  from public.stock_deliveries sd
-  join public.suppliers sup on sup.id = sd.supplier_id
-  left join public.users u3 on u3.id = sd.received_by
-  where sd.branch_id = v_branch and (p_from is null or sd.received_at >= p_from) and (p_to is null or sd.received_at <= p_to)
+  select sb3.received_at, 'stock_batch'::text,
+    format('Stock logged — %s', concat_ws(' ', pr3.name, pv3.dosage))::text,
+    format('Batch %s · %s units received', sb3.batch_number, sb3.quantity_received),
+    (sb3.quantity_received * sb3.cost_price), u7.full_name::text, null::text
+  from public.stock_batches sb3
+  join public.product_variants pv3 on pv3.id = sb3.product_variant_id
+  join public.products pr3 on pr3.id = pv3.product_id
+  left join public.users u7 on u7.id = sb3.logged_by
+  where sb3.branch_id = v_branch and (p_from is null or sb3.received_at >= p_from) and (p_to is null or sb3.received_at <= p_to)
 
   union all
 
-  select ic.submitted_at, 'insurance_claim'::text, 'Insurance claim filed'::text,
-    format('%s -- %s', ip.name, initcap(ic.status)), ic.claim_amount, null::text
+  select ic.submitted_at, 'insurance_claim'::text, format('Insurance claim — %s', ip.name)::text,
+    format('%s%% coverage', ic.coverage_percentage_applied), ic.claim_amount, null::text, ic.status::text
   from public.insurance_claims ic
   join public.sales s2 on s2.id = ic.sale_id
   join public.insurance_providers ip on ip.id = ic.insurance_provider_id
@@ -4629,8 +4634,8 @@ begin
 
   union all
 
-  select pt.created_at, 'patient'::text, 'Patient registered'::text,
-    pt.full_name::text, null::numeric, u4.full_name::text
+  select pt.created_at, 'patient'::text, format('Patient registered — %s', pt.full_name)::text,
+    coalesce(pt.tin_or_phone, '')::text, null::numeric, u4.full_name::text, null::text
   from public.patients pt
   left join public.users u4 on u4.id = pt.created_by
   where pt.branch_id = v_branch and (p_from is null or pt.created_at >= p_from) and (p_to is null or pt.created_at <= p_to)
@@ -4638,22 +4643,22 @@ begin
   union all
 
   select pq.created_at, 'product_request'::text, 'Product request submitted'::text,
-    left(pq.message, 140), null::numeric, u5.full_name::text
+    left(pq.message, 140), null::numeric, u5.full_name::text, pq.status::text
   from public.product_requests pq
   left join public.users u5 on u5.id = pq.requested_by
   where pq.branch_id = v_branch and (p_from is null or pq.created_at >= p_from) and (p_to is null or pq.created_at <= p_to)
 
   union all
 
-  select us.created_at, 'staff'::text, 'Seller account created'::text,
-    concat_ws(' ', us.full_name, '(' || us.email || ')'), null::numeric, null::text
+  select us.created_at, 'staff'::text, format('Seller account created — %s', us.full_name)::text,
+    us.email::text, null::numeric, null::text, null::text
   from public.users us
   where us.branch_id = v_branch and us.role = 'seller' and (p_from is null or us.created_at >= p_from) and (p_to is null or us.created_at <= p_to)
 
   union all
 
-  select br.recalled_at, 'batch_recall'::text, 'Batch recalled'::text,
-    format('%s -- %s', concat_ws(' ', pr2.name, pv2.dosage), br.reason), null::numeric, u6.full_name::text
+  select br.recalled_at, 'batch_recall'::text, format('RECALL — %s Batch %s', concat_ws(' ', pr2.name, pv2.dosage), br.batch_number)::text,
+    format('%s · %s', coalesce(br.manufacturer_name, 'Unknown manufacturer'), br.reason), null::numeric, u6.full_name::text, 'recalled'::text
   from public.batch_recalls br
   join public.product_variants pv2 on pv2.id = br.product_variant_id
   join public.products pr2 on pr2.id = pv2.product_id
@@ -4662,6 +4667,29 @@ begin
     select 1 from public.stock_batches sb2
     where sb2.product_variant_id = br.product_variant_id and sb2.batch_number = br.batch_number and sb2.branch_id = v_branch
   ) and (p_from is null or br.recalled_at >= p_from) and (p_to is null or br.recalled_at <= p_to)
+
+  union all
+
+  select b.created_at, 'barcode_created'::text, format('Barcode created — %s', upper(b.barcode_type))::text,
+    format('%s · %s · %s', b.code, replace(b.code_source, '_', ' '), b.status), null::numeric, null::text, b.status::text
+  from public.barcodes b
+  join public.stock_batches sb4 on sb4.id = b.stock_batch_id
+  where sb4.branch_id = v_branch and (p_from is null or b.created_at >= p_from) and (p_to is null or b.created_at <= p_to)
+
+  union all
+
+  select n.created_at, 'notification'::text, format('Notification — %s', replace(n.source_type, '_', ' '))::text,
+    n.message, null::numeric, null::text, (case when n.is_read then 'read' else 'unread' end)::text
+  from public.notifications n
+  where n.branch_id = v_branch and (p_from is null or n.created_at >= p_from) and (p_to is null or n.created_at <= p_to)
+
+  union all
+
+  select st.created_at, 'support_ticket'::text, st.subject::text,
+    format('Raised by %s · Status: %s', coalesce(u8.full_name, 'Unknown'), replace(st.status, '_', ' ')), null::numeric, u8.full_name::text, st.status::text
+  from public.support_tickets st
+  left join public.users u8 on u8.id = st.raised_by
+  where st.branch_id = v_branch and (p_from is null or st.created_at >= p_from) and (p_to is null or st.created_at <= p_to)
 
   order by 1 desc
   limit 2000;

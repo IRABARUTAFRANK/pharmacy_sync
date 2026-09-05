@@ -17,6 +17,7 @@ import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
 import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
+import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 
 // Code-split every page behind the sidebar (and the admin/branch/reset
 // top-level routes) so the first load only ships what's needed to sign in --
@@ -131,56 +132,6 @@ function roleLabelKey(id: Role): TranslationKey {
   return id === 'owner' ? 'shell.roleOwner' : id === 'manager' ? 'shell.roleManager' : 'shell.roleSeller'
 }
 
-// ─── Export Modal (inline here, used from any page) ───────────────────────────
-
-function ExportModal({ onClose }: { onClose: () => void }) {
-  const [fmt, setFmt] = useState<'csv' | 'pdf' | 'excel'>('pdf')
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(13,31,18,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-      onClick={onClose}
-    >
-      <div style={{ background: '#fff', borderRadius: 14, width: '100%', maxWidth: 440, boxShadow: '0 24px 64px rgba(0,0,0,0.14)', overflow: 'hidden' }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>Export Dashboard</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--ink-muted)', lineHeight: 1 }}>×</button>
-        </div>
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>Format</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {(['csv', 'pdf', 'excel'] as const).map(f => (
-                <button key={f} onClick={() => setFmt(f)} style={{
-                  flex: 1, padding: '10px', borderRadius: 8, fontFamily: 'inherit', cursor: 'pointer',
-                  border: `1.5px solid ${fmt === f ? 'var(--primary)' : 'var(--border)'}`,
-                  background: fmt === f ? 'var(--primary-light)' : '#fff',
-                  color: fmt === f ? 'var(--primary)' : 'var(--ink-mid)',
-                  fontWeight: fmt === f ? 700 : 400, fontSize: 13,
-                }}>{f.toUpperCase()}</button>
-              ))}
-            </div>
-          </div>
-          <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px', fontSize: 12, color: 'var(--ink-muted)' }}>
-            <strong style={{ color: 'var(--ink)' }}>Share Link</strong>
-            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-              <input readOnly value="https://pharmsync.rw/share?token=ps_8f4a2c..." style={{
-                flex: 1, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 6,
-                fontSize: 11, fontFamily: 'var(--font-mono)', background: '#fff', outline: 'none',
-              }} />
-              <button style={{ padding: '7px 12px', background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--border-strong)', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button onClick={onClose} style={{ padding: '8px 16px', background: '#fff', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--ink-mid)' }}>Cancel</button>
-            <button onClick={onClose} style={{ padding: '8px 20px', background: 'var(--primary)', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', color: '#fff' }}>⬇ Download {fmt.toUpperCase()}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Notifications Dropdown ───────────────────────────────────────────────────
 
 function alertTimeAgo(iso: string): string {
@@ -284,6 +235,7 @@ function SearchNavDropdown({ matches, needle, highlight, onSelect }: {
 
 function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: BranchAccess; role: Role; onRoleChange: (r: Role) => void; onSignOut: () => void; onClose: () => void }) {
   const { t } = useTranslation()
+  const [activeTheme, setActiveTheme] = useState(getSavedThemeId())
   return (
     <div style={{
       position: 'absolute', right: 0, top: '110%', width: 220, zIndex: 100,
@@ -293,6 +245,24 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{access.fullName}</div>
         <div style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{access.branchName} · {t(roleLabelKey(role))}</div>
+      </div>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>{t('shell.themeColor')}</div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {THEME_PRESETS.map(preset => (
+            <button
+              key={preset.id}
+              type="button"
+              title={preset.label}
+              onClick={() => { setTheme(preset.id); setActiveTheme(preset.id) }}
+              style={{
+                width: 22, height: 22, borderRadius: '50%', background: preset.swatch, cursor: 'pointer', padding: 0, flexShrink: 0,
+                border: '2px solid #fff',
+                boxShadow: activeTheme === preset.id ? '0 0 0 2px var(--ink)' : '0 0 0 1px var(--border)',
+              }}
+            />
+          ))}
+        </div>
       </div>
       <div style={{ display: 'none' }} aria-hidden="true">
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Switch Role (Demo)</div>
@@ -419,7 +389,6 @@ export default function App() {
   const [showNotif, setShowNotif]   = useState(false)
   const [notifSnapshot, setNotifSnapshot] = useState<LiveAlert[]>([])
   const [showUser, setShowUser]     = useState(false)
-  const [showExport, setShowExport] = useState(false)
 
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingSync, setPendingSync] = useState(0)
@@ -616,13 +585,13 @@ export default function App() {
                                      period={dateRange}
                                      branchName={access!.branchName}
                                      alerts={alerts}
-                                     onExport={() => setShowExport(true)}
                                      onViewAlerts={() => setPage('alerts')}
+                                     onViewFullReport={() => setPage('analytics')}
                                    />
       case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} />
       case 'receiving':     return <StockReceivingPage />
       case 'barcode':       return <BarcodeManagerPage />
-      case 'sales':         return <SalesPage />
+      case 'sales':         return <SalesPage onViewAllTransactions={() => setPage('transactions')} />
       case 'reports':       return <ReportsPage />
       case 'alerts':        return <AlertsPage />
       case 'transactions':  return <TransactionsPage period={dateRange} />
@@ -898,8 +867,6 @@ export default function App() {
           </Suspense>
         </main>
       </div>
-
-      {showExport && <ExportModal onClose={() => setShowExport(false)} />}
 
       {/* The global-scanner catcher: one real, invisible <input> that
           lib/scanner.tsx keeps focused whenever nothing else legitimately

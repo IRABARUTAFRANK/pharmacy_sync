@@ -110,6 +110,14 @@ export interface TrendPoint {
   label: string
   revenue: number
   vat: number
+  transactions: number
+  items: number
+}
+
+export interface ExpiryBucket {
+  bucket: string
+  count: number
+  value: number
 }
 
 export interface CategorySlice {
@@ -154,6 +162,7 @@ export interface OverviewData {
   itemsDispensed: Delta
   inventoryValue: number
   expiring: { count: number; value: number }
+  expiringBreakdown: ExpiryBucket[]
   belowReorder: number
   revenueTrend: TrendPoint[]
   categoryMix: CategorySlice[]
@@ -275,6 +284,21 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   let expiringValue = 0
   const horizon = now.getTime() + 90 * DAY_MS
 
+  // Same 90-day population as expiringBatches/expiringValue, split into how
+  // soon each batch actually expires -- the drill-down's urgency chart reads
+  // straight off this, no separate query.
+  const EXPIRY_BUCKETS = ["Already Expired", "≤ 30 Days", "31–60 Days", "61–90 Days"] as const
+  const expiryBucketAgg = new Map<string, { batchIds: Set<string>; value: number }>(
+    EXPIRY_BUCKETS.map(label => [label, { batchIds: new Set<string>(), value: 0 }]),
+  )
+  const expiryBucketLabel = (expiryDate: string): (typeof EXPIRY_BUCKETS)[number] => {
+    const daysUntil = (new Date(expiryDate).getTime() - now.getTime()) / DAY_MS
+    if (daysUntil < 0) return "Already Expired"
+    if (daysUntil <= 30) return "≤ 30 Days"
+    if (daysUntil <= 60) return "31–60 Days"
+    return "61–90 Days"
+  }
+
   for (const barcode of barcodes) {
     if (barcode.barcode_type !== "pack") continue
     if (barcode.status !== "active") continue
@@ -299,8 +323,16 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
     if (new Date(batch.expiry_date).getTime() <= horizon) {
       expiringBatches.add(batch.id)
       expiringValue += value
+      const bucket = expiryBucketAgg.get(expiryBucketLabel(batch.expiry_date))!
+      bucket.batchIds.add(batch.id)
+      bucket.value += value
     }
   }
+
+  const expiringBreakdown: ExpiryBucket[] = EXPIRY_BUCKETS.map(label => {
+    const bucket = expiryBucketAgg.get(label)!
+    return { bucket: label, count: bucket.batchIds.size, value: bucket.value }
+  })
 
   const belowReorder = reorderPoints.filter(
     point => asNumber(point.min_quantity) > 0 && (stockByProduct.get(point.product_id) ?? 0) < asNumber(point.min_quantity),
@@ -342,8 +374,10 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
 
   // ── Revenue trend ────────────────────────────────────────────────────────
   const vatBySale = new Map<string, number>()
+  const qtyBySale = new Map<string, number>()
   for (const item of currentItems) {
     vatBySale.set(item.sale_id, (vatBySale.get(item.sale_id) ?? 0) + lineOf(item).vat)
+    qtyBySale.set(item.sale_id, (qtyBySale.get(item.sale_id) ?? 0) + asNumber(item.quantity))
   }
 
   const bucketKey = (date: Date) =>
@@ -357,13 +391,13 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   if (range.bucket === "day") {
     for (let t = startOfDay(range.start).getTime(); t <= range.end.getTime(); t += DAY_MS) {
       const key = bucketKey(new Date(t))
-      trendBuckets.set(key, { label: key, revenue: 0, vat: 0 })
+      trendBuckets.set(key, { label: key, revenue: 0, vat: 0, transactions: 0, items: 0 })
     }
   } else {
     const cursor = new Date(range.start.getFullYear(), range.start.getMonth(), 1)
     while (cursor <= range.end) {
       const key = bucketKey(cursor)
-      trendBuckets.set(key, { label: key, revenue: 0, vat: 0 })
+      trendBuckets.set(key, { label: key, revenue: 0, vat: 0, transactions: 0, items: 0 })
       cursor.setMonth(cursor.getMonth() + 1)
     }
   }
@@ -374,6 +408,8 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
     if (!point) continue
     point.revenue += asNumber(sale.total_amount)
     point.vat += vatBySale.get(sale.id) ?? 0
+    point.transactions += 1
+    point.items += qtyBySale.get(sale.id) ?? 0
   }
   const revenueTrend = Array.from(trendBuckets.values())
 
@@ -506,6 +542,7 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
     itemsDispensed: { value: unitsNow, changePct: changePct(unitsNow, unitsPrev) },
     inventoryValue,
     expiring: { count: expiringBatches.size, value: expiringValue },
+    expiringBreakdown,
     belowReorder,
     revenueTrend,
     categoryMix,

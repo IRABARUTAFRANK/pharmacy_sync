@@ -291,7 +291,7 @@ export function Btn({
     display: 'inline-flex', alignItems: 'center', gap: 6, ...style,
   }
   const variants: Record<string, CSSProperties> = {
-    primary:   { background: 'var(--primary)',       color: '#fff',           border: '1px solid var(--primary)' },
+    primary:   { background: 'var(--btn-bg, var(--primary))', color: '#fff',   border: '1px solid var(--primary)' },
     secondary: { background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--border-strong)' },
     ghost:     { background: '#fff',                 color: 'var(--ink-mid)', border: '1px solid var(--border)' },
     danger:    { background: '#fef2f2',              color: '#dc2626',        border: '1px solid #fca5a5' },

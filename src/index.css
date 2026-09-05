@@ -155,7 +155,7 @@
      Semantic status colours (--positive / --negative / --warning / --info)
      deliberately stay independent of the brand: success must read as green
      whatever the brand colour is. */
-  --bg:            #f5f8fc;
+  --bg:            #eaf2fb;
   --bg-alt:        #e8eef7;
   --surface:       #ffffff;
   --primary:       #1e5fa8;

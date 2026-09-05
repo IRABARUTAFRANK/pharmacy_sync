@@ -379,6 +379,75 @@ export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
   }
 }
 
+// ── POS dashboard snapshot ───────────────────────────────────────────────────
+// Everything the Sales page's at-a-glance panel shows, computed straight from
+// public.sales/insurance_claims -- no cash/card/mobile-money split here,
+// because public.sales has no payment_method column (see lib/overview.ts's
+// paymentSplit note); that breakdown only becomes real once the RRA VSDC
+// invoice work adds one.
+
+export interface PosHourPoint {
+  hour: string
+  revenue: number
+}
+
+export interface PosDashboardSnapshot {
+  todayRevenue: number
+  todayTransactions: number
+  avgBasketValue: number
+  // null when the month-to-date (excluding today) has no sales to compare
+  // against -- same "no baseline yet" rule lib/overview.ts's changePct() uses.
+  avgBasketChangePct: number | null
+  pendingClaimsCount: number
+  pendingClaimsAmount: number
+  hourly: PosHourPoint[]
+}
+
+export async function loadPosDashboardSnapshot(): Promise<PosDashboardSnapshot> {
+  const now = new Date()
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  const [todayRes, monthRes, claimsRes] = await Promise.all([
+    supabase.from("sales").select("total_amount, sold_at").gte("sold_at", startOfDay.toISOString()),
+    supabase.from("sales").select("total_amount").gte("sold_at", monthStart.toISOString()).lt("sold_at", startOfDay.toISOString()),
+    supabase.from("insurance_claims").select("claim_amount, status").in("status", ["submitted", "approved"]),
+  ])
+  if (todayRes.error) raise(todayRes.error, "Could not load today's sales.")
+  if (monthRes.error) raise(monthRes.error, "Could not load this month's sales.")
+  if (claimsRes.error) raise(claimsRes.error, "Could not load insurance claims.")
+
+  const todaySales = todayRes.data ?? []
+  const todayRevenue = todaySales.reduce((sum, s) => sum + Number(s.total_amount), 0)
+  const todayTransactions = todaySales.length
+  const avgBasketValue = todayTransactions > 0 ? todayRevenue / todayTransactions : 0
+
+  const monthSales = monthRes.data ?? []
+  const monthAvgBasket = monthSales.length > 0
+    ? monthSales.reduce((sum, s) => sum + Number(s.total_amount), 0) / monthSales.length
+    : 0
+  const avgBasketChangePct = monthAvgBasket > 0 ? ((avgBasketValue - monthAvgBasket) / monthAvgBasket) * 100 : null
+
+  const claims = claimsRes.data ?? []
+  const pendingClaimsCount = claims.length
+  const pendingClaimsAmount = claims.reduce((sum, c) => sum + Number(c.claim_amount), 0)
+
+  // Every hour seeded, not just ones with a sale in them -- a quiet stretch
+  // reads as a real flat zero rather than vanishing from the chart, the same
+  // convention lib/overview.ts's revenue trend uses.
+  const hourlyMap = new Map<number, number>()
+  for (let h = 0; h < 24; h++) hourlyMap.set(h, 0)
+  for (const sale of todaySales) {
+    const hour = new Date(sale.sold_at).getHours()
+    hourlyMap.set(hour, (hourlyMap.get(hour) ?? 0) + Number(sale.total_amount))
+  }
+  const hourly: PosHourPoint[] = Array.from(hourlyMap.entries()).map(([hour, revenue]) => ({
+    hour: `${String(hour).padStart(2, "0")}:00`, revenue,
+  }))
+
+  return { todayRevenue, todayTransactions, avgBasketValue, avgBasketChangePct, pendingClaimsCount, pendingClaimsAmount, hourly }
+}
+
 // ── Sale history ─────────────────────────────────────────────────────────────
 
 export interface SaleHistoryRow {
@@ -390,6 +459,7 @@ export interface SaleHistoryRow {
   patientId: string | null
   patientName: string | null
   insuranceProviderName: string | null
+  claimStatus: InsuranceClaimStatus | null
   itemCount: number
 }
 
@@ -411,7 +481,7 @@ export async function listSaleHistory(limit = 100, patientId?: string): Promise<
   const [receiptsRes, itemsRes, claimsRes, cashiersRes, patientsRes] = await Promise.all([
     supabase.from("receipts").select("sale_id, receipt_number").in("sale_id", saleIds),
     supabase.from("sale_items").select("sale_id").in("sale_id", saleIds),
-    supabase.from("insurance_claims").select("sale_id, insurance_provider_id").in("sale_id", saleIds),
+    supabase.from("insurance_claims").select("sale_id, insurance_provider_id, status").in("sale_id", saleIds),
     supabase.from("users").select("id, full_name").in("id", cashierIds),
     patientIds.length ? supabase.from("patients").select("id, full_name").in("id", patientIds) : Promise.resolve({ data: [], error: null }),
   ])
@@ -428,18 +498,57 @@ export async function listSaleHistory(limit = 100, patientId?: string): Promise<
   if (providersRes.error) raise(providersRes.error, "Could not load insurance providers.")
 
   const receiptBySale = new Map((receiptsRes.data ?? []).map(r => [r.sale_id, r.receipt_number]))
-  const claimBySale = new Map((claimsRes.data ?? []).map(c => [c.sale_id, c.insurance_provider_id]))
+  const claimBySale = new Map((claimsRes.data ?? []).map(c => [c.sale_id, c]))
   const providerById = new Map((providersRes.data ?? []).map((p: any) => [p.id, p.name]))
   const cashierById = new Map((cashiersRes.data ?? []).map(u => [u.id, u.full_name]))
   const patientById = new Map((patientsRes.data ?? []).map((p: any) => [p.id, p.full_name]))
   const itemCountBySale = new Map<string, number>()
   for (const item of itemsRes.data ?? []) itemCountBySale.set(item.sale_id, (itemCountBySale.get(item.sale_id) ?? 0) + 1)
 
-  return sales.map(s => ({
-    saleId: s.id, receiptNumber: receiptBySale.get(s.id) ?? "—", soldAt: s.sold_at, totalAmount: Number(s.total_amount),
-    cashierName: cashierById.get(s.cashier_id) ?? "—",
-    patientId: s.patient_id, patientName: s.patient_id ? patientById.get(s.patient_id) ?? null : null,
-    insuranceProviderName: (() => { const pid = claimBySale.get(s.id); return pid ? providerById.get(pid) ?? null : null })(),
-    itemCount: itemCountBySale.get(s.id) ?? 0,
+  return sales.map(s => {
+    const claim = claimBySale.get(s.id)
+    return {
+      saleId: s.id, receiptNumber: receiptBySale.get(s.id) ?? "—", soldAt: s.sold_at, totalAmount: Number(s.total_amount),
+      cashierName: cashierById.get(s.cashier_id) ?? "—",
+      patientId: s.patient_id, patientName: s.patient_id ? patientById.get(s.patient_id) ?? null : null,
+      insuranceProviderName: claim ? providerById.get(claim.insurance_provider_id) ?? null : null,
+      claimStatus: (claim?.status as InsuranceClaimStatus) ?? null,
+      itemCount: itemCountBySale.get(s.id) ?? 0,
+    }
+  })
+}
+
+// ── Daily revenue trend (Transactions page) ─────────────────────────────────
+// A lean, dedicated query rather than reusing listSaleHistory()'s capped,
+// receipt/cashier/patient-joined rows -- this only needs sold_at + amount, and
+// must see every sale in the window regardless of listSaleHistory()'s limit.
+
+export interface DailyRevenuePoint {
+  label: string
+  revenue: number
+}
+
+export async function loadDailyRevenueTrend(days = 7): Promise<DailyRevenuePoint[]> {
+  const DAY_MS = 86_400_000
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const windowStart = new Date(startOfToday.getTime() - (days - 1) * DAY_MS)
+
+  const { data, error } = await supabase.from("sales").select("total_amount, sold_at").gte("sold_at", windowStart.toISOString())
+  if (error) raise(error, "Could not load the daily revenue trend.")
+
+  const buckets = new Map<string, number>()
+  for (let i = 0; i < days; i++) {
+    const day = new Date(windowStart.getTime() + i * DAY_MS)
+    buckets.set(day.toDateString(), 0)
+  }
+  for (const sale of data ?? []) {
+    const key = new Date(sale.sold_at).toDateString()
+    if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + Number(sale.total_amount))
+  }
+
+  return Array.from(buckets.entries()).map(([key, revenue]) => ({
+    label: new Date(key).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+    revenue,
   }))
 }

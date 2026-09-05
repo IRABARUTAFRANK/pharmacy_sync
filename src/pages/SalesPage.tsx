@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react"
-import { Btn, CenterAlert, SectionHeader } from "../components"
+import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Btn, CenterAlert, ChartTooltip, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { findPatientByIdentifier, upsertPatient, type PatientGender } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
 import { useScanner } from "../lib/scanner"
 import {
-  completeSale, effectiveCoveragePercentage, getSaleReceipt, loadCoverageOverrides, loadInsuranceProviders, scanBarcode,
-  type InsuranceProvider, type ReceiptData, type ScannedBarcode, type SellMode,
+  completeSale, effectiveCoveragePercentage, getSaleReceipt, listSaleHistory, loadCoverageOverrides, loadInsuranceProviders,
+  loadPosDashboardSnapshot, scanBarcode,
+  type InsuranceProvider, type PosDashboardSnapshot, type ReceiptData, type SaleHistoryRow, type ScannedBarcode, type SellMode,
 } from "../lib/sales"
 
 // One physical scan (pack or carton) becomes one cart line. Its own barcode
@@ -267,7 +269,24 @@ interface PendingScan {
   amount: string
 }
 
-export default function SalesPage() {
+// ── At-a-glance panel — real numbers from lib/sales.ts's loadPosDashboardSnapshot(),
+// not a cash/card/mobile-money split (public.sales has no payment_method
+// column yet, see that function's own note). ──────────────────────────────────
+
+function PosStatTile({ icon, value, valueColor, label, sub }: { icon: string; value: string; valueColor: string; label: string; sub: string }) {
+  return (
+    <div style={{ flex: "1 1 200px", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: valueColor, fontFamily: "var(--font-display)", letterSpacing: "-0.02em" }}>{value}</span>
+        <span style={{ fontSize: 18 }}>{icon}</span>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--ink)" }}>{label}</div>
+      <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>{sub}</div>
+    </div>
+  )
+}
+
+export default function SalesPage({ onViewAllTransactions }: { onViewAllTransactions?: () => void }) {
   const { t } = useTranslation()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [providers, setProviders] = useState<InsuranceProvider[]>([])
@@ -282,6 +301,8 @@ export default function SalesPage() {
   const [notice, setNotice] = useState("")
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(BLANK_PATIENT)
+  const [snapshot, setSnapshot] = useState<PosDashboardSnapshot | null>(null)
+  const [recentSales, setRecentSales] = useState<SaleHistoryRow[]>([])
   const scanRef = useRef<HTMLInputElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const scanner = useScanner()
@@ -289,6 +310,29 @@ export default function SalesPage() {
   useEffect(() => {
     void Promise.all([listTaxRates(), loadInsuranceProviders()]).then(([rates, provs]) => { setTaxRates(rates); setProviders(provs) })
   }, [])
+
+  // Non-critical: the checkout flow works with or without this panel, so a
+  // failed load here doesn't block or interrupt a sale in progress.
+  async function loadDashboard() {
+    try {
+      const [snap, recent] = await Promise.all([loadPosDashboardSnapshot(), listSaleHistory(8)])
+      setSnapshot(snap)
+      setRecentSales(recent)
+    } catch {
+      /* silent — see comment above */
+    }
+  }
+
+  useEffect(() => { void loadDashboard() }, [])
+
+  async function openRecentReceipt(saleId: string) {
+    setError("")
+    try {
+      setReceipt(await getSaleReceipt(saleId))
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("salesPage.dashReceiptLoadError"))
+    }
+  }
 
   useEffect(() => { if (!receipt && !pending) scanRef.current?.focus() }, [receipt, cart.length, pending])
   useEffect(() => { if (pending && pending.mode !== "whole") amountRef.current?.focus() }, [pending?.mode])
@@ -453,6 +497,7 @@ export default function SalesPage() {
       setProviderId("")
       setPatientDraft(BLANK_PATIENT)
       setNotice(t("salesPage.saleCompletedNotice"))
+      void loadDashboard()
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("salesPage.completeSaleError"))
     } finally {
@@ -473,6 +518,55 @@ export default function SalesPage() {
     <div className="animate-fade-in">
       {error && <CenterAlert key={error} message={error} />}
       <SectionHeader title={t("page.sales")} subtitle={t("salesPage.subtitle")} />
+
+      {snapshot && (
+        <>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
+            <PosStatTile
+              icon="💰" valueColor="#16a34a"
+              value={fmtRWFExact(snapshot.todayRevenue)}
+              label={t("salesPage.dashRevenueLabel")}
+              sub={t("salesPage.dashRevenueSub", { count: snapshot.todayTransactions })}
+            />
+            <PosStatTile
+              icon="🧺" valueColor="#16a34a"
+              value={fmtRWFExact(snapshot.avgBasketValue)}
+              label={t("salesPage.dashBasketLabel")}
+              sub={snapshot.avgBasketChangePct == null
+                ? t("salesPage.dashBasketNoBaseline")
+                : t("salesPage.dashBasketChange", { pct: `${snapshot.avgBasketChangePct > 0 ? "+" : ""}${snapshot.avgBasketChangePct.toFixed(1)}` })}
+            />
+            <PosStatTile
+              icon="🏥" valueColor="#7c3aed"
+              value={String(snapshot.pendingClaimsCount)}
+              label={t("salesPage.dashClaimsLabel")}
+              sub={t("salesPage.dashClaimsSub", { amount: fmtRWFExact(snapshot.pendingClaimsAmount) })}
+            />
+          </div>
+
+          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{t("salesPage.dashHourlyTitle")}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 10 }}>
+              {t("salesPage.dashHourlySub", { date: new Date().toLocaleDateString() })}
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={snapshot.hourly} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gPosHourly" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
+                <XAxis dataKey="hour" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={1} />
+                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="revenue" name={t("salesPage.dashHourlyRevenueLabel")} stroke="#16a34a" fill="url(#gPosHourly)" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         {/* Left: patient + scan + cart */}
@@ -655,6 +749,60 @@ export default function SalesPage() {
             {completing ? t("salesPage.completingButton") : t("salesPage.completeSaleButton", { count: cart.length })}
           </Btn>
         </div>
+      </div>
+
+      <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{t("salesPage.dashRecentTitle")}</div>
+            <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 2 }}>{t("salesPage.dashRecentSub")}</div>
+          </div>
+          {onViewAllTransactions && (
+            <button
+              onClick={onViewAllTransactions}
+              style={{ fontSize: 12, fontWeight: 600, color: "var(--primary)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", padding: "2px 0" }}
+            >
+              {t("salesPage.dashViewAllLink")} →
+            </button>
+          )}
+        </div>
+        {recentSales.length === 0 ? (
+          <div style={{ padding: 30, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("salesPage.dashRecentEmpty")}</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                  {[
+                    t("transactions.colReceipt"), t("transactions.colDate"), t("transactions.colPatient"),
+                    t("transactions.colCashier"), t("transactions.colItems"), t("transactions.colTotal"), t("transactions.colInsurance"),
+                  ].map(h => (
+                    <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--ink-muted)", fontWeight: 500, fontSize: 11, whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {recentSales.map(r => (
+                  <tr
+                    key={r.saleId}
+                    style={{ borderBottom: "1px solid var(--bg-alt)", cursor: "pointer", transition: "background 0.13s" }}
+                    onClick={() => void openRecentReceipt(r.saleId)}
+                    onMouseEnter={e => (e.currentTarget.style.background = "var(--bg)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <td style={{ padding: "9px 12px", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--primary)", whiteSpace: "nowrap" }}>{r.receiptNumber}</td>
+                    <td style={{ padding: "9px 12px", color: "var(--ink-mid)", whiteSpace: "nowrap" }}>{new Date(r.soldAt).toLocaleString()}</td>
+                    <td style={{ padding: "9px 12px" }}>{r.patientName ?? <span style={{ color: "var(--ink-faint)" }}>{t("transactions.noPatient")}</span>}</td>
+                    <td style={{ padding: "9px 12px" }}>{r.cashierName}</td>
+                    <td style={{ padding: "9px 12px" }}>{r.itemCount}</td>
+                    <td style={{ padding: "9px 12px", fontWeight: 600, whiteSpace: "nowrap" }}>{fmtRWFExact(r.totalAmount)}</td>
+                    <td style={{ padding: "9px 12px" }}>{r.insuranceProviderName ?? <span style={{ color: "var(--ink-faint)" }}>{t("transactions.selfPay")}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
