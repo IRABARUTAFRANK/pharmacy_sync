@@ -30,7 +30,7 @@ function VisitHistory({ patientId }: { patientId: string }) {
       <tbody>
         {rows.map(row => (
           <tr key={row.saleId} style={{ borderTop: "1px solid var(--bg-alt)" }}>
-            <td style={{ padding: "5px 8px", fontFamily: "var(--font-mono)" }}>{row.receiptNumber}</td>
+            <td style={{ padding: "5px 8px", fontFamily: "var(--font-mono)", fontWeight: 600, color: "var(--primary)" }}>{row.receiptNumber}</td>
             <td style={{ padding: "5px 8px" }}>{new Date(row.soldAt).toLocaleString()}</td>
             <td style={{ padding: "5px 8px" }}>{row.itemCount}</td>
             <td style={{ padding: "5px 8px", fontWeight: 600 }}>{fmtRWFExact(row.totalAmount)}</td>

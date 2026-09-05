@@ -290,7 +290,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
           <Table
             columns={TXN_COLUMNS.filter(c => visibleColumns.has(c.key))}
             rows={filtered.map(r => ({
-              receipt: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{r.receiptNumber}</span>,
+              receipt: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--primary)' }}>{r.receiptNumber}</span>,
               when: new Date(r.soldAt).toLocaleString(),
               patient: r.patientName ?? <span style={{ color: "var(--ink-faint)" }}>{t("transactions.noPatient")}</span>,
               cashier: r.cashierName,
