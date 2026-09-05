@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
-import { Btn, CenterAlert, SectionHeader } from "../components"
+import { Btn, CenterAlert, ExportModal, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
+import type { ReportSection } from "../lib/export"
 import { useTranslation } from "../lib/i18n"
 import { HISTORY_CATEGORIES, loadBranchHistory, type HistoryCategory, type HistoryEvent } from "../lib/history"
 import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
@@ -61,10 +62,6 @@ function Tag({ label, color, bg }: { label: string; color: string; bg: string })
       {label}
     </span>
   )
-}
-
-function csvEscape(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
 }
 
 function EventCard({ event }: { event: HistoryEvent }) {
@@ -181,6 +178,7 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
   const [dateTo, setDateTo] = useState("")
   const [activeCategory, setActiveCategory] = useState<HistoryCategory | "all">("all")
   const [view, setView] = useState<"timeline" | "table">("timeline")
+  const [showExportModal, setShowExportModal] = useState(false)
 
   // Same top-bar-drives-the-fields behavior as TransactionsPage -- "Custom
   // Range" leaves the user's own dateFrom/dateTo untouched.
@@ -238,22 +236,13 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
     return Array.from(map.values())
   }, [filtered])
 
-  function downloadCsv() {
-    const header = ["Date & Time", "Category", "Event", "Description", "Status", "Amount", "By"]
-    const rows = filtered.map(e => [
+  const historySection: ReportSection = {
+    title: t("page.history"),
+    headers: ["Date & Time", "Category", "Event", "Description", "Status", "Amount", "By"],
+    rows: filtered.map(e => [
       new Date(e.eventAt).toLocaleString(), t(`history.category.${e.category}` as any), e.title, e.description,
-      e.status ?? "", e.amount === null ? "" : String(e.amount), e.actorName ?? "",
-    ])
-    const csv = [header, ...rows].map(row => row.map(cell => csvEscape(String(cell))).join(",")).join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `history-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
+      e.status ?? "", e.amount === null ? "" : Math.round(e.amount), e.actorName ?? "",
+    ]),
   }
 
   return (
@@ -342,7 +331,7 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
         </div>
         <span style={{ fontSize: 12, color: "var(--ink-faint)", whiteSpace: "nowrap" }}>{t("history.eventsCount", { count: filtered.length })}</span>
         <div style={{ flex: 1 }} />
-        <Btn variant="ghost" onClick={downloadCsv}>↓ {t("history.export")}</Btn>
+        <Btn variant="ghost" onClick={() => setShowExportModal(true)}>↓ {t("history.export")}</Btn>
       </div>
 
       {loading ? (
@@ -353,6 +342,18 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
         <TimelineView groups={groups} />
       ) : (
         <TableView events={filtered} />
+      )}
+
+      {showExportModal && (
+        <ExportModal
+          title={t("history.exportModalTitle")}
+          sections={[historySection]}
+          filenameBase={`history-${new Date().toISOString().slice(0, 10)}`}
+          onClose={() => setShowExportModal(false)}
+          formatLabel={t("history.exportFormatLabel")}
+          cancelLabel={t("history.exportCancel")}
+          downloadLabel={format => t("history.exportDownload", { format })}
+        />
       )}
     </div>
   )

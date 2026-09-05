@@ -4,30 +4,13 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { fmtRWFExact, pct, type Role } from '../data'
-import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal } from '../components'
+import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal } from '../components'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
-import { loadOverview, type OverviewData, type OverviewPeriod, type TopProduct, type TrendPoint } from '../lib/overview'
+import { loadOverview, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
 import type { LiveAlert } from '../lib/alerts'
 import type { TranslationKey } from '../lib/i18n/en'
-
-// A real client-side download (Blob + a throwaway <a download>), not a
-// decorative button -- unlike App.tsx's ExportModal, whose "Download CSV"
-// button is wired to nothing but onClose. The trend rows are already in
-// memory (data.revenueTrend), so no extra fetch is needed to produce it.
-function downloadTrendCsv(rows: TrendPoint[], periodLabel: string, metric: DrillDownMetric) {
-  const header = 'Period,Revenue (RWF),VAT (RWF),Transactions,Items Dispensed'
-  const lines = rows.map(r => `${r.label},${Math.round(r.revenue)},${Math.round(r.vat)},${r.transactions},${r.items}`)
-  const blob = new Blob([[header, ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${metric}-trend-${periodLabel.toLowerCase().replace(/\s+/g, '-')}.csv`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
+import { filenameSafe, type ReportSection } from '../lib/export'
 
 type DrillDownMetric = 'revenue' | 'transactions' | 'items'
 
@@ -123,12 +106,6 @@ function DashboardBuilderModal({ visible, onToggle, onClose }: { visible: Record
 // removed in favor of this: hardcoded share link, dead Copy button, a
 // Download button that only closed the modal without producing a file).
 
-interface ReportSection {
-  title: string
-  headers: string[]
-  rows: (string | number)[][]
-}
-
 function buildDashboardReport(data: OverviewData, branchName: string, isPharmacist: boolean): ReportSection[] {
   const pctText = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(1)}%`)
 
@@ -172,103 +149,13 @@ function buildDashboardReport(data: OverviewData, branchName: string, isPharmaci
   ]
 }
 
-function csvCell(value: string | number): string {
-  const s = String(value)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
-function reportToCsv(sections: ReportSection[]): string {
-  const lines: string[] = []
-  for (const section of sections) {
-    lines.push(section.title)
-    lines.push(section.headers.join(','))
-    for (const row of section.rows) lines.push(row.map(csvCell).join(','))
-    lines.push('')
-  }
-  return lines.join('\n')
-}
-
-// Excel opens an .xls file containing an HTML table directly -- a
-// long-standing, genuinely working technique for a real spreadsheet export
-// with no library and no server round-trip.
-function reportToExcelHtml(sections: ReportSection[], branchName: string, periodLabel: string): string {
-  const esc = (v: string | number) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const tables = sections.map(section => `
-    <h3>${esc(section.title)}</h3>
-    <table border="1" cellspacing="0" cellpadding="4">
-      <tr>${section.headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr>
-      ${section.rows.map(row => `<tr>${row.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}
-    </table>`).join('<br/>')
-  return `<html><head><meta charset="utf-8"></head><body><h2>${esc(`PharmSync Dashboard — ${branchName} — ${periodLabel}`)}</h2>${tables}</body></html>`
-}
-
-function downloadBlob(content: string, mime: string, filename: string) {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
-}
-
-function filenameSafe(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, '-')
-}
-
-function ExportDashboardModal({ data, branchName, isPharmacist, onClose, onPrintPdf }: {
-  data: OverviewData; branchName: string; isPharmacist: boolean; onClose: () => void; onPrintPdf: () => void
-}) {
-  const { t } = useTranslation()
-  const [fmt, setFmt] = useState<'csv' | 'pdf' | 'excel'>('pdf')
-
-  const handleDownload = () => {
-    const base = `dashboard-export-${filenameSafe(branchName)}-${filenameSafe(data.periodLabel)}`
-    if (fmt === 'csv') {
-      downloadBlob(reportToCsv(buildDashboardReport(data, branchName, isPharmacist)), 'text/csv;charset=utf-8;', `${base}.csv`)
-      onClose()
-    } else if (fmt === 'excel') {
-      downloadBlob(reportToExcelHtml(buildDashboardReport(data, branchName, isPharmacist), branchName, data.periodLabel), 'application/vnd.ms-excel;charset=utf-8;', `${base}.xls`)
-      onClose()
-    } else {
-      onPrintPdf()
-    }
-  }
-
-  return (
-    <Modal title={t('overviewPage.exportModalTitle')} onClose={onClose} width={440}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>{t('overviewPage.exportFormatLabel')}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {(['csv', 'pdf', 'excel'] as const).map(f => (
-              <button key={f} onClick={() => setFmt(f)} style={{
-                flex: 1, padding: '10px', borderRadius: 8, fontFamily: 'inherit', cursor: 'pointer',
-                border: `1.5px solid ${fmt === f ? 'var(--primary)' : 'var(--border)'}`,
-                background: fmt === f ? 'var(--primary-light)' : '#fff',
-                color: fmt === f ? 'var(--primary)' : 'var(--ink-mid)',
-                fontWeight: fmt === f ? 700 : 400, fontSize: 13,
-              }}>{f.toUpperCase()}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <Btn variant="secondary" onClick={onClose}>{t('overviewPage.exportCancel')}</Btn>
-          <Btn variant="primary" onClick={handleDownload}>↓ {t('overviewPage.exportDownload', { format: fmt.toUpperCase() })}</Btn>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
 // One modal shape shared by every KPI tile that gets a drill-down: same three
 // summary tiles, same trend chart styling as the page's own "Revenue Trend"
 // chart, same export/full-report actions. Only the metric-specific bits
 // (title, current value, color, which TrendPoint field to plot) vary.
 function TrendDrillDownModal({ metric, data, onClose, onViewFullReport }: { metric: DrillDownMetric; data: OverviewData; onClose: () => void; onViewFullReport?: () => void }) {
   const { t } = useTranslation()
+  const [showExport, setShowExport] = useState(false)
   const config = DRILL_DOWN_CONFIG[metric]
   const delta = metric === 'revenue' ? data.revenue : metric === 'transactions' ? data.transactions : data.itemsDispensed
   const change = delta.changePct
@@ -277,8 +164,14 @@ function TrendDrillDownModal({ metric, data, onClose, onViewFullReport }: { metr
   const { color, gradientId } = config
   const title = t(config.titleKey)
   const valueLabel = t(config.labelKey)
+  const section: ReportSection = {
+    title: `${title} — ${data.periodLabel}`,
+    headers: ['Period', 'Revenue (RWF)', 'VAT (RWF)', 'Transactions', 'Items Dispensed'],
+    rows: data.revenueTrend.map(p => [p.label, Math.round(p.revenue), Math.round(p.vat), p.transactions, p.items]),
+  }
 
   return (
+    <>
     <Modal title={title} onClose={onClose} width={640}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
@@ -318,11 +211,20 @@ function TrendDrillDownModal({ metric, data, onClose, onViewFullReport }: { metr
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Btn variant="secondary" onClick={() => downloadTrendCsv(data.revenueTrend, data.periodLabel, metric)}>{t('overviewPage.drillDownExportCsv')}</Btn>
+          <Btn variant="secondary" onClick={() => setShowExport(true)}>{t('overviewPage.drillDownExport')}</Btn>
           {onViewFullReport && <Btn variant="primary" onClick={onViewFullReport}>{t('overviewPage.drillDownViewFullReport')}</Btn>}
         </div>
       </div>
     </Modal>
+    {showExport && (
+      <ExportModal
+        title={title} sections={[section]} filenameBase={`${metric}-trend-${filenameSafe(data.periodLabel)}`}
+        onClose={() => setShowExport(false)}
+        formatLabel={t('overviewPage.exportFormatLabel')} cancelLabel={t('overviewPage.exportCancel')}
+        downloadLabel={format => t('overviewPage.exportDownload', { format })}
+      />
+    )}
+    </>
   )
 }
 
@@ -334,6 +236,7 @@ function TrendDrillDownModal({ metric, data, onClose, onViewFullReport }: { metr
 // already computes (data.inventoryValue, data.expiring).
 function InventoryDrillDownModal({ data, onClose, onViewFullReport }: { data: OverviewData; onClose: () => void; onViewFullReport?: () => void }) {
   const { t } = useTranslation()
+  const [showExport, setShowExport] = useState(false)
   const expiringValue = data.expiring.value
   const healthyValue = Math.max(data.inventoryValue - expiringValue, 0)
   const hasValue = data.inventoryValue > 0
@@ -343,23 +246,21 @@ function InventoryDrillDownModal({ data, onClose, onViewFullReport }: { data: Ov
         { name: t('overviewPage.drillDownExpiringStock'), value: expiringValue, color: '#dc2626' },
       ]
     : []
-
-  const handleExport = () => {
-    const section: ReportSection = {
-      title: `Inventory Value — ${data.periodLabel}`,
-      headers: ['Metric', 'Value'],
-      rows: [
-        ['Total Inventory Value (RWF)', Math.round(data.inventoryValue)],
-        ['Expiring ≤ 90 Days (RWF)', Math.round(expiringValue)],
-        ['Healthy Stock Value (RWF)', Math.round(healthyValue)],
-        ['Below Reorder Point (products)', data.belowReorder],
-      ],
-    }
-    downloadBlob(reportToCsv([section]), 'text/csv;charset=utf-8;', `inventory-value-${filenameSafe(data.periodLabel)}.csv`)
+  const title = t('overviewPage.drillDownTitleInventory')
+  const section: ReportSection = {
+    title: `${title} — ${data.periodLabel}`,
+    headers: ['Metric', 'Value'],
+    rows: [
+      ['Total Inventory Value (RWF)', Math.round(data.inventoryValue)],
+      ['Expiring ≤ 90 Days (RWF)', Math.round(expiringValue)],
+      ['Healthy Stock Value (RWF)', Math.round(healthyValue)],
+      ['Below Reorder Point (products)', data.belowReorder],
+    ],
   }
 
   return (
-    <Modal title={t('overviewPage.drillDownTitleInventory')} onClose={onClose} width={640}>
+    <>
+    <Modal title={title} onClose={onClose} width={640}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
           <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px' }}>
@@ -406,11 +307,20 @@ function InventoryDrillDownModal({ data, onClose, onViewFullReport }: { data: Ov
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Btn variant="secondary" onClick={handleExport}>{t('overviewPage.drillDownExportCsv')}</Btn>
+          <Btn variant="secondary" onClick={() => setShowExport(true)}>{t('overviewPage.drillDownExport')}</Btn>
           {onViewFullReport && <Btn variant="primary" onClick={onViewFullReport}>{t('overviewPage.drillDownViewFullReport')}</Btn>}
         </div>
       </div>
     </Modal>
+    {showExport && (
+      <ExportModal
+        title={title} sections={[section]} filenameBase={`inventory-value-${filenameSafe(data.periodLabel)}`}
+        onClose={() => setShowExport(false)}
+        formatLabel={t('overviewPage.exportFormatLabel')} cancelLabel={t('overviewPage.exportCancel')}
+        downloadLabel={format => t('overviewPage.exportDownload', { format })}
+      />
+    )}
+    </>
   )
 }
 
@@ -428,19 +338,18 @@ const EXPIRY_BUCKET_COLOR: Record<string, string> = {
 // straight from lib/overview.ts's expiringBreakdown.
 function ExpiringDrillDownModal({ data, onClose, onViewFullReport }: { data: OverviewData; onClose: () => void; onViewFullReport?: () => void }) {
   const { t } = useTranslation()
+  const [showExport, setShowExport] = useState(false)
   const hasRisk = data.expiring.count > 0
-
-  const handleExport = () => {
-    const section: ReportSection = {
-      title: `Expiring Stock — ${data.periodLabel}`,
-      headers: ['Window', 'Batches', 'Value (RWF)'],
-      rows: data.expiringBreakdown.map(b => [b.bucket, b.count, Math.round(b.value)]),
-    }
-    downloadBlob(reportToCsv([section]), 'text/csv;charset=utf-8;', `expiring-stock-${filenameSafe(data.periodLabel)}.csv`)
+  const title = t('overviewPage.drillDownTitleExpiring')
+  const section: ReportSection = {
+    title: `${title} — ${data.periodLabel}`,
+    headers: ['Window', 'Batches', 'Value (RWF)'],
+    rows: data.expiringBreakdown.map(b => [b.bucket, b.count, Math.round(b.value)]),
   }
 
   return (
-    <Modal title={t('overviewPage.drillDownTitleExpiring')} onClose={onClose} width={640}>
+    <>
+    <Modal title={title} onClose={onClose} width={640}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
           <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 14px' }}>
@@ -477,11 +386,20 @@ function ExpiringDrillDownModal({ data, onClose, onViewFullReport }: { data: Ove
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Btn variant="secondary" onClick={handleExport}>{t('overviewPage.drillDownExportCsv')}</Btn>
+          <Btn variant="secondary" onClick={() => setShowExport(true)}>{t('overviewPage.drillDownExport')}</Btn>
           {onViewFullReport && <Btn variant="primary" onClick={onViewFullReport}>{t('overviewPage.drillDownViewFullReport')}</Btn>}
         </div>
       </div>
     </Modal>
+    {showExport && (
+      <ExportModal
+        title={title} sections={[section]} filenameBase={`expiring-stock-${filenameSafe(data.periodLabel)}`}
+        onClose={() => setShowExport(false)}
+        formatLabel={t('overviewPage.exportFormatLabel')} cancelLabel={t('overviewPage.exportCancel')}
+        downloadLabel={format => t('overviewPage.exportDownload', { format })}
+      />
+    )}
+    </>
   )
 }
 
@@ -623,14 +541,6 @@ export default function OverviewPage({
     })
   }
 
-  // The export modal closes before printing so it (and its backdrop) never
-  // shows up as blank pages in the printed/"Save as PDF" output -- the
-  // .print-only report node further down is the only thing print media reveals.
-  const handlePrintPdf = () => {
-    setShowExportModal(false)
-    setTimeout(() => window.print(), 60)
-  }
-
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -721,7 +631,6 @@ export default function OverviewPage({
 
   return (
     <>
-      <div className="no-print">
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: 'var(--ink-muted)', flex: 1 }}>
@@ -975,39 +884,6 @@ export default function OverviewPage({
           )}
         </Card>
       )}
-      </div>
-
-      {/* Printable report -- screen-hidden (.print-only, see index.css), the
-          only content @media print reveals once the export modal calls
-          window.print() for the "PDF" format. Mirrors the on-screen sections
-          above with real OverviewData, not a separate/fake payload. */}
-      <div className="print-only" style={{ padding: 24 }}>
-        <h2 style={{ fontFamily: 'var(--font-display)', marginBottom: 4 }}>PharmSync Dashboard</h2>
-        <p style={{ fontSize: 13, color: '#555', marginTop: 0, marginBottom: 20 }}>{branchName} · {data.periodLabel}</p>
-        {buildDashboardReport(data, branchName, isPharmacist).map(section => (
-          <div key={section.title} style={{ marginBottom: 22, breakInside: 'avoid' }}>
-            <h3 style={{ fontSize: 14, marginBottom: 6 }}>{section.title}</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-              <thead>
-                <tr>
-                  {section.headers.map(h => (
-                    <th key={h} style={{ textAlign: 'left', border: '1px solid #ccc', padding: '4px 6px' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {section.rows.map((row, i) => (
-                  <tr key={i}>
-                    {row.map((cell, j) => (
-                      <td key={j} style={{ border: '1px solid #ccc', padding: '4px 6px' }}>{cell}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
-      </div>
 
       {drillDownMetric && (
         <TrendDrillDownModal
@@ -1035,12 +911,15 @@ export default function OverviewPage({
       )}
 
       {showExportModal && (
-        <ExportDashboardModal
-          data={data}
-          branchName={branchName}
-          isPharmacist={isPharmacist}
+        <ExportModal
+          title={t('overviewPage.exportModalTitle')}
+          sections={buildDashboardReport(data, branchName, isPharmacist)}
+          filenameBase={`dashboard-export-${filenameSafe(branchName)}-${filenameSafe(data.periodLabel)}`}
+          docTitle={`PharmSync Dashboard — ${branchName} — ${data.periodLabel}`}
           onClose={() => setShowExportModal(false)}
-          onPrintPdf={handlePrintPdf}
+          formatLabel={t('overviewPage.exportFormatLabel')}
+          cancelLabel={t('overviewPage.exportCancel')}
+          downloadLabel={format => t('overviewPage.exportDownload', { format })}
         />
       )}
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import Barcode from 'react-barcode'
 import { fmtRWFExact, alertColors, type AlertSeverity } from './data'
 import logoImg from './assets/logo.png'
+import { downloadReport, type ExportFormat, type ReportSection } from './lib/export'
 
 // ─── Brand mark ───────────────────────────────────────────────────────────────
 // One logo for the whole product. The marketing home page and the sign-in
@@ -260,6 +261,70 @@ export function Modal({ title, onClose, children, width = 620 }: {
         <div style={{ overflowY: 'auto', flex: 1, padding: '20px' }}>{children}</div>
       </div>
     </div>
+  )
+}
+
+// ─── Export Modal ───────────────────────────────────────────────────────────
+// The one format-choice picker every "Export"/"Download" button in the app
+// uses (Overview dashboard + its drill-downs, Transactions, Branch History):
+// pass it the data already shaped as ReportSection[] and it handles CSV,
+// Excel (.xls), and "PDF" (a print-styled document opened in a new tab, print
+// dialog's own "Save as PDF" does the rest) uniformly. See lib/export.ts for
+// the actual file-building logic -- this component is just the UI + format
+// state around downloadReport().
+//
+// No i18n here on purpose: components.tsx has no dependency on lib/i18n
+// anywhere else, so the handful of labels are passed in by the caller (who
+// already has useTranslation() in scope) rather than importing it just for
+// this one component.
+
+export function ExportModal({
+  title, sections, filenameBase, docTitle, onClose, formats = ['csv', 'pdf', 'excel'],
+  formatLabel = 'Format', cancelLabel = 'Cancel', downloadLabel = (format: string) => `Download ${format}`,
+}: {
+  title: string
+  sections: ReportSection[]
+  filenameBase: string
+  docTitle?: string
+  onClose: () => void
+  formats?: ExportFormat[]
+  formatLabel?: string
+  cancelLabel?: string
+  downloadLabel?: (format: string) => string
+}) {
+  const [fmt, setFmt] = useState<ExportFormat>(formats[0])
+
+  const handleDownload = () => {
+    downloadReport(sections, fmt, docTitle ?? title, filenameBase)
+    // Every format (including PDF, generated client-side with jsPDF) is a
+    // real, immediate file download -- no print dialog to wait on, no popup
+    // window that might be blocked -- so the modal can always close right away.
+    onClose()
+  }
+
+  return (
+    <Modal title={title} onClose={onClose} width={440}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>{formatLabel}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {formats.map(f => (
+              <button key={f} onClick={() => setFmt(f)} style={{
+                flex: 1, padding: '10px', borderRadius: 8, fontFamily: 'inherit', cursor: 'pointer',
+                border: `1.5px solid ${fmt === f ? 'var(--primary)' : 'var(--border)'}`,
+                background: fmt === f ? 'var(--primary-light)' : '#fff',
+                color: fmt === f ? 'var(--primary)' : 'var(--ink-mid)',
+                fontWeight: fmt === f ? 700 : 400, fontSize: 13,
+              }}>{f.toUpperCase()}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>{cancelLabel}</Btn>
+          <Btn variant="primary" onClick={handleDownload}>↓ {downloadLabel(fmt.toUpperCase())}</Btn>
+        </div>
+      </div>
+    </Modal>
   )
 }
 

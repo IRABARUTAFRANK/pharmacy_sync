@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { CenterAlert, ChartTooltip, ColumnPicker, ProgressBar, SectionHeader, StatusBadge, Table } from "../components"
+import { CenterAlert, ChartTooltip, ColumnPicker, ExportModal, ProgressBar, SectionHeader, StatusBadge, Table } from "../components"
 import { fmtRWFExact } from "../data"
+import type { ReportSection } from "../lib/export"
 import { useTranslation } from "../lib/i18n"
 import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
 import { useGlobalSearch } from "../lib/search"
@@ -47,6 +48,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
   const [dateTo, setDateTo] = useState("")
   const [sourceFilter, setSourceFilter] = useState("")
   const [claimStatusFilter, setClaimStatusFilter] = useState<"" | InsuranceClaimStatus>("")
+  const [showExportModal, setShowExportModal] = useState(false)
 
   const TXN_COLUMNS: { key: TxnColumn; label: string }[] = [
     { key: "receipt", label: t("transactions.colReceipt") },
@@ -146,28 +148,19 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
   }, [filtered, t])
   const maxSourceAmount = Math.max(1, ...paymentSources.map(s => s.amount))
 
-  function downloadLedgerCsv() {
-    const header = ["Receipt", "Date", "Patient", "Cashier", "Items", "Insurance", "Claim Status", "Total (RWF)"].join(",")
-    const escape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-    const lines = filtered.map(r => [
+  const ledgerSection: ReportSection = {
+    title: t("transactions.ledgerTitle"),
+    headers: ["Receipt", "Date", "Patient", "Cashier", "Items", "Insurance", "Claim Status", "Total (RWF)"],
+    rows: filtered.map(r => [
       r.receiptNumber,
       new Date(r.soldAt).toLocaleString(),
       r.patientName ?? "",
       r.cashierName,
-      String(r.itemCount),
+      r.itemCount,
       r.insuranceProviderName ?? t("transactions.selfPay"),
       r.claimStatus ? CLAIM_STATUS_STYLE[r.claimStatus].label : "",
-      String(Math.round(r.totalAmount)),
-    ].map(escape).join(","))
-    const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8;" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `transactions-${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
+      Math.round(r.totalAmount),
+    ]),
   }
 
   if (receipt) return <ReceiptView data={receipt} onClose={() => setReceipt(null)} closeLabel={t("transactions.backToTransactions")} />
@@ -281,7 +274,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
             </select>
             <ColumnPicker columns={TXN_COLUMNS} visible={visibleColumns} onToggle={toggleColumn} />
             <button
-              onClick={downloadLedgerCsv}
+              onClick={() => setShowExportModal(true)}
               style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 8, border: "1px solid var(--border)", background: "#fff", color: "var(--ink-mid)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
             >
               ↓ {t("transactions.exportCsv")}
@@ -313,6 +306,18 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
           />
         )}
       </div>
+
+      {showExportModal && (
+        <ExportModal
+          title={t("transactions.exportModalTitle")}
+          sections={[ledgerSection]}
+          filenameBase={`transactions-${new Date().toISOString().slice(0, 10)}`}
+          onClose={() => setShowExportModal(false)}
+          formatLabel={t("transactions.exportFormatLabel")}
+          cancelLabel={t("transactions.exportCancel")}
+          downloadLabel={format => t("transactions.exportDownload", { format })}
+        />
+      )}
     </div>
   )
 }
