@@ -127,7 +127,13 @@ export default function BarcodeManagerPage() {
     return next
   })
 
+  // Printing must show only the barcode sheet below, not this page's own UI
+  // -- everything from here down to the detail Modal is wrapped in one
+  // .no-print div (see index.css's @media print block) rather than marking
+  // each section individually, so nothing new added to this page later can
+  // accidentally leak into a print job by omission.
   return <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+   <div className="no-print" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
     {error && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>
       {t("barcodeManager.loadErrorPrefix")}: {error}. {t("barcodeManager.loadErrorHint")}
     </div>}
@@ -333,6 +339,7 @@ export default function BarcodeManagerPage() {
         <Btn variant="primary" small onClick={() => { setPrintJob({ title: t("barcodeManager.printBarcodeTitle", { code: selected.code }), labels: [toPrintable(selected)] }); setSelected(null) }}>🖨 {t("barcodeManager.printThisBarcode")}</Btn>
       </div>
     </Modal>}
+   </div>
 
     {printJob && (
       <div style={{ marginTop: 4 }}>
