@@ -1,0 +1,16 @@
+[
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "id": "14a822f5-e149-415f-b8a3-a938181ff45a",
+    "max_quantity": null,
+    "min_quantity": 30,
+    "product_id": "a4000000-0000-0000-0000-000000000005"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "id": "d78baa41-87be-433e-a89b-ac8b9353f8c8",
+    "max_quantity": null,
+    "min_quantity": 14,
+    "product_id": "a4000000-0000-0000-0000-000000000001"
+  }
+]

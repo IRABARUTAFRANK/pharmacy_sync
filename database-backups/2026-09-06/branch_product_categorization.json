@@ -1,0 +1,82 @@
+[
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "category_id": "59451a5a-5486-45c4-bae2-f8ad84995415",
+    "product_id": "a4000000-0000-0000-0000-000000000009"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "category_id": "80bdc343-1844-4007-a003-1bfdea88d8f9",
+    "product_id": "a4000000-0000-0000-0000-000000000001"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "category_id": "80bdc343-1844-4007-a003-1bfdea88d8f9",
+    "product_id": "a4000000-0000-0000-0000-000000000002"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "category_id": "51a93850-72ec-474b-a684-062569d77fdb",
+    "product_id": "a4000000-0000-0000-0000-000000000005"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "category_id": "1669bc42-a38d-48b1-a840-f57536aa1916",
+    "product_id": "a4000000-0000-0000-0000-00000000000f"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "category_id": "59451a5a-5486-45c4-bae2-f8ad84995415",
+    "product_id": "a4000000-0000-0000-0000-000000000010"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "category_id": "901fea37-e3d4-41d1-b447-568e885a377f",
+    "product_id": "a4000000-0000-0000-0000-00000000000f"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "category_id": "c4d2a9b4-8777-4602-93b8-984466dc9274",
+    "product_id": "a4000000-0000-0000-0000-000000000001"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "category_id": "bdb15a1a-b787-44b4-90e5-8955ba0c6c15",
+    "product_id": "a4000000-0000-0000-0000-000000000001"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "category_id": "a6d3be6b-7030-4833-bd51-4381197cb5ef",
+    "product_id": "a4000000-0000-0000-0000-00000000000f"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "category_id": "458ede2c-6c91-4aec-aa88-9e9d5fd00ae9",
+    "product_id": "a4000000-0000-0000-0000-00000000000f"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "category_id": "458ede2c-6c91-4aec-aa88-9e9d5fd00ae9",
+    "product_id": "a4000000-0000-0000-0000-000000000001"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "category_id": "1c1747e7-bed3-475b-a501-38cfd59a0c87",
+    "product_id": "a4000000-0000-0000-0000-000000000005"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "category_id": "3521f04b-48e1-4ccb-b1a2-e2373c2f79dc",
+    "product_id": "a4000000-0000-0000-0000-000000000003"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "category_id": "d4e5f88f-b2e7-4eb5-998a-618dac2cea10",
+    "product_id": "a4000000-0000-0000-0000-000000000009"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "category_id": "1c1747e7-bed3-475b-a501-38cfd59a0c87",
+    "product_id": "a4000000-0000-0000-0000-000000000010"
+  }
+]

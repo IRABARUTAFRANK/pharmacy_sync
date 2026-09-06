@@ -1,0 +1,642 @@
+[
+  {
+    "barcode_id": "0851194d-19b1-43ab-a2a1-4ffdfd5ac9d1",
+    "id": "6e0e0221-64ec-4fb4-8b36-871644325682",
+    "insurance_covered_amount": 85,
+    "quantity": 1,
+    "sale_id": "7394bb17-0c48-41d8-8061-41f2a6784b5b",
+    "subtotal": 100,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 100
+  },
+  {
+    "barcode_id": "1cc6a36a-cf14-45b8-9ae5-1d2eb2d978e2",
+    "id": "a62cb116-2ab3-4096-b0b1-156dda35611f",
+    "insurance_covered_amount": 300,
+    "quantity": 3,
+    "sale_id": "2b70a376-92af-49da-bb61-2d39a2eaebfb",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "e2feb601-9e8f-4263-a471-a92549d0314e",
+    "id": "1abee46a-a042-4c11-a0eb-fdff3bd21c70",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "2e42025d-8f6f-42ab-a9f8-2582c0540712",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "8e9adf9a-2ff8-4b1b-84eb-b3bff4150929",
+    "id": "efea6aa3-3a3a-4df6-b298-c5c8dc1150c7",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "3af33752-bb18-4c34-baac-992c70d33261",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "613b99cd-9a28-43a1-88f0-2fe390bfe913",
+    "id": "c53c202d-669f-4eaa-bec0-350fe44cfc22",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "3af33752-bb18-4c34-baac-992c70d33261",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "3ad46602-9da2-472e-bdfe-2f47484c3737",
+    "id": "f0ec137a-262f-42d4-ba9c-62dd75349af5",
+    "insurance_covered_amount": 0,
+    "quantity": 1,
+    "sale_id": "3af33752-bb18-4c34-baac-992c70d33261",
+    "subtotal": 100,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 100
+  },
+  {
+    "barcode_id": "d0786402-e0b6-4b5a-9e43-4b988918053a",
+    "id": "627ee158-4685-4903-80e1-b7e6634e314c",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "3af33752-bb18-4c34-baac-992c70d33261",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "81e98e3b-3fa9-402c-bf2d-d13df6a28608",
+    "id": "ba8a7c93-bf90-45a5-8073-05d27f2f7442",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "b90e60c9-79ec-4ee8-800a-236ea281c2fc",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "0913d49b-b3ae-4777-820d-10aae1e6ba5f",
+    "id": "27533de5-2e79-447a-9767-f82cb6fe0874",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "b4d3e7f9-8f27-4c17-97e9-9057972ae9c4",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "1854b2d4-a95b-40ad-9826-a0406a585664",
+    "id": "d53fbfab-1583-476b-91d8-4af7756df2a7",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "38d79999-c6dc-4d6d-a96e-a95d81168d7f",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "32f438ce-c264-433e-a588-907dd18b1008",
+    "id": "4a53bb4b-48fb-4dca-b589-1f63706199f5",
+    "insurance_covered_amount": 2850,
+    "quantity": 3,
+    "sale_id": "3be90112-9b77-43a7-8a55-ed8fab07bb6a",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "3fd2636b-77a4-4329-9b49-3604ec7c47d6",
+    "id": "e456fe2b-ad02-4579-832d-68c811dd07a3",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "5afe5f52-571e-4efc-bd08-e010bf7e5a27",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "f3c5c314-6eec-4fee-bea8-86ed0d5dca04",
+    "id": "2b3f3f37-6dc8-43c9-911e-95076720ffe5",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "65f8fb8b-9808-4b51-b6fa-60a3655189a7",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "2f55af99-7703-40d0-bc94-2a06651899a6",
+    "id": "68c761a5-710e-4439-875b-3c59f6a0c670",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "4e23a58b-1d29-4285-b8e7-675e437d41e8",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "cdef62b8-19f6-47c4-81b4-e2ea4a5a0112",
+    "id": "b7db740c-ddf0-4f8e-8d67-0617175e2c55",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "6891db72-af99-4e4b-81b4-9fdb720d2890",
+    "id": "47b7a917-98bd-4bb7-af41-368789d7c1c6",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "2f197004-27e6-42dd-800a-8fd64ce39449",
+    "id": "8422b4a2-577d-4e76-a328-97bcc5ba156d",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "5b74e385-10dd-4493-bff2-0cdb8b011246",
+    "id": "344ac660-d4f4-4869-b414-45da91f011dc",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "a728ff14-b1d5-4dee-bf38-08f85e1db166",
+    "id": "e5161add-413e-4705-9c5e-b1f22e51deb8",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "4b419dd3-b060-444f-8948-89c15eef0449",
+    "id": "1740ebcb-4bd7-4285-97d9-08f9191f1312",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "fdb5bc0a-d386-4bce-a037-4b9b395146c2",
+    "id": "be936097-73a5-4d1c-bf7f-2c201730a1fe",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "fd6d0097-f2bc-46b0-92bf-4ae362e27cce",
+    "id": "4e7acf34-1636-49c6-a107-a9386811b7e9",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "60f5fbfa-5fe0-449b-bcd4-696e0523f792",
+    "id": "7318ac8d-30ee-4688-afbb-4398e9e0c91c",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "228ac9ee-05b2-43d9-aae2-48e57bc94021",
+    "id": "e99b46c5-9156-4bb9-a522-c52badcc1c8a",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "a187765a-f1d1-4f56-ac7a-e8f0680f7f31",
+    "id": "cca52aa1-093f-4845-a2ef-ad6752e438c4",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "8413a476-3ba2-483c-93d9-678a183b200b",
+    "id": "45656abb-ba92-4b4b-ae3a-e1c1f0abc38a",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "3ac4eeb7-64e1-4f00-ad86-6e04ae4bb825",
+    "id": "d9ca17fc-545a-40e8-bd75-a37b89d6e97b",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "3853d923-7992-4a3b-944e-1a48a4da5b7d",
+    "id": "30d5cec7-8f24-4fcf-99b1-d767bab3b571",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "4df62432-4687-4a1e-afbc-c5f0c7274c73",
+    "id": "ca3c42be-8eb6-4328-a79c-fc29b1bd9eeb",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "0192e23e-b82d-4c3a-947b-0731338a3d7b",
+    "id": "bf9b299c-6346-49be-bc29-4aefc8026e9c",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "43b84ed3-47bc-42f8-ad72-f17c24a7ecf5",
+    "id": "2951187d-46ad-436e-874f-da710348d0e1",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "7949aba2-7665-427a-ab17-5ee56e96a892",
+    "id": "5108b82d-17d3-424b-a118-da7b3faf6650",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "39bb7d54-e192-401c-86db-3b6d464fd62e",
+    "id": "74450ed1-93a1-492c-8df1-b74ae89bbcb2",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "4691f653-cb32-4834-9068-b2cfa041cb1d",
+    "id": "442bf033-7d56-4809-a0d6-43d68189deb0",
+    "insurance_covered_amount": 7221.6,
+    "quantity": 12,
+    "sale_id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "subtotal": 7200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "7412a879-1841-4073-97e9-5f96dcc9a965",
+    "id": "f4151816-e519-45cc-9199-f82204578a4f",
+    "insurance_covered_amount": 3363,
+    "quantity": 5,
+    "sale_id": "01cd2f3b-92ee-4df5-9659-4bb9005835c3",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "7412a879-1841-4073-97e9-5f96dcc9a965",
+    "id": "06a63e0d-1143-4beb-aae6-35410a6acef3",
+    "insurance_covered_amount": 0,
+    "quantity": 3,
+    "sale_id": "36d09231-7177-4395-9309-e4db3bd224b0",
+    "subtotal": 1800,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "7412a879-1841-4073-97e9-5f96dcc9a965",
+    "id": "9f9151d6-7283-4ae1-8aef-d1cdb24f9e02",
+    "insurance_covered_amount": 0,
+    "quantity": 2,
+    "sale_id": "d93439ee-b553-46a4-ae54-4c2015dff291",
+    "subtotal": 1200,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "7412a879-1841-4073-97e9-5f96dcc9a965",
+    "id": "e8a25a88-a345-4df3-9a06-030efae68158",
+    "insurance_covered_amount": 0,
+    "quantity": 1,
+    "sale_id": "4674a2e2-722c-4b9e-9baa-4c4f9f684305",
+    "subtotal": 600,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "76603ef3-8d3d-412a-af67-2f9af427eae6",
+    "id": "dd10c6a8-4389-446f-920e-3e96828a3ed2",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "5115fe60-5e8b-4b20-8345-cd4a296ff443",
+    "id": "69be2903-d43f-42d3-951e-ed0cd4e69651",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "86fcdb7b-13fe-4e7d-86e4-e58aaea3086f",
+    "id": "5c392924-5ebc-4d24-8e4b-12b1912c2979",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "4f563f73-e6f2-48fc-945c-10d333c6cff7",
+    "id": "463c9494-a8d0-41dd-8013-9e35e26f9527",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "fc7dcfc9-d6ab-4b67-a5a5-106e50a0ccbc",
+    "id": "e662b750-52ef-424f-a15f-ef195dc157ca",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "1f218e3f-b432-490f-8aa7-80295023f8dc",
+    "id": "423a9fdf-32fe-4907-a9da-dc2d0a545581",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "9aa50270-7226-4528-9244-2c693b4cb6ad",
+    "id": "91f831db-6bdd-41eb-bec6-7e8e948dfc07",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "96ce6759-a90c-4d62-99db-c57bac5d81bf",
+    "id": "9588f567-52a4-4c0f-bea0-bb6104659ff0",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "876b637f-1f55-4941-80ae-0526f802bc1a",
+    "id": "09cf6da8-ff6d-4247-8530-5af3f6da744b",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "4019d509-04fc-485e-b83b-22918d45c096",
+    "id": "4b285f53-a9d1-4b85-a226-a2ab5d47cf61",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "79bfa765-50ec-4bde-92d4-12b0efd9a993",
+    "id": "17a09900-8c0d-47f3-bc42-329801fdb150",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "97543755-4e4a-417e-9d8e-2f5547934c4f",
+    "id": "1f9b39fa-e449-4e22-ad6f-ca9c97c2f2d3",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "c14bd247-de7b-4438-bd49-051d6c6d45b2",
+    "id": "055829a2-80cc-4b11-a2e3-a14bac5a108c",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "eeb9aba8-95a3-470f-9e00-3bea3915bcda",
+    "id": "3d684acc-8068-4099-a323-9f824337be39",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "ec9f312e-6431-4d28-9cb1-ebf6ec36def3",
+    "id": "72212ef7-f903-4758-b16e-bc9c68dab8ae",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "aaabc73e-1f1f-4a80-a226-58a1ff030b61",
+    "id": "a5ae3edf-faa8-4777-aabd-d89dd99e0b35",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "f229293a-d462-401f-b9a8-ff599b1c22b7",
+    "id": "b47d8755-a72f-42e7-9fa0-4dce05d6c9ff",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "7b244cb5-4530-4755-a02c-8387bb9de116",
+    "id": "950de2a1-ebb3-4172-bed8-1c552e9d9e99",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "ec62b70c-9e0a-4479-9699-4736d1821a8b",
+    "id": "42d1ca77-6588-44dc-bf3f-e2ebbb7ef6a9",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "c9dfa744-1781-4865-b063-c70fca828cdc",
+    "id": "86c8409d-a3a7-49af-9093-a34a395c3e1b",
+    "insurance_covered_amount": 0,
+    "quantity": 12,
+    "sale_id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "subtotal": 6101.69,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002",
+    "unit_price": 600
+  },
+  {
+    "barcode_id": "734fbbcd-0c2b-4850-81e1-f7a90520be15",
+    "id": "26e029a7-abf0-463c-aac9-aaf023fb6d06",
+    "insurance_covered_amount": 2850,
+    "quantity": 3,
+    "sale_id": "95a58305-a732-4cc5-9666-71315cb9c135",
+    "subtotal": 3000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "31b0d101-a9ae-4e0b-825e-261511e4c19b",
+    "id": "fea0ce03-4903-4801-9105-fb0b4cd458d4",
+    "insurance_covered_amount": 0,
+    "quantity": 1,
+    "sale_id": "0d177836-94ad-4798-a5cc-a1861b8f8b16",
+    "subtotal": 4366,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 4366
+  },
+  {
+    "barcode_id": "7e76266a-4a49-427d-b8f4-025de4efd119",
+    "id": "f3b75ee9-c05e-4ec7-a384-c25fa8ee2338",
+    "insurance_covered_amount": 0,
+    "quantity": 2,
+    "sale_id": "9f3de8f5-1187-4587-9cc0-4234280d465f",
+    "subtotal": 2000,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 1000
+  },
+  {
+    "barcode_id": "95aeccf9-400c-4fd2-a6e8-64067537fdba",
+    "id": "14a5531c-882e-4728-b9eb-470ececd7de0",
+    "insurance_covered_amount": 0,
+    "quantity": 1,
+    "sale_id": "a2e730ef-12af-41b7-aa62-402d77f8d2fc",
+    "subtotal": 4364,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 4364
+  },
+  {
+    "barcode_id": "57b27f3d-5b83-4e9c-a6f5-d7b8193ef75a",
+    "id": "26785a49-6969-413d-8154-47c81ab97cdd",
+    "insurance_covered_amount": 0,
+    "quantity": 1,
+    "sale_id": "4bd2920d-aafa-4d6e-90bd-a8962981f12f",
+    "subtotal": 4364,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 4364
+  },
+  {
+    "barcode_id": "1a36aa4f-9107-4738-b199-26de45ae92d9",
+    "id": "9897d010-1ea3-486f-b886-77a0b70575b2",
+    "insurance_covered_amount": 3709.4,
+    "quantity": 1,
+    "sale_id": "56f7dbeb-e9b0-43b4-8da5-e2f805f99763",
+    "subtotal": 4364,
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001",
+    "unit_price": 4364
+  }
+]
