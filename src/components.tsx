@@ -45,7 +45,7 @@ export function Card({ children, style = {}, onClick }: { children: ReactNode; s
       onClick={onClick}
       className={onClick ? 'dashboard-card-clickable' : undefined}
       style={{
-        background: '#fff',
+        background: 'var(--surface)',
         borderRadius: 12,
         border: '1px solid var(--border)',
         padding: '18px 20px',
@@ -97,7 +97,7 @@ export function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
   return (
     <div style={{
-      background: '#fff', border: '1px solid var(--border)', borderRadius: 8,
+      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
       padding: '10px 14px', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', fontSize: 12,
     }}>
       <div style={{ fontWeight: 600, marginBottom: 6, color: 'var(--ink)', fontSize: 13 }}>{label}</div>
@@ -244,7 +244,7 @@ export function Modal({ title, onClose, children, width = 620 }: {
       alignItems: 'center', justifyContent: 'center', padding: 20,
     }} onClick={onClose}>
       <div className="modal-panel" style={{
-        background: '#fff', borderRadius: 14, width: '100%', maxWidth: width,
+        background: 'var(--surface)', borderRadius: 14, width: '100%', maxWidth: width,
         boxShadow: '0 24px 64px rgba(0,0,0,0.16)', overflow: 'hidden',
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
       }} onClick={e => e.stopPropagation()}>
@@ -312,7 +312,7 @@ export function ExportModal({
               <button key={f} onClick={() => setFmt(f)} style={{
                 flex: 1, padding: '10px', borderRadius: 8, fontFamily: 'inherit', cursor: 'pointer',
                 border: `1.5px solid ${fmt === f ? 'var(--primary)' : 'var(--border)'}`,
-                background: fmt === f ? 'var(--primary-light)' : '#fff',
+                background: fmt === f ? 'var(--primary-light)' : 'var(--surface)',
                 color: fmt === f ? 'var(--primary)' : 'var(--ink-mid)',
                 fontWeight: fmt === f ? 700 : 400, fontSize: 13,
               }}>{f.toUpperCase()}</button>
@@ -358,7 +358,7 @@ export function Btn({
   const variants: Record<string, CSSProperties> = {
     primary:   { background: 'var(--btn-bg, var(--primary))', color: '#fff',   border: '1px solid var(--primary)' },
     secondary: { background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--border-strong)' },
-    ghost:     { background: '#fff',                 color: 'var(--ink-mid)', border: '1px solid var(--border)' },
+    ghost:     { background: 'var(--surface)',                 color: 'var(--ink-mid)', border: '1px solid var(--border)' },
     danger:    { background: '#fef2f2',              color: '#dc2626',        border: '1px solid #fca5a5' },
   }
   return <button onClick={onClick} style={{ ...base, ...variants[variant] }}>{children}</button>
@@ -424,7 +424,7 @@ export function SearchSelect({
         }}
         style={{
           width: '100%', padding: '9px 26px 9px 10px', borderRadius: 7, font: 'inherit',
-          boxSizing: 'border-box', background: disabled ? 'var(--bg)' : '#fff',
+          boxSizing: 'border-box', background: disabled ? 'var(--bg)' : 'var(--surface)',
           color: disabled ? 'var(--ink-muted)' : 'var(--ink)',
           border: `1px solid ${invalid ? '#fca5a5' : open ? 'var(--primary)' : 'var(--border)'}`,
           transition: 'border-color 0.15s',
@@ -448,7 +448,7 @@ export function SearchSelect({
           onMouseDown={e => e.preventDefault()}
           style={{
             position: 'absolute', left: 0, right: 0, top: 'calc(100% + 4px)', zIndex: 40,
-            background: '#fff', border: '1px solid var(--border)', borderRadius: 9,
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9,
             boxShadow: '0 10px 30px rgba(0,0,0,0.10)', maxHeight: 240, overflowY: 'auto', padding: 4,
           }}
         >
@@ -513,7 +513,7 @@ export function ColumnPicker<T extends string>({
         onClick={() => setOpen(o => !o)}
         style={{
           display: 'flex', alignItems: 'center', gap: 5, padding: '5px 11px',
-          borderRadius: 8, border: '1px solid var(--border)', background: open ? 'var(--primary-light)' : '#fff',
+          borderRadius: 8, border: '1px solid var(--border)', background: open ? 'var(--primary-light)' : 'var(--surface)',
           color: open ? 'var(--primary)' : 'var(--ink-mid)', fontSize: 11, fontWeight: 600,
           cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
         }}
@@ -525,7 +525,7 @@ export function ColumnPicker<T extends string>({
           <div style={{ position: 'fixed', inset: 0, zIndex: 49 }} onClick={() => setOpen(false)} />
           <div style={{
             position: 'absolute', right: 0, top: '110%', zIndex: 50, width: 220,
-            background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
             boxShadow: '0 8px 28px rgba(0,0,0,0.10)', padding: '8px 0', overflow: 'hidden',
           }}>
             <div style={{ padding: '6px 12px 8px', fontSize: 10, fontWeight: 700, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--bg-alt)' }}>
@@ -860,7 +860,7 @@ export function BarcodeLabelSheet({ title, labels, loading, error, autoTrigger }
         <Btn variant="primary" small onClick={() => setChoosingLayout(true)}>🖨 Print / Save as PDF</Btn>
       </div>
     )}
-    <div className={autoTrigger ? 'print-only' : undefined} style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 10, padding: pref.layout === 'list' ? 14 : '14px 14px 0' }}>
+    <div className={autoTrigger ? 'print-only' : undefined} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: pref.layout === 'list' ? 14 : '14px 14px 0' }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink)', marginBottom: 14 }}>{title}</div>
       {(pref.layout === 'sheet4' || pref.layout === 'sheet2') && (
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-start' }}>
@@ -888,7 +888,7 @@ export function BarcodeLabelSheet({ title, labels, loading, error, autoTrigger }
               style={{
                 textAlign: 'left', padding: '12px 14px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
                 border: `1.5px solid ${opt.id === pref.layout ? 'var(--primary)' : 'var(--border)'}`,
-                background: opt.id === pref.layout ? 'var(--primary-light)' : '#fff',
+                background: opt.id === pref.layout ? 'var(--primary-light)' : 'var(--surface)',
               }}
             >
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>{opt.label}</div>
@@ -898,7 +898,7 @@ export function BarcodeLabelSheet({ title, labels, loading, error, autoTrigger }
 
           <div style={{
             padding: '12px 14px', borderRadius: 10, border: `1.5px solid ${pref.layout === 'thermal' ? 'var(--primary)' : 'var(--border)'}`,
-            background: pref.layout === 'thermal' ? 'var(--primary-light)' : '#fff',
+            background: pref.layout === 'thermal' ? 'var(--primary-light)' : 'var(--surface)',
           }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink)' }}>Thermal roll — one per label</div>
             <div style={{ fontSize: 11, color: 'var(--ink-muted)', margin: '2px 0 8px' }}>Dedicated barcode/thermal label printer — pick your label size:</div>
@@ -912,7 +912,7 @@ export function BarcodeLabelSheet({ title, labels, loading, error, autoTrigger }
                     style={{
                       padding: '6px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                       border: `1px solid ${active ? 'var(--primary)' : 'var(--border-strong)'}`,
-                      background: active ? '#fff' : 'var(--bg)', color: active ? 'var(--primary)' : 'var(--ink-mid)',
+                      background: active ? 'var(--surface)' : 'var(--bg)', color: active ? 'var(--primary)' : 'var(--ink-mid)',
                     }}
                   >
                     {preset.label}
@@ -921,7 +921,7 @@ export function BarcodeLabelSheet({ title, labels, loading, error, autoTrigger }
               })}
               <button
                 onClick={() => setShowCustomThermal(s => !s)}
-                style={{ padding: '6px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px dashed var(--border-strong)', background: '#fff', color: 'var(--ink-mid)' }}
+                style={{ padding: '6px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1px dashed var(--border-strong)', background: 'var(--surface)', color: 'var(--ink-mid)' }}
               >
                 Custom size…
               </button>

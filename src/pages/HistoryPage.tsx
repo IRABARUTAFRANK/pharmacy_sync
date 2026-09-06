@@ -71,7 +71,7 @@ function EventCard({ event }: { event: HistoryEvent }) {
   const statusStyle = event.status ? (STATUS_STYLE[event.status] ?? DEFAULT_STATUS_STYLE) : null
 
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
       <div style={{ width: 34, height: 34, borderRadius: 9, background: `${meta.color}1A`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
         {meta.icon}
       </div>
@@ -111,7 +111,7 @@ function TimelineView({ groups }: { groups: { dateKey: string; dateLabel: string
                 <div key={i} style={{ position: "relative" }}>
                   <div style={{
                     position: "absolute", left: -22 + 4 - 3, top: 21, width: 8, height: 8, borderRadius: "50%",
-                    background: CATEGORY_META[event.category].color, border: "2px solid #fff",
+                    background: CATEGORY_META[event.category].color, border: "2px solid var(--surface)",
                     boxShadow: `0 0 0 1px ${CATEGORY_META[event.category].color}`,
                   }} />
                   <EventCard event={event} />
@@ -128,7 +128,7 @@ function TimelineView({ groups }: { groups: { dateKey: string; dateLabel: string
 function TableView({ events }: { events: HistoryEvent[] }) {
   const { t } = useTranslation()
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
           <thead>
@@ -256,7 +256,7 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
           style={{
             display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, padding: "8px 16px", borderRadius: 20, cursor: "pointer", fontFamily: "inherit",
             border: `1.5px solid ${activeCategory === "all" ? "var(--primary)" : "var(--border)"}`,
-            background: activeCategory === "all" ? "var(--primary-light)" : "#fff",
+            background: activeCategory === "all" ? "var(--primary-light)" : "var(--surface)",
             color: activeCategory === "all" ? "var(--primary)" : "var(--ink-mid)",
           }}
         >
@@ -276,7 +276,7 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
               onClick={() => setActiveCategory(cat)}
               style={{
                 display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 20, cursor: "pointer", fontFamily: "inherit",
-                border: `1.5px solid ${active ? meta.color : "var(--border)"}`, background: active ? `${meta.color}1A` : "#fff",
+                border: `1.5px solid ${active ? meta.color : "var(--border)"}`, background: active ? `${meta.color}1A` : "var(--surface)",
                 color: active ? meta.color : "var(--ink-mid)", transition: "all 0.13s",
               }}
             >
@@ -305,7 +305,7 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{ padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }} />
         </div>
         {(dateFrom || dateTo) && (
-          <button onClick={() => { setDateFrom(""); setDateTo("") }} style={{ padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", fontFamily: "inherit", fontSize: 12, color: "var(--ink-muted)", cursor: "pointer" }}>
+          <button onClick={() => { setDateFrom(""); setDateTo("") }} style={{ padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", fontFamily: "inherit", fontSize: 12, color: "var(--ink-muted)", cursor: "pointer" }}>
             {t("history.clearDates")}
           </button>
         )}
@@ -335,9 +335,9 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
       </div>
 
       {loading ? (
-        <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{t("history.loading")}</div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{t("history.loading")}</div>
       ) : filtered.length === 0 ? (
-        <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{events.length === 0 ? t("history.empty") : t("history.emptyFiltered")}</div>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{events.length === 0 ? t("history.empty") : t("history.emptyFiltered")}</div>
       ) : view === "timeline" ? (
         <TimelineView groups={groups} />
       ) : (

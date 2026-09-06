@@ -6427,3 +6427,293 @@ $$;
 
 revoke all on function public.update_branch_category(uuid, text, text) from public, anon;
 grant execute on function public.update_branch_category(uuid, text, text) to authenticated;
+
+-- ============================================================================
+-- BRANCH SETTINGS — Inventory tab (Stock Levels)
+-- ============================================================================
+-- Two genuinely new, real per-branch settings: expiry_alert_threshold_days
+-- (previously a hardcoded 60 in both the live Inventory Dashboard/Reports
+-- computation and ai_stock_status()) and default_reorder_min (previously no
+-- default existed at all -- a product with no reorder_points row always
+-- showed min_quantity = 0 until a pharmacist manually set one). Both defaults
+-- below (60, 0) preserve today's exact behavior for every existing branch
+-- until an owner actually changes them.
+--
+-- "Allow Negative Stock" from the reference design is deliberately NOT
+-- included here -- complete_sale() already hard-blocks selling a barcode
+-- with zero quantity_available/pieces remaining (see "has already been
+-- sold" / "only has % piece(s) left" / "no packs left to sell" checks).
+-- Overriding that is a real, buildable feature, but it weakens the one
+-- guarantee the whole POS flow currently relies on for accurate stock, so
+-- it needs an explicit decision rather than being bundled in silently.
+
+alter table public.branches
+  add column if not exists expiry_alert_threshold_days integer not null default 60 check (expiry_alert_threshold_days > 0),
+  add column if not exists default_reorder_min integer not null default 0 check (default_reorder_min >= 0);
+
+drop function if exists public.update_branch_details(
+  text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text, text,
+  boolean, boolean, boolean, boolean, boolean, text, boolean, boolean, boolean
+);
+create or replace function public.update_branch_details(
+  p_address text, p_phone text, p_tin text, p_logo_path text default null,
+  p_bank_account_number text default null, p_bank_account_name text default null, p_momo_pay_number text default null,
+  p_out_of_stock_reminder_hours integer default null,
+  p_name text default null, p_email text default null, p_website text default null,
+  p_license_number text default null, p_license_expiry_date date default null, p_ebm_device_serial text default null,
+  p_default_language text default null,
+  p_receipt_number_prefix text default null,
+  p_pos_cash_enabled boolean default null, p_pos_mtn_momo_enabled boolean default null,
+  p_pos_airtel_money_enabled boolean default null, p_pos_card_enabled boolean default null, p_pos_insurance_enabled boolean default null,
+  p_pos_default_payment_method text default null,
+  p_pos_require_patient_name boolean default null, p_pos_allow_discounts boolean default null, p_pos_show_patient_history boolean default null,
+  p_expiry_alert_threshold_days integer default null,
+  p_default_reorder_min integer default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then raise exception 'Only the branch owner may update branch settings'; end if;
+
+  if p_out_of_stock_reminder_hours is not null and (p_out_of_stock_reminder_hours < 1 or p_out_of_stock_reminder_hours > 168) then
+    raise exception 'Reminder interval must be between 1 and 168 hours';
+  end if;
+  if p_default_language is not null and p_default_language not in ('en','fr','rw') then
+    raise exception 'Unsupported language %', p_default_language;
+  end if;
+  if p_pos_default_payment_method is not null and p_pos_default_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported default payment method %', p_pos_default_payment_method;
+  end if;
+  if p_expiry_alert_threshold_days is not null and p_expiry_alert_threshold_days < 1 then
+    raise exception 'Expiry alert threshold must be at least 1 day';
+  end if;
+  if p_default_reorder_min is not null and p_default_reorder_min < 0 then
+    raise exception 'Default reorder minimum cannot be negative';
+  end if;
+
+  update public.branches
+  set address = nullif(btrim(coalesce(p_address, '')), ''),
+      phone = nullif(btrim(coalesce(p_phone, '')), ''),
+      tin = nullif(btrim(coalesce(p_tin, '')), ''),
+      logo_path = nullif(btrim(coalesce(p_logo_path, '')), ''),
+      bank_account_number = nullif(btrim(coalesce(p_bank_account_number, '')), ''),
+      bank_account_name = nullif(btrim(coalesce(p_bank_account_name, '')), ''),
+      momo_pay_number = nullif(btrim(coalesce(p_momo_pay_number, '')), ''),
+      out_of_stock_reminder_hours = coalesce(p_out_of_stock_reminder_hours, out_of_stock_reminder_hours),
+      name = coalesce(nullif(btrim(coalesce(p_name, '')), ''), name),
+      email = nullif(btrim(coalesce(p_email, '')), ''),
+      website = nullif(btrim(coalesce(p_website, '')), ''),
+      license_number = nullif(btrim(coalesce(p_license_number, '')), ''),
+      license_expiry_date = p_license_expiry_date,
+      ebm_device_serial = nullif(btrim(coalesce(p_ebm_device_serial, '')), ''),
+      default_language = coalesce(p_default_language, default_language),
+      receipt_number_prefix = coalesce(nullif(btrim(coalesce(p_receipt_number_prefix, '')), ''), receipt_number_prefix),
+      pos_cash_enabled = coalesce(p_pos_cash_enabled, pos_cash_enabled),
+      pos_mtn_momo_enabled = coalesce(p_pos_mtn_momo_enabled, pos_mtn_momo_enabled),
+      pos_airtel_money_enabled = coalesce(p_pos_airtel_money_enabled, pos_airtel_money_enabled),
+      pos_card_enabled = coalesce(p_pos_card_enabled, pos_card_enabled),
+      pos_insurance_enabled = coalesce(p_pos_insurance_enabled, pos_insurance_enabled),
+      pos_default_payment_method = coalesce(p_pos_default_payment_method, pos_default_payment_method),
+      pos_require_patient_name = coalesce(p_pos_require_patient_name, pos_require_patient_name),
+      pos_allow_discounts = coalesce(p_pos_allow_discounts, pos_allow_discounts),
+      pos_show_patient_history = coalesce(p_pos_show_patient_history, pos_show_patient_history),
+      expiry_alert_threshold_days = coalesce(p_expiry_alert_threshold_days, expiry_alert_threshold_days),
+      default_reorder_min = coalesce(p_default_reorder_min, default_reorder_min)
+  where id = v_branch;
+end;
+$$;
+
+revoke all on function public.update_branch_details(
+  text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text, text,
+  boolean, boolean, boolean, boolean, boolean, text, boolean, boolean, boolean, integer, integer
+) from public, anon;
+grant execute on function public.update_branch_details(
+  text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text, text,
+  boolean, boolean, boolean, boolean, boolean, text, boolean, boolean, boolean, integer, integer
+) to authenticated;
+
+drop function if exists public.get_my_branch_details();
+create or replace function public.get_my_branch_details()
+returns table(
+  name text, address text, phone text, tin text, logo_path text, bank_account_number text, bank_account_name text, momo_pay_number text,
+  out_of_stock_reminder_hours integer, branch_code text, status text, created_at timestamptz,
+  email text, website text, license_number text, license_expiry_date date, ebm_device_serial text, default_language text,
+  receipt_number_prefix text, pos_cash_enabled boolean, pos_mtn_momo_enabled boolean, pos_airtel_money_enabled boolean,
+  pos_card_enabled boolean, pos_insurance_enabled boolean, pos_default_payment_method text,
+  pos_require_patient_name boolean, pos_allow_discounts boolean, pos_show_patient_history boolean,
+  expiry_alert_threshold_days integer, default_reorder_min integer
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select b.name::text, b.address, b.phone, b.tin, b.logo_path, b.bank_account_number, b.bank_account_name, b.momo_pay_number,
+         b.out_of_stock_reminder_hours, b.branch_code::text, b.status::text, b.created_at,
+         b.email, b.website, b.license_number, b.license_expiry_date, b.ebm_device_serial, b.default_language::text,
+         b.receipt_number_prefix::text, b.pos_cash_enabled, b.pos_mtn_momo_enabled, b.pos_airtel_money_enabled,
+         b.pos_card_enabled, b.pos_insurance_enabled, b.pos_default_payment_method::text,
+         b.pos_require_patient_name, b.pos_allow_discounts, b.pos_show_patient_history,
+         b.expiry_alert_threshold_days, b.default_reorder_min
+  from public.branches b
+  where b.id = public.current_branch_id()
+$$;
+
+revoke all on function public.get_my_branch_details() from public, anon;
+grant execute on function public.get_my_branch_details() to authenticated;
+
+-- ai_stock_status() signature is unchanged -- just reads the branch's real
+-- configured threshold/default instead of the old hardcoded 60 / 0.
+create or replace function public.ai_stock_status(p_filter text default 'all')
+returns table(product_name text, dosage text, quantity_available integer, min_quantity integer, expiry_date date, days_to_expiry integer, status text)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_expiry_threshold integer;
+  v_default_reorder_min integer;
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_filter not in ('low','out','expiring','expired','all') then raise exception 'filter must be low, out, expiring, expired or all'; end if;
+
+  select b.expiry_alert_threshold_days, b.default_reorder_min
+    into v_expiry_threshold, v_default_reorder_min
+    from public.branches b where b.id = v_branch;
+
+  return query
+  with stock as (
+    select
+      p.name::text as product_name, pv.dosage::text as dosage,
+      coalesce(sum(bc.quantity_available * bc.pieces_per_pack) filter (where bc.barcode_type = 'pack'), 0)::integer as qty_available,
+      coalesce(rp.min_quantity, v_default_reorder_min) as min_quantity,
+      min(sb.expiry_date) filter (where bc.status = 'active') as nearest_expiry
+    from public.stock_batches sb
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    left join public.barcodes bc on bc.stock_batch_id = sb.id
+    left join public.reorder_points rp on rp.product_id = pv.product_id and rp.branch_id = v_branch
+    where sb.branch_id = v_branch
+    group by p.name, pv.id, pv.dosage, rp.min_quantity
+  )
+  select
+    stock.product_name, stock.dosage, stock.qty_available, stock.min_quantity, stock.nearest_expiry,
+    (stock.nearest_expiry - current_date)::integer,
+    case
+      when stock.qty_available = 0 then 'out'
+      when stock.nearest_expiry is not null and stock.nearest_expiry < current_date then 'expired'
+      when stock.nearest_expiry is not null and stock.nearest_expiry <= current_date + v_expiry_threshold then 'expiring'
+      when stock.qty_available < stock.min_quantity then 'low'
+      else 'ok'
+    end
+  from stock
+  where p_filter = 'all'
+    or (p_filter = 'out' and stock.qty_available = 0)
+    or (p_filter = 'low' and stock.qty_available > 0 and stock.qty_available < stock.min_quantity)
+    or (p_filter = 'expiring' and stock.nearest_expiry is not null and stock.nearest_expiry between current_date and current_date + v_expiry_threshold)
+    or (p_filter = 'expired' and stock.nearest_expiry is not null and stock.nearest_expiry < current_date)
+  order by stock.qty_available asc
+  limit 200;
+end;
+$$;
+
+-- Incident fix: update_branch_details() previously wiped logo_path (and 7
+-- other optional fields) to null whenever a caller simply omitted that
+-- parameter, rather than leaving the stored value untouched. The real
+-- front-end always sends every field so this never surfaced there, but a
+-- direct RPC call that omits one of these (exactly what happened during
+-- this session's own Inventory-tab verification query, which wiped a real
+-- branch's logo_path) silently destroyed real data with no error at all.
+--
+-- Fix: NULL now means "leave this field alone" (matches how
+-- out_of_stock_reminder_hours/default_language already behave in this same
+-- function); an explicit empty string still clears it, since the front-end
+-- always .trim()s user-editable text fields before sending them, so a
+-- genuinely blanked field arrives as '' , never SQL null.
+create or replace function public.update_branch_details(
+  p_address text, p_phone text, p_tin text, p_logo_path text default null,
+  p_bank_account_number text default null, p_bank_account_name text default null, p_momo_pay_number text default null,
+  p_out_of_stock_reminder_hours integer default null,
+  p_name text default null, p_email text default null, p_website text default null,
+  p_license_number text default null, p_license_expiry_date date default null, p_ebm_device_serial text default null,
+  p_default_language text default null,
+  p_receipt_number_prefix text default null,
+  p_pos_cash_enabled boolean default null, p_pos_mtn_momo_enabled boolean default null,
+  p_pos_airtel_money_enabled boolean default null, p_pos_card_enabled boolean default null, p_pos_insurance_enabled boolean default null,
+  p_pos_default_payment_method text default null,
+  p_pos_require_patient_name boolean default null, p_pos_allow_discounts boolean default null, p_pos_show_patient_history boolean default null,
+  p_expiry_alert_threshold_days integer default null,
+  p_default_reorder_min integer default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then raise exception 'Only the branch owner may update branch settings'; end if;
+
+  if p_out_of_stock_reminder_hours is not null and (p_out_of_stock_reminder_hours < 1 or p_out_of_stock_reminder_hours > 168) then
+    raise exception 'Reminder interval must be between 1 and 168 hours';
+  end if;
+  if p_default_language is not null and p_default_language not in ('en','fr','rw') then
+    raise exception 'Unsupported language %', p_default_language;
+  end if;
+  if p_pos_default_payment_method is not null and p_pos_default_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported default payment method %', p_pos_default_payment_method;
+  end if;
+  if p_expiry_alert_threshold_days is not null and p_expiry_alert_threshold_days < 1 then
+    raise exception 'Expiry alert threshold must be at least 1 day';
+  end if;
+  if p_default_reorder_min is not null and p_default_reorder_min < 0 then
+    raise exception 'Default reorder minimum cannot be negative';
+  end if;
+
+  update public.branches
+  set address = nullif(btrim(coalesce(p_address, '')), ''),
+      phone = nullif(btrim(coalesce(p_phone, '')), ''),
+      tin = nullif(btrim(coalesce(p_tin, '')), ''),
+      -- NULL parameter = leave unchanged; '' = clear; anything else = set.
+      logo_path = case when p_logo_path is null then logo_path else nullif(btrim(p_logo_path), '') end,
+      bank_account_number = case when p_bank_account_number is null then bank_account_number else nullif(btrim(p_bank_account_number), '') end,
+      bank_account_name = case when p_bank_account_name is null then bank_account_name else nullif(btrim(p_bank_account_name), '') end,
+      momo_pay_number = case when p_momo_pay_number is null then momo_pay_number else nullif(btrim(p_momo_pay_number), '') end,
+      out_of_stock_reminder_hours = coalesce(p_out_of_stock_reminder_hours, out_of_stock_reminder_hours),
+      name = coalesce(nullif(btrim(coalesce(p_name, '')), ''), name),
+      email = case when p_email is null then email else nullif(btrim(p_email), '') end,
+      website = case when p_website is null then website else nullif(btrim(p_website), '') end,
+      license_number = case when p_license_number is null then license_number else nullif(btrim(p_license_number), '') end,
+      license_expiry_date = p_license_expiry_date,
+      ebm_device_serial = case when p_ebm_device_serial is null then ebm_device_serial else nullif(btrim(p_ebm_device_serial), '') end,
+      default_language = coalesce(p_default_language, default_language),
+      receipt_number_prefix = coalesce(nullif(btrim(coalesce(p_receipt_number_prefix, '')), ''), receipt_number_prefix),
+      pos_cash_enabled = coalesce(p_pos_cash_enabled, pos_cash_enabled),
+      pos_mtn_momo_enabled = coalesce(p_pos_mtn_momo_enabled, pos_mtn_momo_enabled),
+      pos_airtel_money_enabled = coalesce(p_pos_airtel_money_enabled, pos_airtel_money_enabled),
+      pos_card_enabled = coalesce(p_pos_card_enabled, pos_card_enabled),
+      pos_insurance_enabled = coalesce(p_pos_insurance_enabled, pos_insurance_enabled),
+      pos_default_payment_method = coalesce(p_pos_default_payment_method, pos_default_payment_method),
+      pos_require_patient_name = coalesce(p_pos_require_patient_name, pos_require_patient_name),
+      pos_allow_discounts = coalesce(p_pos_allow_discounts, pos_allow_discounts),
+      pos_show_patient_history = coalesce(p_pos_show_patient_history, pos_show_patient_history),
+      expiry_alert_threshold_days = coalesce(p_expiry_alert_threshold_days, expiry_alert_threshold_days),
+      default_reorder_min = coalesce(p_default_reorder_min, default_reorder_min)
+  where id = v_branch;
+end;
+$$;
+

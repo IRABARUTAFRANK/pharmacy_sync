@@ -178,7 +178,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14, marginBottom: 14 }}>
-        <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{t("transactions.trendTitle")}</div>
           <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>{t("transactions.trendSubtitle")}</div>
           <ResponsiveContainer width="100%" height={220}>
@@ -189,16 +189,16 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
                   <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
+              <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
               <Tooltip content={<ChartTooltip />} />
               <Area type="monotone" dataKey="revenue" name={t("transactions.trendRevenueLabel")} stroke="#16a34a" fill="url(#gTxnTrend)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
-        <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{t("transactions.paymentSourcesTitle")}</div>
           <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 12, fontFamily: "var(--font-mono)" }}>{t("transactions.paymentSourcesSubtitle")}</div>
           {paymentSources.length === 0 ? (
@@ -219,7 +219,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
         </div>
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: 16 }}>
           <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 2 }}>{t("transactions.ledgerTitle")}</div>
           <div style={{ fontSize: 11, color: "var(--ink-faint)", fontFamily: "var(--font-mono)", marginBottom: 12 }}>{t("transactions.ledgerSubtitle")}</div>
@@ -247,7 +247,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
             {(dateFrom || dateTo) && (
               <button
                 onClick={() => { setDateFrom(""); setDateTo("") }}
-                style={{ padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "#fff", fontFamily: "inherit", fontSize: 12, color: "var(--ink-muted)", cursor: "pointer" }}
+                style={{ padding: "7px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--surface)", fontFamily: "inherit", fontSize: 12, color: "var(--ink-muted)", cursor: "pointer" }}
               >
                 {t("transactions.clearDates")}
               </button>
@@ -275,7 +275,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
             <ColumnPicker columns={TXN_COLUMNS} visible={visibleColumns} onToggle={toggleColumn} />
             <button
               onClick={() => setShowExportModal(true)}
-              style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 8, border: "1px solid var(--border)", background: "#fff", color: "var(--ink-mid)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 11px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-mid)", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
             >
               ↓ {t("transactions.exportCsv")}
             </button>

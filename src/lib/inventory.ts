@@ -1,3 +1,4 @@
+import { getMyBranchDetails } from "./branch"
 import { supabase } from "./supabase"
 
 export interface InventoryRow {
@@ -38,7 +39,8 @@ export interface InventoryDataset {
 const asNumber = (value: string | number | null | undefined) => Number(value ?? 0)
 
 export async function loadInventoryDataset(): Promise<InventoryDataset> {
-  const results = await Promise.all([
+  const [branch, ...results] = await Promise.all([
+    getMyBranchDetails(),
     supabase.from("stock_batches").select("*").order("received_at", { ascending: false }),
     supabase.from("product_variants").select("*"), supabase.from("products").select("*"),
     supabase.from("barcodes").select("*"), supabase.from("suppliers").select("*"),
@@ -48,6 +50,8 @@ export async function loadInventoryDataset(): Promise<InventoryDataset> {
   const failed = results.find(result => result.error)
   if (failed?.error) throw failed.error
   const [batches, variants, products, barcodes, suppliers, reorderPoints, categories, categorizations, taxRates] = results.map(result => result.data ?? []) as any[][]
+  const expiryThresholdDays = branch.expiryAlertThresholdDays
+  const defaultReorderMin = branch.defaultReorderMin
   const today = new Date()
   const rows = batches.map(batch => {
     const variant = variants.find(item => item.id === batch.product_variant_id)
@@ -66,8 +70,8 @@ export async function loadInventoryDataset(): Promise<InventoryDataset> {
       .reduce((total, item) => total + asNumber(item.quantity_available) * asNumber(item.pieces_per_pack), 0)
     const barcodeStatus = batchBarcodes.find(item => item.barcode_type === "box")?.status ?? batchBarcodes[0]?.status ?? "active"
     const daysToExpiry = Math.ceil((new Date(batch.expiry_date).getTime() - today.getTime()) / 86_400_000)
-    const minQuantity = asNumber(reorder?.min_quantity)
-    const stockStatus: InventoryRow["stock_status"] = quantityAvailable === 0 || barcodeStatus === "sold_out" ? "zero" : daysToExpiry < 60 || barcodeStatus === "expired" ? "expiry" : quantityAvailable < minQuantity || barcodeStatus === "recalled" || barcodeStatus === "damaged" ? "low" : "ok"
+    const minQuantity = reorder ? asNumber(reorder.min_quantity) : defaultReorderMin
+    const stockStatus: InventoryRow["stock_status"] = quantityAvailable === 0 || barcodeStatus === "sold_out" ? "zero" : daysToExpiry < expiryThresholdDays || barcodeStatus === "expired" ? "expiry" : quantityAvailable < minQuantity || barcodeStatus === "recalled" || barcodeStatus === "damaged" ? "low" : "ok"
     return { product_id: product?.id ?? "", branch_id: batch.branch_id, product_type: product?.product_type ?? "medicine", name: [product?.name, variant?.dosage].filter(Boolean).join(" ") || "Unnamed product", generic_name: product?.generic_name ?? undefined, tax_rate: taxRate ? (asNumber(taxRate.rate_percentage) === 0 ? "Exempt" : `${taxRate.rate_percentage}%`) : "—", variant_id: variant?.id ?? "", dosage: variant?.dosage ?? undefined, form: variant?.form ?? undefined, unit: variant?.unit ?? undefined, category: category?.name ?? "Uncategorised", batch_id: batch.id, batch_number: batch.batch_number, expiry_date: batch.expiry_date, cost_price: asNumber(batch.cost_price), selling_price: asNumber(batch.selling_price), quantity_received: asNumber(batch.quantity_received), received_at: batch.received_at, manufacturer_name: batch.manufacturer_name ?? undefined, delivery_code: batch.delivery_code ?? undefined, supplier_name: supplier?.supplier_name ?? "—", quantity_available: quantityAvailable, barcode_status: barcodeStatus, min_quantity: minQuantity, max_quantity: reorder?.max_quantity == null ? undefined : asNumber(reorder.max_quantity), stock_status: stockStatus }
   })
   const supplierUnits = suppliers.map(supplier => ({ name: supplier.supplier_name, units: batches.filter(batch => batch.supplier_id === supplier.id).reduce((total, batch) => total + asNumber(batch.quantity_received), 0) })).filter(item => item.units > 0)
