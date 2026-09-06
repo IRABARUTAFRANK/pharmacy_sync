@@ -3,7 +3,7 @@ import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import { fmtRWFExact, pct, type Role } from '../data'
+import { fmtRWFExact, pct } from '../data'
 import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal } from '../components'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
@@ -106,14 +106,14 @@ function DashboardBuilderModal({ visible, onToggle, onClose }: { visible: Record
 // removed in favor of this: hardcoded share link, dead Copy button, a
 // Download button that only closed the modal without producing a file).
 
-function buildDashboardReport(data: OverviewData, branchName: string, isPharmacist: boolean): ReportSection[] {
+function buildDashboardReport(data: OverviewData, branchName: string): ReportSection[] {
   const pctText = (n: number | null) => (n == null ? '—' : `${n > 0 ? '+' : ''}${n.toFixed(1)}%`)
 
   const summaryRows: (string | number)[][] = []
-  if (!isPharmacist) summaryRows.push(['Total Revenue', fmtRWFExact(data.revenue.value), pctText(data.revenue.changePct)])
+  summaryRows.push(['Total Revenue', fmtRWFExact(data.revenue.value), pctText(data.revenue.changePct)])
   summaryRows.push(['Transactions', data.transactions.value.toLocaleString(), pctText(data.transactions.changePct)])
   summaryRows.push(['Items Dispensed', data.itemsDispensed.value.toLocaleString(), pctText(data.itemsDispensed.changePct)])
-  if (!isPharmacist) summaryRows.push(['Inventory Value', fmtRWFExact(data.inventoryValue), '—'])
+  summaryRows.push(['Inventory Value', fmtRWFExact(data.inventoryValue), '—'])
   summaryRows.push(['Expiring ≤ 90 Days', `${data.expiring.count} (${fmtRWFExact(data.expiring.value)})`, '—'])
 
   return [
@@ -511,9 +511,8 @@ const INSIGHT_STYLE = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage({
-  role, period, branchName, alerts, onViewAlerts, onViewFullReport,
+  period, branchName, alerts, onViewAlerts, onViewFullReport,
 }: {
-  role: Role
   period: OverviewPeriod
   branchName: string
   alerts: LiveAlert[]
@@ -563,7 +562,6 @@ export default function OverviewPage({
   if (error) return <Panel icon="⚠" title="Could not load the dashboard" msg={error} />
   if (!data) return null
 
-  const isPharmacist = role === 'pharmacist'
   const openAlerts = alerts.filter(a => !a.isRead)
 
   const revenueSpark = data.revenueTrend.map(p => p.revenue)
@@ -575,13 +573,13 @@ export default function OverviewPage({
     { name: 'Insurance', value: 0, amount: 0, color: '#60a5fa' },
   ]
 
-  // Money tiles are owner/manager only; a pharmacist on shift gets the
-  // operational half of the row. Matches how NAV_ITEMS already gates Analytics.
+  // Overview is owner/manager only (see NAV_ITEMS), so every tile here is
+  // fair game for both roles -- nothing to gate by role on this page.
   const tiles: Tile[] = [
-    ...(isPharmacist ? [] : [{
+    {
       id: 'revenue', label: 'Total Revenue', value: fmtRWFExact(data.revenue.value),
       sub: periodSub, icon: '💰', color: '#1e5fa8', change: data.revenue.changePct, spark: revenueSpark,
-    }]),
+    },
     {
       id: 'transactions', label: 'Transactions', value: data.transactions.value.toLocaleString(),
       sub: periodSub, icon: '🧾', color: '#0284c7', change: data.transactions.changePct,
@@ -590,10 +588,10 @@ export default function OverviewPage({
       id: 'items', label: 'Items Dispensed', value: data.itemsDispensed.value.toLocaleString(),
       sub: periodSub, icon: '💊', color: '#7c3aed', change: data.itemsDispensed.changePct,
     },
-    ...(isPharmacist ? [] : [{
+    {
       id: 'inventory', label: 'Inventory Value', value: fmtRWFExact(data.inventoryValue),
       sub: 'stock on hand, at selling price', icon: '📦', color: '#d97706',
-    }]),
+    },
     {
       id: 'expiring', label: 'Expiring ≤ 90 Days', value: data.expiring.count.toLocaleString(),
       sub: `${fmtRWFExact(data.expiring.value)} at risk`, icon: '⏳', color: '#dc2626',
@@ -913,7 +911,7 @@ export default function OverviewPage({
       {showExportModal && (
         <ExportModal
           title={t('overviewPage.exportModalTitle')}
-          sections={buildDashboardReport(data, branchName, isPharmacist)}
+          sections={buildDashboardReport(data, branchName)}
           filenameBase={`dashboard-export-${filenameSafe(branchName)}-${filenameSafe(data.periodLabel)}`}
           docTitle={`PharmSync Dashboard — ${branchName} — ${data.periodLabel}`}
           onClose={() => setShowExportModal(false)}

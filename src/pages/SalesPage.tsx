@@ -483,14 +483,15 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
           patientDraft.identifier.trim(),
         )
       }
-      const result = await completeSale(
-        cart.map(item => ({
+      const result = await completeSale({
+        lines: cart.map(item => ({
           code: item.code,
           sellMode: item.sellMode,
           quantity: item.sellMode === "whole" ? null : item.quantity,
         })),
-        providerId || null, patientId,
-      )
+        insuranceProviderId: providerId || null,
+        patientId,
+      })
       const fullReceipt = await getSaleReceipt(result.saleId)
       setReceipt(fullReceipt)
       setCart([])

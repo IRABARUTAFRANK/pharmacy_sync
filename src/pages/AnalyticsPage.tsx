@@ -1,9 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Card, CenterAlert, ChartTooltip, SectionHeader, StatusBadge, Table } from "../components"
+import { Btn, Card, CenterAlert, ChartTooltip, ExportModal, Modal, SectionHeader, StatusBadge, Table } from "../components"
 import { fmtRWFExact } from "../data"
+import type { ReportSection } from "../lib/export"
 import { useTranslation } from "../lib/i18n"
+import type { TranslationKey } from "../lib/i18n/en"
 import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
+import { listBranchPatients } from "../lib/patients"
 import { loadReceivingReference, type ReceivingCategory, type ReceivingProduct } from "../lib/receiving"
 import {
   loadBasketSize, loadBranchSnapshot, loadCategoryBreakdown, loadDeadStock, loadDiscountUsage, loadInsuranceClaimAging,
@@ -21,6 +24,43 @@ import {
 // see that file's comment for the ΔE/contrast numbers this order clears.
 const CATEGORICAL_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7", "#e34948", "#008300"]
 
+// ─── Customizable Reports ───────────────────────────────────────────────────
+// Each card fetches fresh data for whatever period the viewer picks in
+// PeriodPickerModal below -- a real report scoped to Today/This Week/Last
+// Month/a custom range, not a repackaging of whatever the page's own charts
+// currently happen to show. Two categories a reference design showed were
+// deliberately left out rather than faked:
+//   Profit & Loss   -- this schema has no expense/COGS-at-the-business-level
+//                      table, so there's no honest way to produce a real P&L.
+//   RRA Compliance  -- the RRA VSDC tax-invoice integration isn't built yet
+//                      (see the Overview page's "RRA / VSDC -- Not configured"
+//                      tile); a "ready for RRA submission" report would be a
+//                      claim this branch can't back up.
+// Seller Productivity and the Batch Recall Log take their place, and Sales
+// Forecast / Category & Discounts / Supplier Performance round out the set --
+// all real, already-built analytics_*/ai_* functions this page's own charts
+// call, just not previously offered as a downloadable report.
+interface ReportDef {
+  id: string
+  icon: string
+  titleKey: TranslationKey
+  descKey: TranslationKey
+  tagKey: TranslationKey
+  color: string
+}
+
+const REPORT_DEFS: ReportDef[] = [
+  { id: "sales", icon: "📊", titleKey: "analyticsPage.reportSalesTitle", descKey: "analyticsPage.reportSalesDesc", tagKey: "analyticsPage.reportTagSales", color: "#2a78d6" },
+  { id: "inventory", icon: "📦", titleKey: "analyticsPage.reportInventoryTitle", descKey: "analyticsPage.reportInventoryDesc", tagKey: "analyticsPage.reportTagInventory", color: "#16a34a" },
+  { id: "insurance", icon: "🏥", titleKey: "analyticsPage.reportInsuranceTitle", descKey: "analyticsPage.reportInsuranceDesc", tagKey: "analyticsPage.reportTagInsurance", color: "#7c3aed" },
+  { id: "patients", icon: "🧑", titleKey: "analyticsPage.reportPatientsTitle", descKey: "analyticsPage.reportPatientsDesc", tagKey: "analyticsPage.reportTagPatients", color: "#e87ba4" },
+  { id: "productivity", icon: "⏱️", titleKey: "analyticsPage.reportProductivityTitle", descKey: "analyticsPage.reportProductivityDesc", tagKey: "analyticsPage.reportTagStaff", color: "#0d9488" },
+  { id: "recalls", icon: "🚨", titleKey: "analyticsPage.reportRecallsTitle", descKey: "analyticsPage.reportRecallsDesc", tagKey: "analyticsPage.reportTagCompliance", color: "#dc2626" },
+  { id: "forecast", icon: "🔮", titleKey: "analyticsPage.reportForecastTitle", descKey: "analyticsPage.reportForecastDesc", tagKey: "analyticsPage.reportTagForecast", color: "#f59e0b" },
+  { id: "category", icon: "🏷️", titleKey: "analyticsPage.reportCategoryTitle", descKey: "analyticsPage.reportCategoryDesc", tagKey: "analyticsPage.reportTagCategory", color: "#0ea5e9" },
+  { id: "supplier", icon: "🚚", titleKey: "analyticsPage.reportSupplierTitle", descKey: "analyticsPage.reportSupplierDesc", tagKey: "analyticsPage.reportTagSupplier", color: "#eb6834" },
+]
+
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
@@ -28,6 +68,123 @@ function daysAgo(n: number): string {
   const d = new Date()
   d.setDate(d.getDate() - n)
   return isoDate(d)
+}
+
+// ─── Report period picker ───────────────────────────────────────────────────
+// One shared "which period?" step in front of every report card -- Today,
+// this/last week, this/last month, trailing 7/30/90 days, or a custom range --
+// resolved to real from/to dates the same lib/analytics.ts functions the rest
+// of this page already calls take as plain arguments.
+type PeriodPresetId = "today" | "yesterday" | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth" | "last7" | "last30" | "last90" | "custom"
+
+const PERIOD_PRESETS: { id: PeriodPresetId; labelKey: TranslationKey }[] = [
+  { id: "today", labelKey: "analyticsPage.periodToday" },
+  { id: "yesterday", labelKey: "analyticsPage.periodYesterday" },
+  { id: "thisWeek", labelKey: "analyticsPage.periodThisWeek" },
+  { id: "lastWeek", labelKey: "analyticsPage.periodLastWeek" },
+  { id: "thisMonth", labelKey: "analyticsPage.periodThisMonth" },
+  { id: "lastMonth", labelKey: "analyticsPage.periodLastMonth" },
+  { id: "last7", labelKey: "analyticsPage.periodLast7" },
+  { id: "last30", labelKey: "analyticsPage.periodLast30" },
+  { id: "last90", labelKey: "analyticsPage.periodLast90" },
+  { id: "custom", labelKey: "analyticsPage.periodCustom" },
+]
+
+interface ResolvedPeriod {
+  from: string
+  to: string
+  label: string
+}
+
+function startOfWeek(d: Date): Date {
+  const day = new Date(d)
+  day.setHours(0, 0, 0, 0)
+  const diff = (day.getDay() + 6) % 7 // Monday-first
+  return new Date(day.getTime() - diff * 86_400_000)
+}
+
+function resolvePeriodPreset(id: PeriodPresetId, label: string, customFrom: string, customTo: string): ResolvedPeriod {
+  const now = new Date()
+  switch (id) {
+    case "today":
+      return { from: isoDate(now), to: isoDate(now), label }
+    case "yesterday": {
+      const y = new Date(now); y.setDate(y.getDate() - 1)
+      return { from: isoDate(y), to: isoDate(y), label }
+    }
+    case "thisWeek":
+      return { from: isoDate(startOfWeek(now)), to: isoDate(now), label }
+    case "lastWeek": {
+      const start = startOfWeek(now)
+      const prevStart = new Date(start.getTime() - 7 * 86_400_000)
+      const prevEnd = new Date(start.getTime() - 1 * 86_400_000)
+      return { from: isoDate(prevStart), to: isoDate(prevEnd), label }
+    }
+    case "thisMonth":
+      return { from: isoDate(new Date(now.getFullYear(), now.getMonth(), 1)), to: isoDate(now), label }
+    case "lastMonth": {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const end = new Date(now.getFullYear(), now.getMonth(), 0)
+      return { from: isoDate(start), to: isoDate(end), label }
+    }
+    case "last7":
+      return { from: daysAgo(7), to: isoDate(now), label }
+    case "last30":
+      return { from: daysAgo(30), to: isoDate(now), label }
+    case "last90":
+      return { from: daysAgo(90), to: isoDate(now), label }
+    case "custom":
+      return { from: customFrom, to: customTo, label: `${customFrom} → ${customTo}` }
+  }
+}
+
+function PeriodPickerModal({ def, onClose, onConfirm }: { def: ReportDef; onClose: () => void; onConfirm: (period: ResolvedPeriod) => void }) {
+  const { t } = useTranslation()
+  const [presetId, setPresetId] = useState<PeriodPresetId>("last30")
+  const [customFrom, setCustomFrom] = useState(daysAgo(30))
+  const [customTo, setCustomTo] = useState(isoDate(new Date()))
+
+  return (
+    <Modal title={t("analyticsPage.periodPickerTitle", { report: t(def.titleKey) })} onClose={onClose} width={440}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("analyticsPage.periodPickerSubtitle")}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {PERIOD_PRESETS.map(p => (
+            <button
+              key={p.id}
+              onClick={() => setPresetId(p.id)}
+              style={{
+                padding: "9px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                border: `1.5px solid ${presetId === p.id ? "var(--primary)" : "var(--border)"}`,
+                background: presetId === p.id ? "var(--primary-light)" : "#fff",
+                color: presetId === p.id ? "var(--primary)" : "var(--ink-mid)",
+              }}
+            >
+              {t(p.labelKey)}
+            </button>
+          ))}
+        </div>
+        {presetId === "custom" && (
+          <div style={{ display: "flex", gap: 10 }}>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>{t("analyticsPage.dateFromLabel")}</label>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={DATE_INPUT_STYLE} />
+            </div>
+            <div>
+              <label style={FIELD_LABEL_STYLE}>{t("analyticsPage.dateToLabel")}</label>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={DATE_INPUT_STYLE} />
+            </div>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Btn variant="secondary" onClick={onClose}>{t("analyticsPage.periodCancel")}</Btn>
+          <Btn variant="primary" onClick={() => onConfirm(resolvePeriodPreset(presetId, t(PERIOD_PRESETS.find(p => p.id === presetId)!.labelKey), customFrom, customTo))}>
+            {t("analyticsPage.periodContinue")}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  )
 }
 
 function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
@@ -207,6 +364,211 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
     }
   }
 
+  const [pickerDef, setPickerDef] = useState<ReportDef | null>(null)
+  const [reportLoadingId, setReportLoadingId] = useState<string | null>(null)
+  const [activeReport, setActiveReport] = useState<{ def: ReportDef; period: ResolvedPeriod } | null>(null)
+  const [reportSections, setReportSections] = useState<ReportSection[] | null>(null)
+
+  // Days between the chosen from/to, inclusive -- used to translate a
+  // calendar period into the "how many days back" windows a few analytics_*
+  // functions take instead of a plain from/to range (dead stock, patient
+  // retention, the forecast's training history).
+  function periodSpanDays(period: ResolvedPeriod): number {
+    const ms = new Date(period.to).getTime() - new Date(period.from).getTime()
+    return Math.max(1, Math.round(ms / 86_400_000) + 1)
+  }
+
+  // Every report fetches its own fresh data for the chosen period -- it does
+  // NOT reuse this page's own dateFrom/dateTo state, so picking "Today" for a
+  // report works regardless of what date range the charts elsewhere on this
+  // page currently happen to be showing.
+  async function generateReport(def: ReportDef, period: ResolvedPeriod) {
+    setReportLoadingId(def.id)
+    setError("")
+    try {
+      let sections: ReportSection[]
+      if (def.id === "sales") {
+        const [trendData, topData] = await Promise.all([
+          loadSalesTrend(period.from, period.to, "day"),
+          loadTopProducts(period.from, period.to, "revenue", "desc", 10),
+        ])
+        sections = [
+          {
+            title: "Sales Performance",
+            headers: ["Period", "Revenue (RWF)", "Transactions", "Avg Basket (RWF)", "Tax (RWF)"],
+            rows: trendData.map(p => [
+              new Date(p.periodStart).toLocaleDateString(), Math.round(p.revenue), p.transactionCount,
+              p.transactionCount > 0 ? Math.round(p.revenue / p.transactionCount) : 0, Math.round(p.tax),
+            ]),
+          },
+          {
+            title: "Top Products",
+            headers: ["Product", "Dosage", "Units Sold", "Revenue (RWF)"],
+            rows: topData.map(p => [p.productName, p.dosage ?? "—", p.quantitySold, Math.round(p.revenue)]),
+          },
+        ]
+      } else if (def.id === "inventory") {
+        const [turnoverData, deadStockData] = await Promise.all([
+          loadInventoryTurnover(period.from, period.to),
+          loadDeadStock(periodSpanDays(period), 50),
+        ])
+        sections = [
+          {
+            title: "Turnover by Category",
+            headers: ["Category", "COGS (RWF)", "Current Inventory Value (RWF)", "Turnover Ratio"],
+            rows: turnoverData.map(r => [r.categoryName, Math.round(r.cogs), Math.round(r.currentInventoryValue), r.turnoverRatio == null ? "—" : r.turnoverRatio.toFixed(2)]),
+          },
+          {
+            title: "Slow-Moving Stock",
+            headers: ["Product", "Dosage", "Qty on Hand", "Stock Value (RWF)", "Days Since Last Sale"],
+            rows: deadStockData.map(r => [r.productName, r.dosage ?? "—", r.quantityOnHand, Math.round(r.stockValue), r.daysSinceLastSale ?? "Never sold"]),
+          },
+        ]
+      } else if (def.id === "insurance") {
+        // Claim aging has no from/to of its own -- it's "how old are claims
+        // still pending right now", a live snapshot regardless of period.
+        const [insuranceData, agingData] = await Promise.all([
+          loadInsuranceSummary(period.from, period.to),
+          loadInsuranceClaimAging(),
+        ])
+        sections = [
+          {
+            title: "Claims by Insurer",
+            headers: ["Provider", "Claims", "Total Claimed (RWF)", "Paid Out (RWF)", "Pending (RWF)"],
+            rows: insuranceData.map(r => [r.providerName, r.claimCount, Math.round(r.totalClaimed), Math.round(r.paidOut), Math.round(r.pending)]),
+          },
+          {
+            title: "Claim Aging (live, all pending claims)",
+            headers: ["Age", "Claims", "Total Amount (RWF)"],
+            rows: agingData.map(r => [r.ageBucket, r.claimCount, Math.round(r.totalAmount)]),
+          },
+        ]
+      } else if (def.id === "patients") {
+        // listBranchPatients() has no date filter (a patient's gender/age
+        // aren't period-scoped data) -- summary and retention are.
+        const spanDays = periodSpanDays(period)
+        const [summary, retention, list] = await Promise.all([
+          loadPatientSummary(period.from, period.to),
+          loadPatientRetention({ lookbackDays: spanDays, inactiveDays: Math.min(60, spanDays), limit: 20 }),
+          listBranchPatients(),
+        ])
+        let male = 0, female = 0, other = 0, unspecified = 0, ageSum = 0, ageCount = 0
+        for (const p of list) {
+          if (p.gender === "male") male++
+          else if (p.gender === "female") female++
+          else if (p.gender === "other") other++
+          else unspecified++
+          if (p.age != null) { ageSum += p.age; ageCount++ }
+        }
+        sections = [
+          {
+            title: "Patient Summary",
+            headers: ["Metric", "Value"],
+            rows: [
+              ["Total Patients Served", summary.totalPatientsServed],
+              ["New Patients", summary.newPatients],
+              ["Repeat Patients", summary.repeatPatients],
+              ["Top Patient", summary.topPatientName ?? "—"],
+              ["Top Patient Spend (RWF)", summary.topPatientSpend != null ? Math.round(summary.topPatientSpend) : "—"],
+            ],
+          },
+          {
+            title: "Visit Frequency & Spending",
+            headers: ["Patient", "Last Visit", "Days Since", "Past Visits", "Lifetime Spend (RWF)"],
+            rows: retention.map(r => [r.patientName, new Date(r.lastVisit).toLocaleDateString(), r.daysSinceLastVisit, r.pastVisitCount, Math.round(r.lifetimeSpend)]),
+          },
+          {
+            title: "Demographics (all patients on file)",
+            headers: ["Metric", "Value"],
+            rows: [
+              ["Male", male], ["Female", female], ["Other", other], ["Unspecified", unspecified],
+              ["Average Age", ageCount > 0 ? Math.round(ageSum / ageCount) : "—"],
+            ],
+          },
+        ]
+      } else if (def.id === "productivity") {
+        const data = await loadSellerProductivity(period.from, period.to)
+        sections = [{
+          title: "Seller Productivity",
+          headers: ["Seller", "Role", "Transactions", "Revenue (RWF)", "Active Hours", "Revenue/Hour (RWF)", "Transactions/Hour"],
+          rows: data.map(r => [
+            r.sellerName, r.sellerRole, r.transactionCount, Math.round(r.revenue), r.activeHours.toFixed(1),
+            r.revenuePerHour == null ? "—" : Math.round(r.revenuePerHour), r.transactionsPerHour == null ? "—" : r.transactionsPerHour.toFixed(2),
+          ]),
+        }]
+      } else if (def.id === "recalls") {
+        // analytics_recall_log() takes a row limit, not a date range -- fetch
+        // a generous batch and filter to the chosen period client-side.
+        const all = await loadRecallLog(500)
+        const fromMs = new Date(period.from).getTime()
+        const toMs = new Date(period.to).getTime() + 86_400_000 - 1
+        const filtered = all.filter(r => { const at = new Date(r.recalledAt).getTime(); return at >= fromMs && at <= toMs })
+        sections = [{
+          title: "Batch Recall Log",
+          headers: ["Product", "Dosage", "Batch Number", "Manufacturer", "Reason", "Recalled By", "Recalled At"],
+          rows: filtered.map(r => [r.productName, r.dosage ?? "—", r.batchNumber, r.manufacturerName ?? "—", r.reason, r.recalledByName ?? "—", new Date(r.recalledAt).toLocaleString()]),
+        }]
+      } else if (def.id === "forecast") {
+        // A forecast has no "from/to" of its own -- the chosen period becomes
+        // how much sales history to train the projection on.
+        const spanDays = periodSpanDays(period)
+        const data = await loadSalesForecast({ daysHistory: spanDays, horizonDays: Math.min(90, Math.max(7, spanDays)) })
+        sections = [{
+          title: "Sales Forecast",
+          headers: ["Metric", "Value"],
+          rows: [
+            ["Scope", data.scope],
+            ["Days of History Used", data.daysOfHistory],
+            ["Avg Daily Quantity", data.avgDailyQuantity.toFixed(1)],
+            ["Trend per Day", data.trendPerDay.toFixed(2)],
+            ["Projected Quantity (next period)", Math.round(data.projectedQuantityNextPeriod)],
+            ["Projected Revenue (next period, RWF)", Math.round(data.projectedRevenueNextPeriod)],
+          ],
+        }]
+      } else if (def.id === "category") {
+        const [catData, discData] = await Promise.all([
+          loadCategoryBreakdown(period.from, period.to),
+          loadDiscountUsage(period.from, period.to),
+        ])
+        sections = [
+          {
+            title: "Sales by Category",
+            headers: ["Category", "Revenue (RWF)", "Units Sold"],
+            rows: catData.map(r => [r.categoryName, Math.round(r.revenue), r.quantitySold]),
+          },
+          {
+            title: "Discount Usage",
+            headers: ["Discount", "Type", "Times Used", "Revenue with Discount (RWF)", "Estimated Discount Value (RWF)"],
+            rows: discData.map(r => [r.discountName, r.discountType, r.usageCount, Math.round(r.revenueWithDiscount), Math.round(r.estimatedDiscountValue)]),
+          },
+        ]
+      } else {
+        const [supData, adjData] = await Promise.all([
+          loadSupplierPerformance(period.from, period.to),
+          loadStockAdjustments(period.from, period.to),
+        ])
+        sections = [
+          {
+            title: "Supplier Performance",
+            headers: ["Supplier", "Deliveries", "Units Received", "Total Cost (RWF)", "Avg Unit Cost (RWF)"],
+            rows: supData.map(r => [r.supplierName, r.deliveryCount, Math.round(r.unitsReceived), Math.round(r.totalCost), r.avgUnitCost != null ? Math.round(r.avgUnitCost) : "—"]),
+          },
+          {
+            title: "Stock Adjustments",
+            headers: ["Type", "Staff", "Quantity", "Adjustment Count", "Estimated Value (RWF)"],
+            rows: adjData.map(r => [r.adjustmentType, r.staffName, r.quantity, r.adjustmentCount, Math.round(r.estimatedValue)]),
+          },
+        ]
+      }
+      setActiveReport({ def, period })
+      setReportSections(sections)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("analyticsPage.errorReport"))
+    } finally {
+      setReportLoadingId(null)
+    }
+  }
+
   const categoryChartData = useMemo(
     () => categoryBreakdown.filter(c => c.revenue > 0).map((c, i) => ({ name: c.categoryName, value: c.revenue, color: CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length] })),
     [categoryBreakdown],
@@ -273,6 +635,57 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         </div>
         <div style={{ fontSize: 11, color: "var(--ink-faint)" }}>{t("analyticsPage.dateRangeHint")}</div>
       </div>
+
+      {/* Customizable Reports */}
+      <Card>
+        <SectionHeader title={t("analyticsPage.reportsTitle")} subtitle={t("analyticsPage.reportsSubtitle")} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
+          {REPORT_DEFS.map(def => (
+            <button
+              key={def.id}
+              onClick={() => setPickerDef(def)}
+              disabled={reportLoadingId === def.id}
+              style={{
+                textAlign: "left", display: "flex", flexDirection: "column", gap: 8, padding: "16px 18px",
+                borderRadius: 12, border: "1px solid var(--border)", background: "#fff",
+                cursor: reportLoadingId === def.id ? "wait" : "pointer", fontFamily: "inherit", transition: "box-shadow 0.15s, border-color 0.15s",
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = def.color; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 16px ${def.color}1A` }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = "var(--border)"; (e.currentTarget as HTMLButtonElement).style.boxShadow = "none" }}
+            >
+              <span style={{ fontSize: 22 }}>{def.icon}</span>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{t(def.titleKey)}</div>
+              <div style={{ fontSize: 11, color: "var(--ink-muted)", lineHeight: 1.4 }}>{t(def.descKey)}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
+                <StatusBadge label={t(def.tagKey)} color={def.color} bg={`${def.color}1A`} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)" }}>
+                  {reportLoadingId === def.id ? t("analyticsPage.reportGenerating") : t("analyticsPage.reportGenerateCta")}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Card>
+
+      {pickerDef && (
+        <PeriodPickerModal
+          def={pickerDef}
+          onClose={() => setPickerDef(null)}
+          onConfirm={period => { setPickerDef(null); void generateReport(pickerDef, period) }}
+        />
+      )}
+
+      {reportSections && activeReport && (
+        <ExportModal
+          title={`${t(activeReport.def.titleKey)} — ${activeReport.period.label}`}
+          sections={reportSections}
+          filenameBase={`${activeReport.def.id}-report-${activeReport.period.from}-to-${activeReport.period.to}`}
+          onClose={() => { setReportSections(null); setActiveReport(null) }}
+          formatLabel={t("overviewPage.exportFormatLabel")}
+          cancelLabel={t("overviewPage.exportCancel")}
+          downloadLabel={format => t("overviewPage.exportDownload", { format })}
+        />
+      )}
 
       {/* Sales trend */}
       <Card>

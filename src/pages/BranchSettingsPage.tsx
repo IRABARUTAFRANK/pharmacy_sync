@@ -1,25 +1,96 @@
-import { useCallback, useEffect, useState } from "react"
-import { Btn, Card, CenterAlert, SectionHeader, StatusBadge } from "../components"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { Btn, Card, CenterAlert, Modal, SectionHeader, StatusBadge } from "../components"
 import { useTranslation } from "../lib/i18n"
-import { branchLogoUrl, getMyBranchDetails, updateBranchDetails, uploadBranchLogo } from "../lib/branch"
+import type { TranslationKey } from "../lib/i18n/en"
+import { branchLogoUrl, getMyBranchDetails, updateBranchDetails, uploadBranchLogo, type BranchLanguage, type PaymentMethod } from "../lib/branch"
 import { updatePassword } from "../lib/auth"
+import { createBranchDiscount, listBranchDiscounts, type BranchDiscount, type DiscountType } from "../lib/sales"
+import { createBranchCategory, listBranchCategories, updateBranchCategory, type BranchCategory } from "../lib/categories"
+import { inviteStaff, listBranchStaff, setStaffActive, updateStaffRole, type BranchUserRole, type StaffMember, type StaffRole } from "../lib/staff"
 import { errorMessage } from "../lib/supabase"
-import { StaffRoster } from "./TeamPage"
+import { PasswordInput } from "./AuthShell"
+
+// Same shape as Overview's own widget-visibility switch, kept page-local like
+// that one rather than promoted to components.tsx -- neither page needs the
+// other's copy.
+function Switch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button" role="switch" aria-checked={checked} onClick={onChange}
+      style={{
+        width: 38, height: 21, borderRadius: 11, border: "none", cursor: "pointer", padding: 0, flexShrink: 0,
+        background: checked ? "var(--positive)" : "var(--border-strong)", position: "relative", transition: "background 0.15s",
+      }}
+    >
+      <span style={{
+        position: "absolute", top: 2, left: checked ? 19 : 2, width: 17, height: 17, borderRadius: "50%",
+        background: "#fff", transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+      }} />
+    </button>
+  )
+}
 
 const inputStyle = { width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" as const }
-const label = { fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase" as const, letterSpacing: "0.05em", display: "block", marginBottom: 4 }
 
 function CardHeader({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--primary-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{icon}</div>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+      <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--primary-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{icon}</div>
       <div>
-        <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{title}</h2>
-        {subtitle && <p style={{ margin: "3px 0 0", color: "var(--ink-muted)", fontSize: 11 }}>{subtitle}</p>}
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{title}</h2>
+        {subtitle && <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{subtitle}</p>}
       </div>
     </div>
   )
 }
+
+// One row per setting, matching the reference layout: label + description +
+// (optional) the real column it writes to + (optional) a plain-language
+// warning, with the actual control on the right. The db-column annotation is
+// only ever the true column/RPC param -- never shown next to a field that
+// doesn't actually persist anywhere.
+function SettingRow({ label, description, dbRef, warning, last, children }: {
+  label: string; description?: string; dbRef?: string; warning?: string; last?: boolean; children: ReactNode
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 24, padding: "18px 0", borderBottom: last ? "none" : "1px solid var(--bg-alt)", alignItems: "start" }}>
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{label}</div>
+        {description && <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 4, lineHeight: 1.5 }}>{description}</div>}
+        {dbRef && <div style={{ fontSize: 10, color: "var(--ink-faint)", fontFamily: "var(--font-mono)", marginTop: 6 }}>{dbRef}</div>}
+        {warning && <div style={{ fontSize: 11, color: "#d97706", marginTop: 6, fontWeight: 600 }}>⚠ {warning}</div>}
+      </div>
+      <div>{children}</div>
+    </div>
+  )
+}
+
+function ComingSoonPanel({ label }: { label: string }) {
+  const { t } = useTranslation()
+  return (
+    <Card>
+      <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--ink-muted)" }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🚧</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{label}</div>
+        <div style={{ fontSize: 12, marginTop: 4 }}>{t("branchSettings.comingSoon")}</div>
+      </div>
+    </Card>
+  )
+}
+
+type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "alerts" | "compliance" | "printing"
+
+const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }[] = [
+  { id: "profile", icon: "🏥", labelKey: "branchSettings.tabProfile" },
+  { id: "pos", icon: "🧾", labelKey: "branchSettings.tabPos" },
+  { id: "inventory", icon: "📦", labelKey: "branchSettings.tabInventory" },
+  { id: "finance", icon: "💰", labelKey: "branchSettings.tabFinance" },
+  { id: "users", icon: "👥", labelKey: "branchSettings.tabUsers" },
+  { id: "categories", icon: "📁", labelKey: "branchSettings.tabCategories" },
+  { id: "alerts", icon: "🔔", labelKey: "branchSettings.tabAlerts" },
+  { id: "compliance", icon: "📋", labelKey: "branchSettings.tabCompliance" },
+  { id: "printing", icon: "🖨️", labelKey: "branchSettings.tabPrinting" },
+]
 
 const STATUS_COLORS: Record<string, { c: string; bg: string }> = {
   active: { c: "#16a34a", bg: "#d1fae5" },
@@ -35,22 +106,235 @@ const STATUS_LABEL_KEY: Record<string, "admin.statusPending" | "admin.statusOtpS
   pending: "admin.statusPending", otp_sent: "admin.statusOtpSent", active: "admin.statusActive", locked: "admin.statusLocked", denied: "admin.statusDenied",
 }
 
+// Owner and Manager already have real, distinct, backend-enforced access
+// today; "Staff" here is the existing "seller" role relabeled for this UI --
+// POS + Patients + Help only, exactly what a seller login has always been
+// limited to (see NAV_ITEMS in data.ts).
+const ROLE_COLORS: Record<BranchUserRole, { c: string; bg: string }> = {
+  owner: { c: "#7c3aed", bg: "#ede9fe" },
+  manager: { c: "#2563eb", bg: "#dbeafe" },
+  seller: { c: "#4b5563", bg: "#f3f4f6" },
+}
+
+const ROLE_LABEL_KEY: Record<BranchUserRole, TranslationKey> = {
+  owner: "branchSettings.roleOwner", manager: "branchSettings.roleManager", seller: "branchSettings.roleStaff",
+}
+
+const ROLE_DESC_KEY: Record<BranchUserRole, TranslationKey> = {
+  owner: "branchSettings.roleDescOwner", manager: "branchSettings.roleDescManager", seller: "branchSettings.roleDescStaff",
+}
+
+const CATEGORY_DOT_COLORS = ["#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626", "#0d9488"]
+
+function initials(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return "?"
+  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase()
+}
+
+function RoleBadge({ role }: { role: BranchUserRole }) {
+  const { t } = useTranslation()
+  const colors = ROLE_COLORS[role]
+  return <StatusBadge label={t(ROLE_LABEL_KEY[role])} color={colors.c} bg={colors.bg} />
+}
+
+function Avatar({ fullName, role }: { fullName: string; role: BranchUserRole }) {
+  const colors = ROLE_COLORS[role]
+  return (
+    <div style={{
+      width: 38, height: 38, borderRadius: "50%", background: colors.bg, color: colors.c,
+      display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0,
+    }}>
+      {initials(fullName)}
+    </div>
+  )
+}
+
+function InviteStaffModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t } = useTranslation()
+  const [fullName, setFullName] = useState("")
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [role, setRole] = useState<StaffRole>("seller")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    if (!fullName.trim()) { setError(t("branchSettings.usersNameRequired")); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError(t("branchSettings.usersEmailInvalid")); return }
+    if (password.length < 6) { setError(t("branchSettings.usersPasswordTooShort")); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await inviteStaff(fullName.trim(), email.trim(), password, role)
+      onCreated()
+    } catch (reason) {
+      const raw = errorMessage(reason, t("branchSettings.usersInviteError"))
+      setError(raw.toLowerCase().includes("failed to send a request") ? t("branchSettings.usersFunctionNotDeployed") : raw)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <Modal title={t("branchSettings.inviteStaffTitle")} onClose={onClose} width={440}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("branchSettings.inviteStaffIntro")}</p>
+      {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.usersFullNameLabel")}</label>
+        <input value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} />
+      </div>
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.usersEmailLabel")}</label>
+        <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
+      </div>
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.usersPasswordLabel")}</label>
+        <PasswordInput value={password} onChange={e => setPassword(e.target.value)} style={inputStyle} placeholder={t("branchSettings.usersPasswordPlaceholder")} />
+        <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--ink-faint)" }}>{t("branchSettings.usersPasswordHint")}</p>
+      </div>
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.usersRoleLabel")}</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          {(["manager", "seller"] as StaffRole[]).map(r => (
+            <button key={r} type="button" onClick={() => setRole(r)} style={{
+              flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
+              border: `1.5px solid ${role === r ? "var(--primary)" : "var(--border)"}`,
+              background: role === r ? "var(--primary-light)" : "#fff",
+              color: role === r ? "var(--primary)" : "var(--ink-mid)", fontWeight: role === r ? 700 : 500, fontSize: 12,
+            }}>{t(ROLE_LABEL_KEY[r])}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>{t("branchSettings.usersCancel")}</Btn>
+        <Btn variant="primary" onClick={() => void submit()}>{busy ? t("branchSettings.usersInviting") : t("branchSettings.usersInviteSubmit")}</Btn>
+      </div>
+    </div>
+  </Modal>
+}
+
+function ChangeRoleModal({ member, onClose, onChanged }: { member: StaffMember; onClose: () => void; onChanged: () => void }) {
+  const { t } = useTranslation()
+  const [role, setRole] = useState<StaffRole>(member.role === "manager" ? "manager" : "seller")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await updateStaffRole(member.id, role)
+      onChanged()
+    } catch (reason) {
+      setError(errorMessage(reason, t("branchSettings.usersRoleChangeError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <Modal title={t("branchSettings.changeRoleTitle", { name: member.fullName })} onClose={onClose} width={400}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+      <div style={{ display: "flex", gap: 8 }}>
+        {(["manager", "seller"] as StaffRole[]).map(r => (
+          <button key={r} type="button" onClick={() => setRole(r)} style={{
+            flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
+            border: `1.5px solid ${role === r ? "var(--primary)" : "var(--border)"}`,
+            background: role === r ? "var(--primary-light)" : "#fff",
+            color: role === r ? "var(--primary)" : "var(--ink-mid)", fontWeight: role === r ? 700 : 500, fontSize: 12,
+          }}>{t(ROLE_LABEL_KEY[r])}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>{t("branchSettings.usersCancel")}</Btn>
+        <Btn variant="primary" onClick={() => void submit()}>{busy ? t("branchSettings.usersSaving") : t("branchSettings.usersSaveRole")}</Btn>
+      </div>
+    </div>
+  </Modal>
+}
+
+function CategoryModal({ initial, onClose, onSaved }: {
+  initial?: BranchCategory
+  onClose: () => void
+  onSaved: (name: string, description: string) => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const [name, setName] = useState(initial?.name ?? "")
+  const [description, setDescription] = useState(initial?.description ?? "")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    if (!name.trim()) { setError(t("branchSettings.categoryNameRequired")); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await onSaved(name.trim(), description.trim())
+    } catch (reason) {
+      setError(errorMessage(reason, t("branchSettings.categorySaveError")))
+      setBusy(false)
+    }
+  }
+
+  return <Modal title={initial ? t("branchSettings.editCategoryTitle") : t("branchSettings.addCategoryTitle")} onClose={onClose} width={420}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.categoryNameLabel")}</label>
+        <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} />
+      </div>
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.categoryDescriptionLabel")}</label>
+        <input value={description} onChange={e => setDescription(e.target.value)} style={inputStyle} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>{t("branchSettings.usersCancel")}</Btn>
+        <Btn variant="primary" onClick={() => void submit()}>{busy ? t("branchSettings.usersSaving") : t("branchSettings.categorySave")}</Btn>
+      </div>
+    </div>
+  </Modal>
+}
+
 // `onLogoSaved` (App.tsx) lets the sidebar's own logo update the moment a
 // save here actually persists a new one -- without it, the sidebar would
 // only pick up the change on the next sign-in/reload, same staleness the
 // receipt doesn't have (it re-fetches the branch row fresh every print).
 export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url: string | null) => void }) {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
+
   const [branchName, setBranchName] = useState("")
   const [address, setAddress] = useState("")
   const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
+  const [website, setWebsite] = useState("")
   const [tin, setTin] = useState("")
+  const [licenseNumber, setLicenseNumber] = useState("")
+  const [licenseExpiryDate, setLicenseExpiryDate] = useState("")
+  const [ebmDeviceSerial, setEbmDeviceSerial] = useState("")
+  const [defaultLanguage, setDefaultLanguage] = useState<BranchLanguage>("en")
   const [logoPath, setLogoPath] = useState<string | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [bankAccountNumber, setBankAccountNumber] = useState("")
   const [bankAccountName, setBankAccountName] = useState("")
   const [momoPayNumber, setMomoPayNumber] = useState("")
   const [reminderHours, setReminderHours] = useState(6)
+  const [receiptNumberPrefix, setReceiptNumberPrefix] = useState("RCT")
+  const [posCashEnabled, setPosCashEnabled] = useState(true)
+  const [posMtnMomoEnabled, setPosMtnMomoEnabled] = useState(true)
+  const [posAirtelMoneyEnabled, setPosAirtelMoneyEnabled] = useState(true)
+  const [posCardEnabled, setPosCardEnabled] = useState(false)
+  const [posInsuranceEnabled, setPosInsuranceEnabled] = useState(true)
+  const [posDefaultPaymentMethod, setPosDefaultPaymentMethod] = useState<PaymentMethod>("cash")
+  const [posRequirePatientName, setPosRequirePatientName] = useState(false)
+  const [posAllowDiscounts, setPosAllowDiscounts] = useState(true)
+  const [posShowPatientHistory, setPosShowPatientHistory] = useState(true)
+  const [discounts, setDiscounts] = useState<BranchDiscount[]>([])
+  const [newDiscountName, setNewDiscountName] = useState("")
+  const [newDiscountType, setNewDiscountType] = useState<DiscountType>("percentage")
+  const [newDiscountValue, setNewDiscountValue] = useState("")
+  const [creatingDiscount, setCreatingDiscount] = useState(false)
   const [branchCode, setBranchCode] = useState<string | null>(null)
   const [status, setStatus] = useState("active")
   const [createdAt, setCreatedAt] = useState("")
@@ -75,6 +359,18 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [passwordSuccessSeq, setPasswordSuccessSeq] = useState(0)
 
+  const [staff, setStaff] = useState<StaffMember[]>([])
+  const [staffLoading, setStaffLoading] = useState(true)
+  const [staffError, setStaffError] = useState<string | null>(null)
+  const [showInvite, setShowInvite] = useState(false)
+  const [changeRoleTarget, setChangeRoleTarget] = useState<StaffMember | null>(null)
+
+  const [categories, setCategories] = useState<BranchCategory[]>([])
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
+  const [categoriesError, setCategoriesError] = useState<string | null>(null)
+  const [showAddCategory, setShowAddCategory] = useState(false)
+  const [editCategoryTarget, setEditCategoryTarget] = useState<BranchCategory | null>(null)
+
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -83,12 +379,28 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
       setBranchName(details.name)
       setAddress(details.address ?? "")
       setPhone(details.phone ?? "")
+      setEmail(details.email ?? "")
+      setWebsite(details.website ?? "")
       setTin(details.tin ?? "")
+      setLicenseNumber(details.licenseNumber ?? "")
+      setLicenseExpiryDate(details.licenseExpiryDate ?? "")
+      setEbmDeviceSerial(details.ebmDeviceSerial ?? "")
+      setDefaultLanguage(details.defaultLanguage)
       setLogoPath(details.logoPath)
       setBankAccountNumber(details.bankAccountNumber ?? "")
       setBankAccountName(details.bankAccountName ?? "")
       setMomoPayNumber(details.momoPayNumber ?? "")
       setReminderHours(details.outOfStockReminderHours)
+      setReceiptNumberPrefix(details.receiptNumberPrefix)
+      setPosCashEnabled(details.posCashEnabled)
+      setPosMtnMomoEnabled(details.posMtnMomoEnabled)
+      setPosAirtelMoneyEnabled(details.posAirtelMoneyEnabled)
+      setPosCardEnabled(details.posCardEnabled)
+      setPosInsuranceEnabled(details.posInsuranceEnabled)
+      setPosDefaultPaymentMethod(details.posDefaultPaymentMethod)
+      setPosRequirePatientName(details.posRequirePatientName)
+      setPosAllowDiscounts(details.posAllowDiscounts)
+      setPosShowPatientHistory(details.posShowPatientHistory)
       setBranchCode(details.branchCode)
       setStatus(details.status)
       setCreatedAt(details.createdAt)
@@ -100,6 +412,73 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
   }, [t])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  const refreshDiscounts = useCallback(async () => {
+    try {
+      setDiscounts(await listBranchDiscounts())
+    } catch (reason) {
+      setError(errorMessage(reason, t("branchSettings.discountsLoadError")))
+    }
+  }, [t])
+
+  useEffect(() => { void refreshDiscounts() }, [refreshDiscounts])
+
+  const refreshStaff = useCallback(async () => {
+    setStaffLoading(true)
+    setStaffError(null)
+    try {
+      setStaff(await listBranchStaff())
+    } catch (reason) {
+      setStaffError(errorMessage(reason, t("branchSettings.usersLoadError")))
+    } finally {
+      setStaffLoading(false)
+    }
+  }, [t])
+
+  useEffect(() => { void refreshStaff() }, [refreshStaff])
+
+  async function toggleStaffActive(member: StaffMember) {
+    try {
+      await setStaffActive(member.id, !member.isActive)
+      void refreshStaff()
+    } catch (reason) {
+      setStaffError(errorMessage(reason, t("branchSettings.usersToggleError")))
+    }
+  }
+
+  const refreshCategories = useCallback(async () => {
+    setCategoriesLoading(true)
+    setCategoriesError(null)
+    try {
+      setCategories(await listBranchCategories())
+    } catch (reason) {
+      setCategoriesError(errorMessage(reason, t("branchSettings.categoriesLoadError")))
+    } finally {
+      setCategoriesLoading(false)
+    }
+  }, [t])
+
+  useEffect(() => { void refreshCategories() }, [refreshCategories])
+
+  async function addDiscount() {
+    const value = Number(newDiscountValue)
+    if (!newDiscountName.trim() || !Number.isFinite(value) || value < 0) {
+      setError(t("branchSettings.discountInvalidError"))
+      return
+    }
+    setCreatingDiscount(true)
+    setError(null)
+    try {
+      await createBranchDiscount(newDiscountName.trim(), newDiscountType, value)
+      setNewDiscountName("")
+      setNewDiscountValue("")
+      await refreshDiscounts()
+    } catch (reason) {
+      setError(errorMessage(reason, t("branchSettings.discountCreateError")))
+    } finally {
+      setCreatingDiscount(false)
+    }
+  }
 
   async function pickLogo(file: File | null) {
     if (!file) return
@@ -116,11 +495,26 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     }
   }
 
+  // One shared save for the whole record -- every field from every tab is
+  // sent together in one update_branch_details() call regardless of which
+  // tab happens to be open, the same way the pre-redesign page already saved
+  // its two visually-separate cards as a single action.
   async function save() {
+    if (!branchName.trim()) { setError(t("branchSettings.nameRequiredError")); return }
     setSaving(true)
     setError(null)
     try {
-      await updateBranchDetails(address.trim(), phone.trim(), tin.trim(), logoPath, bankAccountNumber.trim(), bankAccountName.trim(), momoPayNumber.trim(), reminderHours)
+      await updateBranchDetails({
+        address: address.trim(), phone: phone.trim(), tin: tin.trim(), logoPath,
+        bankAccountNumber: bankAccountNumber.trim(), bankAccountName: bankAccountName.trim(), momoPayNumber: momoPayNumber.trim(),
+        outOfStockReminderHours: reminderHours,
+        name: branchName.trim(), email: email.trim(), website: website.trim(),
+        licenseNumber: licenseNumber.trim(), licenseExpiryDate: licenseExpiryDate.trim() || null, ebmDeviceSerial: ebmDeviceSerial.trim(),
+        defaultLanguage,
+        receiptNumberPrefix: receiptNumberPrefix.trim() || "RCT",
+        posCashEnabled, posMtnMomoEnabled, posAirtelMoneyEnabled, posCardEnabled, posInsuranceEnabled,
+        posDefaultPaymentMethod, posRequirePatientName, posAllowDiscounts, posShowPatientHistory,
+      })
       setSuccessMsg(t("branchSettings.saveSuccess"))
       setSuccessSeq(seq => seq + 1)
       onLogoSaved?.(logoPath ? branchLogoUrl(logoPath) : null)
@@ -152,7 +546,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
   const logoSrc = logoPreview ?? (logoPath ? branchLogoUrl(logoPath) : null)
   const statusColor = STATUS_COLORS[status] ?? STATUS_COLORS.active
 
-  return <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 860 }}>
+  return <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
     {error && <div style={{ background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 10, padding: "12px 14px", fontSize: 12 }}>{error}</div>}
     {successMsg && <CenterAlert key={successSeq} message={successMsg} tone="success" />}
     {passwordSuccess && <CenterAlert key={passwordSuccessSeq} message={passwordSuccess} tone="success" />}
@@ -160,133 +554,396 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     <SectionHeader title={t("page.branch")} subtitle={t("branchSettings.subtitle")} />
 
     {loading ? <Card><p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.loading")}</p></Card> : (
-      <>
-        {/* Branch Info + Notification Preferences, side by side */}
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-          <Card style={{ flex: "1 1 300px", minWidth: 280 }}>
-            <CardHeader icon="🏥" title={t("branchSettings.infoTitle")} />
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {branchCode && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.branchCodeLabel")}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "var(--ink)" }}>{branchCode}</span>
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {/* Settings sub-nav -- sticky within <main>'s own scroll (App.tsx is
+            the only scrolling ancestor), so a long tab like Profile scrolls
+            its content while the nav + Save button stay put instead of
+            scrolling away and leaving blank space where the nav used to be. */}
+        <div style={{ width: 230, flexShrink: 0, display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 0, maxHeight: "calc(100vh - 40px)", overflowY: "auto" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.08em", padding: "0 4px" }}>
+            {t("branchSettings.settingsNavTitle")}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {SETTINGS_TABS.map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+                  border: `1.5px solid ${activeTab === tab.id ? "var(--primary)" : "transparent"}`,
+                  background: activeTab === tab.id ? "var(--primary-light)" : "transparent",
+                  color: activeTab === tab.id ? "var(--primary)" : "var(--ink-mid)",
+                  fontWeight: activeTab === tab.id ? 700 : 500, fontSize: 13, textAlign: "left",
+                }}
+              >
+                <span>{tab.icon}</span>{t(tab.labelKey)}
+              </button>
+            ))}
+          </div>
+          <Btn variant="primary" onClick={() => void save()} style={{ justifyContent: "center", marginTop: 8 }}>
+            {saving ? t("branchSettings.saving") : t("branchSettings.save")}
+          </Btn>
+        </div>
+
+        {/* Tab content */}
+        <div style={{ flex: "1 1 480px", minWidth: 320, display: "flex", flexDirection: "column", gap: 16 }}>
+          {activeTab === "profile" && (
+            <>
+              <Card>
+                <CardHeader icon="🏥" title={t("branchSettings.identityTitle")} subtitle={t("branchSettings.identitySubtitle")} />
+                <SettingRow label={t("branchSettings.logoLabel")} description={uploadingLogo ? t("branchSettings.logoUploading") : t("branchSettings.logoHint")}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 56, height: 56, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
+                      {logoSrc ? <img src={logoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 9, color: "var(--ink-faint)" }}>{t("branchSettings.noLogo")}</span>}
+                    </div>
+                    <input type="file" accept="image/*" onChange={e => void pickLogo(e.target.files?.[0] ?? null)} style={{ fontSize: 11 }} disabled={uploadingLogo} />
+                  </div>
+                </SettingRow>
+                <SettingRow label={t("branchSettings.nameLabel")} description={t("branchSettings.nameHint")} dbRef="branches.name">
+                  <input value={branchName} onChange={e => setBranchName(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.addressLabel")} description={t("branchSettings.addressHint")} dbRef="branches.address">
+                  <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.phoneLabel")} description={t("branchSettings.phoneHint")} dbRef="branches.phone">
+                  <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.emailLabel")} description={t("branchSettings.emailHint")} dbRef="branches.email">
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.websiteLabel")} description={t("branchSettings.websiteHint")} dbRef="branches.website" last>
+                  <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="www.mypharmacy.rw" style={inputStyle} />
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="📋" title={t("branchSettings.legalTitle")} subtitle={t("branchSettings.legalSubtitle")} />
+                <SettingRow
+                  label={t("branchSettings.licenseNumberLabel")} description={t("branchSettings.licenseNumberHint")}
+                  dbRef="branches.license_number" warning={t("branchSettings.licenseNumberWarning")}
+                >
+                  <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.licenseExpiryLabel")} description={t("branchSettings.licenseExpiryHint")} dbRef="branches.license_expiry_date">
+                  <input type="date" value={licenseExpiryDate} onChange={e => setLicenseExpiryDate(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.tinLabel")} description={t("branchSettings.tinHint")}
+                  dbRef="branches.tin" warning={t("branchSettings.tinWarning")}
+                >
+                  <input value={tin} onChange={e => setTin(e.target.value)} style={inputStyle} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.ebmSerialLabel")} description={t("branchSettings.ebmSerialHint")} dbRef="branches.ebm_device_serial" last>
+                  <input value={ebmDeviceSerial} onChange={e => setEbmDeviceSerial(e.target.value)} style={inputStyle} />
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="🌐" title={t("branchSettings.localeTitle")} subtitle={t("branchSettings.localeSubtitle")} />
+                <SettingRow label={t("branchSettings.defaultLanguageLabel")} description={t("branchSettings.defaultLanguageHint")} dbRef="branches.default_language" last>
+                  <select value={defaultLanguage} onChange={e => setDefaultLanguage(e.target.value as BranchLanguage)} style={{ ...inputStyle, background: "#fff" }}>
+                    <option value="en">English</option>
+                    <option value="fr">Français</option>
+                    <option value="rw">Ikinyarwanda</option>
+                  </select>
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="🔖" title={t("branchSettings.infoTitle")} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {branchCode && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.branchCodeLabel")}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, fontFamily: "monospace", color: "var(--ink)" }}>{branchCode}</span>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.statusLabel")}</span>
+                    <StatusBadge label={t(STATUS_LABEL_KEY[status] ?? "admin.statusActive")} color={statusColor.c} bg={statusColor.bg} />
+                  </div>
+                  {createdAt && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.memberSinceLabel")}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{new Date(createdAt).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </>
+          )}
+
+          {activeTab === "pos" && (
+            <>
+              <Card>
+                <CardHeader icon="🧾" title={t("branchSettings.receiptsTitle")} subtitle={t("branchSettings.receiptsSubtitle")} />
+                <SettingRow
+                  label={t("branchSettings.receiptPrefixLabel")} description={t("branchSettings.receiptPrefixHint")}
+                  dbRef="receipts.receipt_number format" last
+                >
+                  <input value={receiptNumberPrefix} onChange={e => setReceiptNumberPrefix(e.target.value)} style={inputStyle} />
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="💳" title={t("branchSettings.paymentMethodsTitle")} subtitle={t("branchSettings.paymentMethodsSubtitle")} />
+                <SettingRow label={t("branchSettings.methodCashLabel")} description={t("branchSettings.methodCashHint")}>
+                  <Switch checked={posCashEnabled} onChange={() => setPosCashEnabled(v => !v)} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.methodMtnLabel")} description={t("branchSettings.methodMtnHint")}>
+                  <Switch checked={posMtnMomoEnabled} onChange={() => setPosMtnMomoEnabled(v => !v)} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.methodAirtelLabel")} description={t("branchSettings.methodAirtelHint")}>
+                  <Switch checked={posAirtelMoneyEnabled} onChange={() => setPosAirtelMoneyEnabled(v => !v)} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.methodInsuranceLabel")} description={t("branchSettings.methodInsuranceHint")}>
+                  <Switch checked={posInsuranceEnabled} onChange={() => setPosInsuranceEnabled(v => !v)} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.methodCardLabel")} description={t("branchSettings.methodCardHint")}>
+                  <Switch checked={posCardEnabled} onChange={() => setPosCardEnabled(v => !v)} />
+                </SettingRow>
+                <SettingRow label={t("branchSettings.defaultMethodLabel")} description={t("branchSettings.defaultMethodHint")} last>
+                  <select value={posDefaultPaymentMethod} onChange={e => setPosDefaultPaymentMethod(e.target.value as PaymentMethod)} style={{ ...inputStyle, background: "#fff" }}>
+                    {posCashEnabled && <option value="cash">{t("branchSettings.methodCashLabel")}</option>}
+                    {posMtnMomoEnabled && <option value="mtn_momo">{t("branchSettings.methodMtnLabel")}</option>}
+                    {posAirtelMoneyEnabled && <option value="airtel_money">{t("branchSettings.methodAirtelLabel")}</option>}
+                    {posCardEnabled && <option value="card">{t("branchSettings.methodCardLabel")}</option>}
+                  </select>
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="⚙️" title={t("branchSettings.saleRulesTitle")} subtitle={t("branchSettings.saleRulesSubtitle")} />
+                <SettingRow
+                  label={t("branchSettings.requirePatientLabel")} description={t("branchSettings.requirePatientHint")}
+                  dbRef="sales — patient field"
+                >
+                  <Switch checked={posRequirePatientName} onChange={() => setPosRequirePatientName(v => !v)} />
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.allowDiscountsLabel")} description={t("branchSettings.allowDiscountsHint")}
+                  dbRef="sales.discount_id"
+                >
+                  <Switch checked={posAllowDiscounts} onChange={() => setPosAllowDiscounts(v => !v)} />
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.showHistoryLabel")} description={t("branchSettings.showHistoryHint")}
+                  dbRef="sales — patient name lookup" last
+                >
+                  <Switch checked={posShowPatientHistory} onChange={() => setPosShowPatientHistory(v => !v)} />
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="🏷️" title={t("branchSettings.discountsTitle")} subtitle={t("branchSettings.discountsSubtitle")} />
+                {discounts.length === 0 ? (
+                  <p style={{ fontSize: 12, color: "var(--ink-muted)", margin: "0 0 14px" }}>{t("branchSettings.discountsEmpty")}</p>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                    {discounts.map(d => (
+                      <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: "var(--bg)", borderRadius: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{d.name}</span>
+                        <span style={{ fontSize: 12, color: d.isCurrent ? "var(--ink-mid)" : "var(--ink-faint)" }}>
+                          {d.discountType === "percentage" ? `${d.value}%` : `RWF ${d.value.toLocaleString()}`}
+                          {!d.isCurrent && ` · ${t("branchSettings.discountExpired")}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <input value={newDiscountName} onChange={e => setNewDiscountName(e.target.value)} placeholder={t("branchSettings.discountNamePlaceholder")} style={{ ...inputStyle, flex: "1 1 160px" }} />
+                  <select value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as DiscountType)} style={{ ...inputStyle, width: 110, background: "#fff" }}>
+                    <option value="percentage">%</option>
+                    <option value="fixed">RWF</option>
+                  </select>
+                  <input type="number" min={0} value={newDiscountValue} onChange={e => setNewDiscountValue(e.target.value)} placeholder={t("branchSettings.discountValuePlaceholder")} style={{ ...inputStyle, width: 100 }} />
+                  <Btn variant="secondary" onClick={() => void addDiscount()}>{creatingDiscount ? t("branchSettings.discountAdding") : t("branchSettings.discountAdd")}</Btn>
+                </div>
+              </Card>
+            </>
+          )}
+
+          {activeTab === "finance" && (
+            <Card>
+              <CardHeader icon="💰" title={t("branchSettings.financeTitle")} subtitle={t("branchSettings.financeSubtitle")} />
+              <SettingRow label={t("branchSettings.bankAccountNumberLabel")} dbRef="branches.bank_account_number">
+                <input value={bankAccountNumber} onChange={e => setBankAccountNumber(e.target.value)} style={inputStyle} />
+              </SettingRow>
+              <SettingRow label={t("branchSettings.bankAccountNameLabel")} dbRef="branches.bank_account_name">
+                <input value={bankAccountName} onChange={e => setBankAccountName(e.target.value)} style={inputStyle} />
+              </SettingRow>
+              <SettingRow label={t("branchSettings.momoPayLabel")} dbRef="branches.momo_pay_number" last>
+                <input value={momoPayNumber} onChange={e => setMomoPayNumber(e.target.value)} style={inputStyle} />
+              </SettingRow>
+            </Card>
+          )}
+
+          {activeTab === "alerts" && (
+            <Card>
+              <CardHeader icon="🔔" title={t("branchSettings.notificationsTitle")} subtitle={t("branchSettings.notificationsSubtitle")} />
+              <SettingRow label={t("branchSettings.reminderHoursLabel")} description={t("branchSettings.reminderHoursHint")} dbRef="branches.out_of_stock_reminder_hours" last>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <input
+                    type="number" min={1} max={168} value={reminderHours}
+                    onChange={e => setReminderHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))}
+                    style={{ ...inputStyle, width: 90 }}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.reminderHoursUnit")}</span>
+                </div>
+              </SettingRow>
+            </Card>
+          )}
+
+          {activeTab === "users" && (
+            <>
+              <Card>
+                <CardHeader icon="🔒" title={t("branchSettings.securityTitle")} subtitle={t("branchSettings.securitySubtitle")} />
+                {passwordError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 10 }}>{passwordError}</p>}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.newPasswordLabel")}</label>
+                    <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.confirmPasswordLabel")}</label>
+                    <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={inputStyle} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+                  <Btn variant="secondary" onClick={() => void changePassword()}>{changingPassword ? t("branchSettings.changingPassword") : t("branchSettings.changePassword")}</Btn>
+                </div>
+              </Card>
+
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+                  <CardHeader icon="👥" title={t("branchSettings.usersTitle")} subtitle={t("branchSettings.usersSubtitle", { count: staff.filter(m => m.isActive).length })} />
+                  <Btn variant="primary" small onClick={() => setShowInvite(true)}>+ {t("branchSettings.inviteStaff")}</Btn>
+                </div>
+                {staffError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{staffError}</p>}
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginBottom: 20 }}>
+                  {(["owner", "manager", "seller"] as BranchUserRole[]).map(role => (
+                    <div key={role} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 12, background: "var(--bg)" }}>
+                      <RoleBadge role={role} />
+                      <p style={{ fontSize: 11, color: "var(--ink-muted)", margin: "8px 0 0", lineHeight: 1.5 }}>{t(ROLE_DESC_KEY[role])}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  {staffLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.loading")}</p> : staff.map((member, i) => (
+                    <div key={member.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i === staff.length - 1 ? "none" : "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <Avatar fullName={member.fullName} role={member.role} />
+                        <div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{member.fullName}</div>
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{member.email}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <RoleBadge role={member.role} />
+                        {member.role !== "owner" && (
+                          <>
+                            <Btn variant="secondary" small onClick={() => setChangeRoleTarget(member)}>{t("branchSettings.changeRole")}</Btn>
+                            <Btn variant={member.isActive ? "danger" : "secondary"} small onClick={() => void toggleStaffActive(member)}>
+                              {member.isActive ? t("branchSettings.deactivate") : t("branchSettings.activate")}
+                            </Btn>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {!staffLoading && staff.length === 0 && (
+                    <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("branchSettings.usersEmpty")}</p>
+                  )}
+                </div>
+              </Card>
+            </>
+          )}
+
+          {activeTab === "categories" && (
+            <Card>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+                <CardHeader icon="📁" title={t("branchSettings.categoriesTitle")} subtitle="product_categories" />
+                <Btn variant="primary" small onClick={() => setShowAddCategory(true)}>+ {t("branchSettings.addCategory")}</Btn>
+              </div>
+              <div style={{ background: "var(--primary-light)", border: "1px solid var(--border)", borderRadius: 10, padding: "12px 14px", fontSize: 12, color: "var(--ink-mid)", marginBottom: 18, lineHeight: 1.6 }}>
+                {t("branchSettings.categoriesIntro")}
+              </div>
+              {categoriesError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{categoriesError}</p>}
+              {categoriesLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.loading")}</p> : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 12 }}>
+                  {categories.map((cat, i) => (
+                    <div key={cat.id} style={{ border: "1px solid var(--border)", borderRadius: 10, padding: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: CATEGORY_DOT_COLORS[i % CATEGORY_DOT_COLORS.length], flexShrink: 0 }} />
+                          {cat.name}
+                        </div>
+                        <button onClick={() => setEditCategoryTarget(cat)} style={{ background: "none", border: "none", color: "var(--primary)", fontWeight: 600, fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                          {t("branchSettings.editCategory")}
+                        </button>
+                      </div>
+                      {cat.description && <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--ink-muted)" }}>{cat.description}</p>}
+                      <p style={{ margin: 0, fontSize: 10, color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>{cat.code}</p>
+                    </div>
+                  ))}
+                  <button onClick={() => setShowAddCategory(true)} style={{
+                    border: "1.5px dashed var(--border-strong)", borderRadius: 10, padding: 14, background: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", fontSize: 12, fontFamily: "inherit", minHeight: 76,
+                  }}>
+                    + {t("branchSettings.newCategory")}
+                  </button>
                 </div>
               )}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.statusLabel")}</span>
-                <StatusBadge label={t(STATUS_LABEL_KEY[status] ?? "admin.statusActive")} color={statusColor.c} bg={statusColor.bg} />
-              </div>
-              {createdAt && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.memberSinceLabel")}</span>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{new Date(createdAt).toLocaleDateString()}</span>
-                </div>
-              )}
-            </div>
-          </Card>
+            </Card>
+          )}
 
-          <Card style={{ flex: "1 1 300px", minWidth: 280 }}>
-            <CardHeader icon="🔔" title={t("branchSettings.notificationsTitle")} subtitle={t("branchSettings.notificationsSubtitle")} />
-            <label style={label}>{t("branchSettings.reminderHoursLabel")}</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input
-                type="number" min={1} max={168} value={reminderHours}
-                onChange={e => setReminderHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))}
-                style={{ ...inputStyle, width: 90 }}
-              />
-              <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.reminderHoursUnit")}</span>
-            </div>
-            <p style={{ margin: "8px 0 0", fontSize: 10, color: "var(--ink-faint)" }}>{t("branchSettings.reminderHoursHint")}</p>
-          </Card>
+          {(activeTab === "inventory" || activeTab === "compliance" || activeTab === "printing") && (
+            <ComingSoonPanel label={t(SETTINGS_TABS.find(tb => tb.id === activeTab)!.labelKey)} />
+          )}
         </div>
+      </div>
+    )}
 
-        {/* Pharmacy Profile */}
-        <Card>
-          <CardHeader icon="🧾" title={t("branchSettings.profileTitle")} subtitle={t("branchSettings.profileSubtitle")} />
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-              <div style={{ width: 72, height: 72, borderRadius: 10, border: "1px solid var(--border)", background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }}>
-                {logoSrc ? <img src={logoSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /> : <span style={{ fontSize: 10, color: "var(--ink-faint)" }}>{t("branchSettings.noLogo")}</span>}
-              </div>
-              <div>
-                <label style={label}>{t("branchSettings.logoLabel")}</label>
-                <input type="file" accept="image/*" onChange={e => void pickLogo(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} disabled={uploadingLogo} />
-                <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--ink-faint)" }}>{uploadingLogo ? t("branchSettings.logoUploading") : t("branchSettings.logoHint")}</p>
-              </div>
-            </div>
-
-            <div>
-              <label style={label}>{t("branchSettings.nameLabel")}</label>
-              <input value={branchName} disabled style={{ ...inputStyle, background: "var(--bg)", color: "var(--ink-muted)" }} />
-              <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--ink-faint)" }}>{t("branchSettings.nameHint")}</p>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={label}>{t("branchSettings.addressLabel")}</label>
-                <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
-              </div>
-              <div>
-                <label style={label}>{t("branchSettings.phoneLabel")}</label>
-                <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
-              </div>
-            </div>
-            <div>
-              <label style={label}>{t("branchSettings.tinLabel")}</label>
-              <input value={tin} onChange={e => setTin(e.target.value)} style={inputStyle} />
-              <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--ink-faint)" }}>{t("branchSettings.tinHint")}</p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Payment Details */}
-        <Card>
-          <CardHeader icon="💳" title={t("branchSettings.paymentTitle")} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div>
-              <label style={label}>{t("branchSettings.bankAccountNumberLabel")}</label>
-              <input value={bankAccountNumber} onChange={e => setBankAccountNumber(e.target.value)} style={inputStyle} />
-            </div>
-            <div>
-              <label style={label}>{t("branchSettings.bankAccountNameLabel")}</label>
-              <input value={bankAccountName} onChange={e => setBankAccountName(e.target.value)} style={inputStyle} />
-            </div>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <label style={label}>{t("branchSettings.momoPayLabel")}</label>
-            <input value={momoPayNumber} onChange={e => setMomoPayNumber(e.target.value)} style={inputStyle} />
-          </div>
-        </Card>
-
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Btn variant="primary" onClick={() => void save()}>{saving ? t("branchSettings.saving") : t("branchSettings.save")}</Btn>
-        </div>
-
-        {/* Account & Security */}
-        <Card>
-          <CardHeader icon="🔒" title={t("branchSettings.securityTitle")} subtitle={t("branchSettings.securitySubtitle")} />
-          {passwordError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 10 }}>{passwordError}</p>}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, maxWidth: 480 }}>
-            <div>
-              <label style={label}>{t("branchSettings.newPasswordLabel")}</label>
-              <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} />
-            </div>
-            <div>
-              <label style={label}>{t("branchSettings.confirmPasswordLabel")}</label>
-              <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} style={inputStyle} />
-            </div>
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
-            <Btn variant="secondary" onClick={() => void changePassword()}>{changingPassword ? t("branchSettings.changingPassword") : t("branchSettings.changePassword")}</Btn>
-          </div>
-        </Card>
-
-        {/* Team */}
-        <div>
-          <h2 style={{ margin: "4px 0 4px", fontSize: 14 }}>{t("branchSettings.staffTitle")}</h2>
-          <p style={{ margin: "0 0 10px", color: "var(--ink-muted)", fontSize: 11 }}>{t("branchSettings.staffSubtitle")}</p>
-          <StaffRoster showHeader={false} />
-        </div>
-      </>
+    {showInvite && (
+      <InviteStaffModal
+        onClose={() => setShowInvite(false)}
+        onCreated={() => { setShowInvite(false); setSuccessMsg(t("branchSettings.usersInviteSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
+      />
+    )}
+    {changeRoleTarget && (
+      <ChangeRoleModal
+        member={changeRoleTarget}
+        onClose={() => setChangeRoleTarget(null)}
+        onChanged={() => { setChangeRoleTarget(null); setSuccessMsg(t("branchSettings.usersRoleChangeSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
+      />
+    )}
+    {showAddCategory && (
+      <CategoryModal
+        onClose={() => setShowAddCategory(false)}
+        onSaved={async (name, description) => {
+          await createBranchCategory(name, description)
+          setShowAddCategory(false)
+          setSuccessMsg(t("branchSettings.categoryAddSuccess"))
+          setSuccessSeq(seq => seq + 1)
+          void refreshCategories()
+        }}
+      />
+    )}
+    {editCategoryTarget && (
+      <CategoryModal
+        initial={editCategoryTarget}
+        onClose={() => setEditCategoryTarget(null)}
+        onSaved={async (name, description) => {
+          await updateBranchCategory(editCategoryTarget.id, name, description)
+          setEditCategoryTarget(null)
+          setSuccessMsg(t("branchSettings.categorySaveSuccess"))
+          setSuccessSeq(seq => seq + 1)
+          void refreshCategories()
+        }}
+      />
     )}
   </div>
 }

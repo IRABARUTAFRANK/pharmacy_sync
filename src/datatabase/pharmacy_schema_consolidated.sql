@@ -4493,11 +4493,30 @@ $$;
 -- overload identity" / "cannot change return type" reasons documented above
 -- update_branch_details's first declaration.
 
-drop function if exists public.update_branch_details(text, text, text, text, text, text, text);
+-- Branch Profile redesign: identity fields (name, email were previously
+-- admin/onboarding-only; website is new), legal/licensing fields RRA
+-- compliance actually needs (license number + expiry, EBM device serial --
+-- recorded for when the VSDC/e-invoicing integration goes live, not used by
+-- receipts yet, same honesty as the Overview page's "RRA/VSDC -- Not
+-- configured" tile), and a branch-wide default UI language (a fallback for a
+-- viewer who hasn't picked their own in lib/i18n's detectDefaultLang() --
+-- personal choice still wins, same relationship the theme picker has to any
+-- future branch-level theme default).
+alter table public.branches
+  add column if not exists website varchar(150),
+  add column if not exists license_number varchar(50),
+  add column if not exists license_expiry_date date,
+  add column if not exists ebm_device_serial varchar(50),
+  add column if not exists default_language varchar(5) not null default 'en' check (default_language in ('en','fr','rw'));
+
+drop function if exists public.update_branch_details(text, text, text, text, text, text, text, integer);
 create or replace function public.update_branch_details(
   p_address text, p_phone text, p_tin text, p_logo_path text default null,
   p_bank_account_number text default null, p_bank_account_name text default null, p_momo_pay_number text default null,
-  p_out_of_stock_reminder_hours integer default null
+  p_out_of_stock_reminder_hours integer default null,
+  p_name text default null, p_email text default null, p_website text default null,
+  p_license_number text default null, p_license_expiry_date date default null, p_ebm_device_serial text default null,
+  p_default_language text default null
 )
 returns void
 language plpgsql
@@ -4515,6 +4534,9 @@ begin
   if p_out_of_stock_reminder_hours is not null and (p_out_of_stock_reminder_hours < 1 or p_out_of_stock_reminder_hours > 168) then
     raise exception 'Reminder interval must be between 1 and 168 hours';
   end if;
+  if p_default_language is not null and p_default_language not in ('en','fr','rw') then
+    raise exception 'Unsupported language %', p_default_language;
+  end if;
 
   update public.branches
   set address = nullif(btrim(coalesce(p_address, '')), ''),
@@ -4524,19 +4546,29 @@ begin
       bank_account_number = nullif(btrim(coalesce(p_bank_account_number, '')), ''),
       bank_account_name = nullif(btrim(coalesce(p_bank_account_name, '')), ''),
       momo_pay_number = nullif(btrim(coalesce(p_momo_pay_number, '')), ''),
-      out_of_stock_reminder_hours = coalesce(p_out_of_stock_reminder_hours, out_of_stock_reminder_hours)
+      out_of_stock_reminder_hours = coalesce(p_out_of_stock_reminder_hours, out_of_stock_reminder_hours),
+      -- name is not nullable, so a blank/omitted value leaves it unchanged
+      -- rather than nulling it out the way the optional fields above do.
+      name = coalesce(nullif(btrim(coalesce(p_name, '')), ''), name),
+      email = nullif(btrim(coalesce(p_email, '')), ''),
+      website = nullif(btrim(coalesce(p_website, '')), ''),
+      license_number = nullif(btrim(coalesce(p_license_number, '')), ''),
+      license_expiry_date = p_license_expiry_date,
+      ebm_device_serial = nullif(btrim(coalesce(p_ebm_device_serial, '')), ''),
+      default_language = coalesce(p_default_language, default_language)
   where id = v_branch;
 end;
 $$;
 
-revoke all on function public.update_branch_details(text, text, text, text, text, text, text, integer) from public, anon;
-grant execute on function public.update_branch_details(text, text, text, text, text, text, text, integer) to authenticated;
+revoke all on function public.update_branch_details(text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text) from public, anon;
+grant execute on function public.update_branch_details(text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text) to authenticated;
 
 drop function if exists public.get_my_branch_details();
 create or replace function public.get_my_branch_details()
 returns table(
   name text, address text, phone text, tin text, logo_path text, bank_account_number text, bank_account_name text, momo_pay_number text,
-  out_of_stock_reminder_hours integer, branch_code text, status text, created_at timestamptz
+  out_of_stock_reminder_hours integer, branch_code text, status text, created_at timestamptz,
+  email text, website text, license_number text, license_expiry_date date, ebm_device_serial text, default_language text
 )
 language sql
 stable
@@ -4544,13 +4576,618 @@ security definer
 set search_path = ''
 as $$
   select b.name::text, b.address, b.phone, b.tin, b.logo_path, b.bank_account_number, b.bank_account_name, b.momo_pay_number,
-         b.out_of_stock_reminder_hours, b.branch_code::text, b.status::text, b.created_at
+         b.out_of_stock_reminder_hours, b.branch_code::text, b.status::text, b.created_at,
+         b.email, b.website, b.license_number, b.license_expiry_date, b.ebm_device_serial, b.default_language::text
   from public.branches b
   where b.id = public.current_branch_id()
 $$;
 
 revoke all on function public.get_my_branch_details() from public, anon;
 grant execute on function public.get_my_branch_details() to authenticated;
+
+-- Widen the notifications source_type list once more for the license-expiry
+-- reminder below -- same incremental-ALTER pattern already used to add
+-- out_of_stock and the product-request outcomes.
+alter table public.notifications drop constraint if exists notifications_source_type_check;
+alter table public.notifications add constraint notifications_source_type_check
+  check (source_type in ('batch_recall','stock_adjustment','product_request_approved','product_request_rejected','out_of_stock','license_expiring'));
+
+-- Same recurring/idempotent shape as check_out_of_stock_alerts(), just a
+-- single branch-level date instead of a per-product loop: fires once when
+-- license_expiry_date first comes within 90 days (or is already past), then
+-- re-fires at most once a day for as long as it stays read and still within
+-- that window -- so it keeps surfacing as the deadline (or lateness) grows,
+-- without nagging on every single poll.
+create or replace function public.check_license_expiry()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_expiry date;
+  v_days_left integer;
+  v_last record;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  select license_expiry_date into v_expiry from public.branches where id = v_branch;
+  if v_expiry is null then
+    return 0;
+  end if;
+
+  v_days_left := v_expiry - current_date;
+  if v_days_left > 90 then
+    return 0;
+  end if;
+
+  select id, is_read, created_at into v_last
+    from public.notifications
+    where branch_id = v_branch and source_type = 'license_expiring'
+    order by created_at desc
+    limit 1;
+
+  if not found or (v_last.is_read and v_last.created_at < now() - interval '1 day') then
+    insert into public.notifications (branch_id, source_type, source_id, message)
+    values (
+      v_branch, 'license_expiring', v_branch,
+      case when v_days_left < 0
+        then format('Pharmacy license expired %s day(s) ago (on %s). Renew as soon as possible.', abs(v_days_left), v_expiry)
+        else format('Pharmacy license expires in %s day(s) (on %s).', v_days_left, v_expiry)
+      end
+    );
+    return 1;
+  end if;
+
+  return 0;
+end;
+$$;
+
+revoke all on function public.check_license_expiry() from public, anon;
+grant execute on function public.check_license_expiry() to authenticated;
+
+-- ============================================================================
+-- BRANCH SETTINGS — POS & Sales tab (Branch Settings)
+-- ============================================================================
+-- Real branch-level POS behavior, not decorative toggles: complete_sale()
+-- below actually reads payment_method/discount_id and the client actually
+-- gates what it shows at checkout on these columns. Two reference-design
+-- rules were deliberately left out rather than half-built or faked:
+--   Require Prescription for Rx Drugs -- there is no per-product
+--     "prescription only" flag anywhere in this schema, and adding one plus
+--     the product-editing UI to set it is a materially bigger feature than a
+--     branch setting.
+--   Allow Refunds/Returns (from POS) + Refund Window -- stock_adjustments
+--     already supports adjustment_type 'return', but only through the
+--     general stock-adjustment tool; there is no "look up a past sale and
+--     reverse it from the POS screen" flow anywhere to gate. Also dropped:
+--     Require PIN to Open POS -- this app's only auth is the seller's own
+--     Supabase Auth login; a separate PIN-per-shift concept doesn't exist.
+alter table public.branches
+  add column if not exists receipt_number_prefix varchar(10) not null default 'RCT',
+  add column if not exists pos_cash_enabled boolean not null default true,
+  add column if not exists pos_mtn_momo_enabled boolean not null default true,
+  add column if not exists pos_airtel_money_enabled boolean not null default true,
+  add column if not exists pos_card_enabled boolean not null default false,
+  add column if not exists pos_insurance_enabled boolean not null default true,
+  add column if not exists pos_default_payment_method varchar(20) not null default 'cash'
+    check (pos_default_payment_method in ('cash','mtn_momo','airtel_money','card')),
+  add column if not exists pos_require_patient_name boolean not null default false,
+  add column if not exists pos_allow_discounts boolean not null default true,
+  add column if not exists pos_show_patient_history boolean not null default true;
+
+alter table public.sales
+  add column if not exists payment_method varchar(20)
+    check (payment_method is null or payment_method in ('cash','mtn_momo','airtel_money','card'));
+
+drop function if exists public.update_branch_details(text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text);
+create or replace function public.update_branch_details(
+  p_address text, p_phone text, p_tin text, p_logo_path text default null,
+  p_bank_account_number text default null, p_bank_account_name text default null, p_momo_pay_number text default null,
+  p_out_of_stock_reminder_hours integer default null,
+  p_name text default null, p_email text default null, p_website text default null,
+  p_license_number text default null, p_license_expiry_date date default null, p_ebm_device_serial text default null,
+  p_default_language text default null,
+  p_receipt_number_prefix text default null,
+  p_pos_cash_enabled boolean default null, p_pos_mtn_momo_enabled boolean default null,
+  p_pos_airtel_money_enabled boolean default null, p_pos_card_enabled boolean default null, p_pos_insurance_enabled boolean default null,
+  p_pos_default_payment_method text default null,
+  p_pos_require_patient_name boolean default null, p_pos_allow_discounts boolean default null, p_pos_show_patient_history boolean default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = (select auth.uid()) and u.is_active and u.role = 'owner';
+  if v_branch is null then raise exception 'Only the branch owner may update branch settings'; end if;
+
+  if p_out_of_stock_reminder_hours is not null and (p_out_of_stock_reminder_hours < 1 or p_out_of_stock_reminder_hours > 168) then
+    raise exception 'Reminder interval must be between 1 and 168 hours';
+  end if;
+  if p_default_language is not null and p_default_language not in ('en','fr','rw') then
+    raise exception 'Unsupported language %', p_default_language;
+  end if;
+  if p_pos_default_payment_method is not null and p_pos_default_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported default payment method %', p_pos_default_payment_method;
+  end if;
+
+  update public.branches
+  set address = nullif(btrim(coalesce(p_address, '')), ''),
+      phone = nullif(btrim(coalesce(p_phone, '')), ''),
+      tin = nullif(btrim(coalesce(p_tin, '')), ''),
+      logo_path = nullif(btrim(coalesce(p_logo_path, '')), ''),
+      bank_account_number = nullif(btrim(coalesce(p_bank_account_number, '')), ''),
+      bank_account_name = nullif(btrim(coalesce(p_bank_account_name, '')), ''),
+      momo_pay_number = nullif(btrim(coalesce(p_momo_pay_number, '')), ''),
+      out_of_stock_reminder_hours = coalesce(p_out_of_stock_reminder_hours, out_of_stock_reminder_hours),
+      -- name is not nullable, so a blank/omitted value leaves it unchanged
+      -- rather than nulling it out the way the optional fields above do.
+      name = coalesce(nullif(btrim(coalesce(p_name, '')), ''), name),
+      email = nullif(btrim(coalesce(p_email, '')), ''),
+      website = nullif(btrim(coalesce(p_website, '')), ''),
+      license_number = nullif(btrim(coalesce(p_license_number, '')), ''),
+      license_expiry_date = p_license_expiry_date,
+      ebm_device_serial = nullif(btrim(coalesce(p_ebm_device_serial, '')), ''),
+      default_language = coalesce(p_default_language, default_language),
+      receipt_number_prefix = coalesce(nullif(btrim(coalesce(p_receipt_number_prefix, '')), ''), receipt_number_prefix),
+      pos_cash_enabled = coalesce(p_pos_cash_enabled, pos_cash_enabled),
+      pos_mtn_momo_enabled = coalesce(p_pos_mtn_momo_enabled, pos_mtn_momo_enabled),
+      pos_airtel_money_enabled = coalesce(p_pos_airtel_money_enabled, pos_airtel_money_enabled),
+      pos_card_enabled = coalesce(p_pos_card_enabled, pos_card_enabled),
+      pos_insurance_enabled = coalesce(p_pos_insurance_enabled, pos_insurance_enabled),
+      pos_default_payment_method = coalesce(p_pos_default_payment_method, pos_default_payment_method),
+      pos_require_patient_name = coalesce(p_pos_require_patient_name, pos_require_patient_name),
+      pos_allow_discounts = coalesce(p_pos_allow_discounts, pos_allow_discounts),
+      pos_show_patient_history = coalesce(p_pos_show_patient_history, pos_show_patient_history)
+  where id = v_branch;
+end;
+$$;
+
+revoke all on function public.update_branch_details(
+  text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text, text,
+  boolean, boolean, boolean, boolean, boolean, text, boolean, boolean, boolean
+) from public, anon;
+grant execute on function public.update_branch_details(
+  text, text, text, text, text, text, text, integer, text, text, text, text, date, text, text, text,
+  boolean, boolean, boolean, boolean, boolean, text, boolean, boolean, boolean
+) to authenticated;
+
+drop function if exists public.get_my_branch_details();
+create or replace function public.get_my_branch_details()
+returns table(
+  name text, address text, phone text, tin text, logo_path text, bank_account_number text, bank_account_name text, momo_pay_number text,
+  out_of_stock_reminder_hours integer, branch_code text, status text, created_at timestamptz,
+  email text, website text, license_number text, license_expiry_date date, ebm_device_serial text, default_language text,
+  receipt_number_prefix text, pos_cash_enabled boolean, pos_mtn_momo_enabled boolean, pos_airtel_money_enabled boolean,
+  pos_card_enabled boolean, pos_insurance_enabled boolean, pos_default_payment_method text,
+  pos_require_patient_name boolean, pos_allow_discounts boolean, pos_show_patient_history boolean
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select b.name::text, b.address, b.phone, b.tin, b.logo_path, b.bank_account_number, b.bank_account_name, b.momo_pay_number,
+         b.out_of_stock_reminder_hours, b.branch_code::text, b.status::text, b.created_at,
+         b.email, b.website, b.license_number, b.license_expiry_date, b.ebm_device_serial, b.default_language::text,
+         b.receipt_number_prefix::text, b.pos_cash_enabled, b.pos_mtn_momo_enabled, b.pos_airtel_money_enabled,
+         b.pos_card_enabled, b.pos_insurance_enabled, b.pos_default_payment_method::text,
+         b.pos_require_patient_name, b.pos_allow_discounts, b.pos_show_patient_history
+  from public.branches b
+  where b.id = public.current_branch_id()
+$$;
+
+revoke all on function public.get_my_branch_details() from public, anon;
+grant execute on function public.get_my_branch_details() to authenticated;
+
+-- complete_sale(), re-declared once more: gains p_payment_method (stored as-
+-- is, just how the patient-owed portion was actually settled -- separate
+-- from insurance, which already has its own provider/coverage path) and
+-- p_discount_id (a real, previously-unused sales.discount_id column -- this
+-- is the first thing that ever writes it). The discount reduces the
+-- PATIENT-owed portion only, computed after insurance coverage, so a
+-- generous discount can never make insurance's own billed amount move --
+-- what an insurer is billed is the real line-item cost, independent of a
+-- pharmacy's own loyalty/promo discount to the patient.
+drop function if exists public.complete_sale(jsonb, uuid, uuid);
+create or replace function public.complete_sale(
+  p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null,
+  p_payment_method text default null, p_discount_id uuid default null
+)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  v_receipt_prefix text;
+  line jsonb;
+  v_code text;
+  v_mode text;
+  v_quantity integer;
+  v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+  v_discount record;
+  v_discount_amount numeric := 0;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_payment_method is not null and p_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported payment method %', p_payment_method;
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  if p_discount_id is not null then
+    select * into v_discount from public.discounts where id = p_discount_id;
+    if v_discount.id is null then raise exception 'Unknown discount'; end if;
+    if (v_discount.valid_from is not null and v_discount.valid_from > current_date)
+       or (v_discount.valid_to is not null and v_discount.valid_to < current_date) then
+      raise exception 'This discount is not currently valid';
+    end if;
+  end if;
+
+  select coalesce(receipt_number_prefix, 'RCT') into v_receipt_prefix from public.branches where id = v_branch;
+  v_receipt_number := format('%s-%s-%s', v_receipt_prefix, to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id, sb.expiry_date
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.expiry_date < current_date then
+      raise exception 'Barcode %: this batch expired on % and cannot be sold', v_code, v_barcode.expiry_date;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
+
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
+
+      v_line_total := v_barcode.selling_price * v_child_quantity;
+      v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+      v_subtotal := v_line_total - v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_line_total := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_line_total := v_barcode.selling_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_line_total := v_barcode.selling_price * v_quantity;
+        v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+        v_subtotal := v_line_total - v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_barcode.selling_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
+  end loop;
+
+  -- Discount comes off the patient's own portion only (post-insurance),
+  -- capped so it can never push what the patient owes below zero. What
+  -- insurance is billed (v_covered_total, and the claim's own
+  -- coverage_percentage_applied below) is computed from the real gross
+  -- v_total and never touched by a pharmacy-side discount.
+  if p_discount_id is not null then
+    v_discount_amount := case
+      when v_discount.discount_type = 'percentage' then round((v_total - v_covered_total) * v_discount.value / 100, 2)
+      else least(v_discount.value, greatest(v_total - v_covered_total, 0))
+    end;
+  end if;
+
+  update public.sales
+  set total_amount = v_total - v_discount_amount, discount_id = p_discount_id, payment_method = p_payment_method
+  where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total - v_discount_amount, v_covered_total, (v_total - v_discount_amount) - v_covered_total;
+end;
+$$;
+
+revoke all on function public.complete_sale(jsonb, uuid, uuid, text, uuid) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid, uuid, text, uuid) to authenticated;
+
+-- public.discounts had RLS enabled from day one but was never given a SELECT
+-- policy or any way for a branch to create its own rows -- sales.discount_id
+-- above and analytics_discount_usage() both already assumed it, but nothing
+-- could actually populate or read it. branch_id is added (nullable, so any
+-- future genuinely-global discount stays visible everywhere) so "Allow
+-- Discounts at POS" is something an owner can actually use end-to-end:
+-- create a discount for their own branch, see it, apply it at checkout.
+alter table public.discounts add column if not exists branch_id uuid references public.branches(id);
+
+drop policy if exists "discounts readable" on public.discounts;
+create policy "discounts readable" on public.discounts for select to authenticated
+  using (branch_id is null or branch_id = public.current_branch_id() or public.is_super_admin());
+
+create or replace function public.create_branch_discount(
+  p_name text, p_discount_type text, p_value numeric, p_valid_from date default null, p_valid_to date default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  perform public.assert_owner_or_manager();
+  if p_discount_type not in ('percentage','fixed') then
+    raise exception 'Discount type must be percentage or fixed';
+  end if;
+  if p_value < 0 or (p_discount_type = 'percentage' and p_value > 100) then
+    raise exception 'Invalid discount value';
+  end if;
+
+  insert into public.discounts (name, discount_type, value, valid_from, valid_to, branch_id)
+  values (btrim(p_name), p_discount_type, p_value, p_valid_from, p_valid_to, public.current_branch_id())
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.create_branch_discount(text, text, numeric, date, date) from public, anon;
+grant execute on function public.create_branch_discount(text, text, numeric, date, date) to authenticated;
+
+-- Every discount this branch can see (its own + any genuinely global ones),
+-- with whether it's currently within its valid_from/valid_to window --
+-- deactivating a discount is just setting valid_to to a past date, there's
+-- no separate is_active flag to keep in sync.
+create or replace function public.list_branch_discounts()
+returns table(id uuid, name text, discount_type text, value numeric, valid_from date, valid_to date, is_current boolean)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select d.id, d.name::text, d.discount_type::text, d.value, d.valid_from, d.valid_to,
+    (d.valid_from is null or d.valid_from <= current_date) and (d.valid_to is null or d.valid_to >= current_date)
+  from public.discounts d
+  where d.branch_id is null or d.branch_id = public.current_branch_id() or public.is_super_admin()
+  order by d.name
+$$;
+
+revoke all on function public.list_branch_discounts() from public, anon;
+grant execute on function public.list_branch_discounts() to authenticated;
 
 -- ============================================================================
 -- BRANCH HISTORY — one owner-only view across every kind of event
@@ -5625,3 +6262,168 @@ revoke all on function public.analytics_recall_log(integer) from public, anon;
 grant execute on function public.analytics_recall_log(integer) to authenticated;
 revoke all on function public.analytics_patient_retention(integer, integer, integer) from public, anon;
 grant execute on function public.analytics_patient_retention(integer, integer, integer) to authenticated;
+
+-- ============================================================================
+-- USERS & ROLES (Branch Settings) -- generalizes seller-only staff management
+-- to also cover manager accounts, and adds a real "change role" action.
+-- ============================================================================
+
+-- Now covers manager targets too (previously seller-only). Deactivating a
+-- fellow manager is owner-only -- a manager can still deactivate staff
+-- (unchanged from before), matching "staff oversight" without letting a
+-- manager touch a peer's access.
+create or replace function public.admin_set_seller_active(p_user_id uuid, p_is_active boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller uuid := (select auth.uid());
+  v_branch uuid;
+  v_caller_role text;
+  v_target_role text;
+begin
+  select u.branch_id, u.role into v_branch, v_caller_role
+  from public.users u
+  where u.id = v_caller and u.is_active and u.role in ('owner', 'manager');
+  if v_branch is null then raise exception 'Only an active branch manager or owner may manage staff'; end if;
+
+  select role into v_target_role from public.users where id = p_user_id and branch_id = v_branch;
+  if v_target_role is null or v_target_role not in ('manager', 'seller') then
+    raise exception 'Staff member not found for this branch';
+  end if;
+  if v_target_role = 'manager' and v_caller_role <> 'owner' then
+    raise exception 'Only the branch owner may deactivate a manager';
+  end if;
+
+  update public.users
+  set is_active = p_is_active
+  where id = p_user_id and branch_id = v_branch and role in ('manager', 'seller');
+end;
+$$;
+
+-- Owner-only: moves an existing manager/seller account between those two
+-- tiers. Narrower than admin_set_seller_active (owner-or-manager) on
+-- purpose -- granting or revoking peer-level manager access is an owner
+-- decision, not something a manager should be able to do to themselves or
+-- each other.
+create or replace function public.admin_update_staff_role(p_user_id uuid, p_role text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_caller uuid := (select auth.uid());
+  v_branch uuid;
+begin
+  if p_role not in ('manager', 'seller') then
+    raise exception 'role must be manager or seller';
+  end if;
+
+  select u.branch_id into v_branch
+  from public.users u
+  where u.id = v_caller and u.is_active and u.role = 'owner';
+  if v_branch is null then raise exception 'Only the branch owner may change a staff member''s role'; end if;
+
+  update public.users
+  set role = p_role
+  where id = p_user_id and branch_id = v_branch and role in ('manager', 'seller');
+  if not found then raise exception 'Staff member not found for this branch'; end if;
+end;
+$$;
+
+revoke all on function public.admin_update_staff_role(uuid, text) from public, anon;
+grant execute on function public.admin_update_staff_role(uuid, text) to authenticated;
+
+-- ============================================================================
+-- CATEGORY MANAGEMENT (Branch Settings -> Categories) -- product_categories
+-- had RLS enabled since its original creation but no policy was ever added,
+-- silently returning zero rows to any client query -- the exact same
+-- dead-infrastructure shape the discounts table had before it. Fixed here
+-- with a real branch-scoped policy, a created_at column (so categories have
+-- a genuine chronological order to display/number by), and real CRUD RPCs --
+-- previously the only way a category got created was inline free-text entry
+-- during stock receiving.
+-- ============================================================================
+
+alter table public.product_categories add column if not exists created_at timestamptz not null default now();
+
+drop policy if exists "categories access" on public.product_categories;
+create policy "categories access" on public.product_categories
+  for all to authenticated
+  using (branch_id = public.current_branch_id() or public.is_super_admin())
+  with check (branch_id = public.current_branch_id() or public.is_super_admin());
+
+create or replace function public.list_branch_categories()
+returns table(id uuid, name text, description text, product_count integer, code text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    pc.id, pc.name::text, pc.description,
+    (select count(*)::integer from public.branch_product_categorization bpc where bpc.category_id = pc.id and bpc.branch_id = pc.branch_id),
+    'CAT-' || lpad(row_number() over (order by pc.created_at)::text, 3, '0')
+  from public.product_categories pc
+  where pc.branch_id = public.current_branch_id()
+  order by pc.created_at;
+$$;
+
+revoke all on function public.list_branch_categories() from public, anon;
+grant execute on function public.list_branch_categories() to authenticated;
+
+create or replace function public.create_branch_category(p_name text, p_description text default null)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_id uuid;
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if nullif(btrim(coalesce(p_name, '')), '') is null then raise exception 'A category name is required'; end if;
+
+  insert into public.product_categories (branch_id, name, description)
+  values (v_branch, btrim(p_name), nullif(btrim(coalesce(p_description, '')), ''))
+  returning id into v_id;
+  return v_id;
+exception
+  when unique_violation then
+    raise exception 'A category named "%" already exists for this branch.', btrim(p_name);
+end;
+$$;
+
+revoke all on function public.create_branch_category(text, text) from public, anon;
+grant execute on function public.create_branch_category(text, text) to authenticated;
+
+create or replace function public.update_branch_category(p_category_id uuid, p_name text, p_description text default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if nullif(btrim(coalesce(p_name, '')), '') is null then raise exception 'A category name is required'; end if;
+
+  update public.product_categories
+  set name = btrim(p_name), description = nullif(btrim(coalesce(p_description, '')), '')
+  where id = p_category_id and branch_id = v_branch;
+  if not found then raise exception 'Category not found for this branch'; end if;
+exception
+  when unique_violation then
+    raise exception 'A category named "%" already exists for this branch.', btrim(p_name);
+end;
+$$;
+
+revoke all on function public.update_branch_category(uuid, text, text) from public, anon;
+grant execute on function public.update_branch_category(uuid, text, text) to authenticated;

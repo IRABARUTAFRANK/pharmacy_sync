@@ -1,6 +1,6 @@
 // ─── Pharmacy Sync — Central Data & Types ─────────────────────────────────────
 
-export type Role = 'owner' | 'manager' | 'pharmacist' | 'seller'
+export type Role = 'owner' | 'manager' | 'seller'
 
 // ─── Barcode Types ────────────────────────────────────────────────────────────
 
@@ -211,6 +211,8 @@ export interface InsuranceProvider {
 // stay legal role values in the database (nothing ever created one) but no
 // nav item grants them anything any more; the only roles a real login can
 // ever end up with going forward are owner, manager, and seller.
+// Team/staff management no longer has its own nav item -- it now lives only
+// inside Branch Settings' owner-only "Users & Roles" tab.
 export const NAV_ITEMS: NavItem[] = [
   // ── Owner / manager only ────────────────────────────────────
   { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager'] },
@@ -221,7 +223,6 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager'] },
   { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager'] },
   { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager'] },
-  { id: 'team',        label: 'Team',                 icon: '👥', roles: ['owner', 'manager'] },
   // 'analyst' (AI Analyst) is intentionally left out of NAV_ITEMS -- the
   // feature works end-to-end but needs Anthropic billing/credits the owner
   // hasn't set up yet. The page, route, Edge Function, and SQL tools are all

@@ -1,10 +1,14 @@
 import { FunctionsHttpError } from "@supabase/supabase-js"
 import { supabase } from "./supabase"
 
+export type StaffRole = "manager" | "seller"
+export type BranchUserRole = "owner" | StaffRole
+
 export interface StaffMember {
   id: string
   fullName: string
   email: string
+  role: BranchUserRole
   isActive: boolean
   createdAt: string
 }
@@ -21,10 +25,11 @@ export interface SellerActivityRow {
 // for someone else's login -- everything else in this app is passwordless
 // OTP activation. Only the service-role Admin API (server-side) can set a
 // password on another user's behalf, so this calls the create-branch-seller
-// Edge Function instead of an RPC.
-export async function createSeller(fullName: string, email: string, password: string): Promise<string> {
+// Edge Function instead of an RPC. Creating a manager login is owner-only,
+// enforced server-side by the function itself.
+export async function inviteStaff(fullName: string, email: string, password: string, role: StaffRole): Promise<string> {
   const { data, error } = await supabase.functions.invoke("create-branch-seller", {
-    body: { fullName, email, password },
+    body: { fullName, email, password, role },
   })
   if (error) {
     // A FunctionsHttpError means the function DID run and responded -- e.g. a
@@ -44,20 +49,28 @@ export async function createSeller(fullName: string, email: string, password: st
 
 // Plain select, not an RPC -- already covered by the existing "users read own
 // branch" RLS policy (branch_id = current_branch_id() or is_super_admin()).
+// Every role in the branch, not just sellers, so the owner-only Users &
+// Roles roster can show the full team including itself.
 export async function listBranchStaff(): Promise<StaffMember[]> {
   const { data, error } = await supabase
     .from("users")
-    .select("id, full_name, email, is_active, created_at")
-    .eq("role", "seller")
+    .select("id, full_name, email, role, is_active, created_at")
+    .order("role")
     .order("full_name")
   if (error) throw error
   return (data ?? []).map(row => ({
-    id: row.id, fullName: row.full_name, email: row.email, isActive: row.is_active, createdAt: row.created_at,
+    id: row.id, fullName: row.full_name, email: row.email, role: row.role as BranchUserRole,
+    isActive: row.is_active, createdAt: row.created_at,
   }))
 }
 
-export async function setSellerActive(userId: string, isActive: boolean): Promise<void> {
+export async function setStaffActive(userId: string, isActive: boolean): Promise<void> {
   const { error } = await supabase.rpc("admin_set_seller_active", { p_user_id: userId, p_is_active: isActive })
+  if (error) throw error
+}
+
+export async function updateStaffRole(userId: string, role: StaffRole): Promise<void> {
+  const { error } = await supabase.rpc("admin_update_staff_role", { p_user_id: userId, p_role: role })
   if (error) throw error
 }
 

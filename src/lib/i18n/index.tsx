@@ -28,6 +28,20 @@ function detectDefaultLang(): Lang {
   return "en";
 }
 
+// True once this browser has an explicit choice on record (its own pick, or
+// a branch default already applied once below) -- lets App.tsx apply a
+// signed-in branch's own default language (Branch Settings' Locale card)
+// without ever overriding a viewer who already has a real preference set,
+// personal or previously-inherited.
+export function hasExplicitLangPreference(): boolean {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved === "en" || saved === "rw" || saved === "fr";
+  } catch {
+    return false;
+  }
+}
+
 type Vars = Record<string, string | number>;
 
 function interpolate(template: string, vars?: Vars): string {

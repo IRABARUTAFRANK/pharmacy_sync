@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense, type ComponentType } from 'react'
 import { NAV_ITEMS, fmtRWFExact, type Role } from './data'
-import { useTranslation, LanguageSwitcher } from './lib/i18n'
+import { useTranslation, LanguageSwitcher, hasExplicitLangPreference } from './lib/i18n'
 import { useGlobalSearch } from './lib/search'
 import type { TranslationKey } from './lib/i18n/en'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
@@ -15,7 +15,7 @@ import HistoryPage from './pages/HistoryPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
-import { checkExpiredStock, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { checkExpiredStock, checkLicenseExpiry, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 
@@ -43,7 +43,6 @@ const PAGE_LOADERS = {
   insurance: () => import('./pages/InsurancePage'),
   alerts: () => import('./pages/AlertsPage'),
   help: () => import('./pages/HelpPage'),
-  team: () => import('./pages/TeamPage'),
   analyst: () => import('./pages/AnalystPage'),
   analytics: () => import('./pages/AnalyticsPage'),
   patients: () => import('./pages/PatientsPage'),
@@ -60,7 +59,6 @@ const TransactionsPage    = lazy(PAGE_LOADERS.transactions)
 const InsurancePage       = lazy(PAGE_LOADERS.insurance)
 const AlertsPage          = lazy(PAGE_LOADERS.alerts)
 const HelpPage            = lazy(PAGE_LOADERS.help)
-const TeamPage             = lazy(PAGE_LOADERS.team)
 const AnalystPage           = lazy(PAGE_LOADERS.analyst)
 const AnalyticsPage         = lazy(PAGE_LOADERS.analytics)
 const PatientsPage         = lazy(PAGE_LOADERS.patients)
@@ -350,7 +348,7 @@ const dateRangeLabelKey: Record<DateRangeOption, TranslationKey> = {
 export default function App() {
   const hashRoute = useHashRoute()
   const introPhase = useIntroSplash()
-  const { t } = useTranslation()
+  const { t, setLang } = useTranslation()
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
   const [accessLoading, setAccessLoading] = useState(true)
@@ -414,9 +412,17 @@ export default function App() {
     if (!access) { setPharmacyLogoUrl(null); return }
     let cancelled = false
     void getMyBranchDetails()
-      .then(details => { if (!cancelled) setPharmacyLogoUrl(details.logoPath ? branchLogoUrl(details.logoPath) : null) })
+      .then(details => {
+        if (cancelled) return
+        setPharmacyLogoUrl(details.logoPath ? branchLogoUrl(details.logoPath) : null)
+        // Seeds a first-time viewer's language from the branch's own default
+        // (Branch Settings' Locale card) -- never overrides a real personal
+        // choice, including one this same seeding already made last visit.
+        if (!hasExplicitLangPreference()) setLang(details.defaultLanguage)
+      })
       .catch(() => { /* sidebar just keeps the default PharmSync mark */ })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access])
 
   const refreshAlerts = useCallback(async () => {
@@ -425,6 +431,7 @@ export default function App() {
     // surfaces on the next poll instead of this one.
     try { await checkOutOfStockAlerts() } catch { /* ignore */ }
     try { await checkExpiredStock() } catch { /* ignore */ }
+    try { await checkLicenseExpiry() } catch { /* ignore */ }
     try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
   }, [])
 
@@ -581,7 +588,6 @@ export default function App() {
   function renderPage() {
     switch (page) {
       case 'overview':      return <OverviewPage
-                                     role={role}
                                      period={dateRange}
                                      branchName={access!.branchName}
                                      alerts={alerts}
@@ -596,7 +602,6 @@ export default function App() {
       case 'alerts':        return <AlertsPage />
       case 'transactions':  return <TransactionsPage period={dateRange} />
       case 'insurance':     return <InsurancePage />
-      case 'team':          return <TeamPage />
       case 'analyst':       return <AnalystPage />
       case 'analytics':     return <AnalyticsPage period={dateRange} />
       case 'patients':      return <PatientsPage />

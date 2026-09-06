@@ -1,5 +1,6 @@
 import { supabase } from "./supabase"
 import { listTaxRates, type TaxRate } from "./products"
+import type { PaymentMethod } from "./branch"
 
 function raise(error: { message: string } | null, fallback: string): never {
   throw new Error(error?.message ?? fallback)
@@ -35,6 +36,41 @@ export async function loadCoverageOverrides(providerId: string): Promise<Map<str
 export function effectiveCoveragePercentage(provider: InsuranceProvider, overrides: Map<string, number>, productId: string): number {
   const override = overrides.get(productId)
   return override === undefined ? provider.defaultCoveragePercentage : override
+}
+
+// ── Discounts (Branch Settings' "Allow Discounts at POS" toggle) ────────────
+// public.discounts existed with sales.discount_id already pointing at it, but
+// had no SELECT policy and no way for a branch to create its own rows -- this
+// is the first thing that actually lets an owner create one and a cashier
+// apply it.
+
+export type DiscountType = "percentage" | "fixed"
+
+export interface BranchDiscount {
+  id: string
+  name: string
+  discountType: DiscountType
+  value: number
+  validFrom: string | null
+  validTo: string | null
+  isCurrent: boolean
+}
+
+export async function listBranchDiscounts(): Promise<BranchDiscount[]> {
+  const { data, error } = await supabase.rpc("list_branch_discounts")
+  if (error) raise(error, "Could not load discounts.")
+  return (data ?? []).map((row: any) => ({
+    id: row.id, name: row.name, discountType: row.discount_type as DiscountType, value: Number(row.value),
+    validFrom: row.valid_from, validTo: row.valid_to, isCurrent: row.is_current,
+  }))
+}
+
+export async function createBranchDiscount(name: string, discountType: DiscountType, value: number, validFrom?: string | null, validTo?: string | null): Promise<string> {
+  const { data, error } = await supabase.rpc("create_branch_discount", {
+    p_name: name, p_discount_type: discountType, p_value: value, p_valid_from: validFrom ?? null, p_valid_to: validTo ?? null,
+  })
+  if (error) raise(error, "Could not create this discount.")
+  return data as string
 }
 
 // ── Branch-side claims (what each insurer owes this branch) ────────────────
@@ -217,20 +253,37 @@ export interface SaleLineInput {
   quantity: number | null
 }
 
+export interface CompleteSaleInput {
+  lines: SaleLineInput[]
+  insuranceProviderId: string | null
+  patientId?: string | null
+  // How the patient-owed portion was actually settled -- separate from
+  // insurance, which already has its own provider/coverage handling above.
+  // Optional because a branch can disable payment-method tracking entirely
+  // (Branch Settings' POS & Sales tab); complete_sale() just stores null then.
+  paymentMethod?: PaymentMethod | null
+  // A real, previously-unused sales.discount_id -- reduces the patient-owed
+  // portion only (see complete_sale()'s own comment), never what insurance
+  // is billed for.
+  discountId?: string | null
+}
+
 // The one and only way a sale is written: complete_sale() re-validates and
 // re-locks every barcode server-side (never trust the client's cached scan),
 // so this is the sole source of truth for what actually got sold and for how
 // much — the cart on screen is only ever a preview of this.
-export async function completeSale(lines: SaleLineInput[], insuranceProviderId: string | null, patientId: string | null = null): Promise<CompleteSaleResult> {
-  if (lines.length === 0) throw new Error("Scan at least one item before completing the sale.")
+export async function completeSale(input: CompleteSaleInput): Promise<CompleteSaleResult> {
+  if (input.lines.length === 0) throw new Error("Scan at least one item before completing the sale.")
   const { data, error } = await supabase.rpc("complete_sale", {
-    p_lines: lines.map(line => ({
+    p_lines: input.lines.map(line => ({
       code: line.code,
       sell_mode: line.sellMode,
       quantity: line.quantity,
     })),
-    p_insurance_provider_id: insuranceProviderId,
-    p_patient_id: patientId,
+    p_insurance_provider_id: input.insuranceProviderId,
+    p_patient_id: input.patientId ?? null,
+    p_payment_method: input.paymentMethod ?? null,
+    p_discount_id: input.discountId ?? null,
   })
   if (error) raise(error, "Could not complete this sale.")
   const row = Array.isArray(data) ? data[0] : data

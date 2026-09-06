@@ -1,10 +1,13 @@
-// Creates a real, password-based login for a "seller" under the calling
-// manager/owner's branch. This is the one place in the whole app that needs
-// Supabase's service-role Admin API: every other account (branch owners) is
-// created client-side through passwordless email-OTP verification, but
-// setting a password *someone else chose* for *someone else's* login can
-// only be done server-side with the service-role key -- never something a
-// browser-side RPC running as the calling user could do safely.
+// Creates a real, password-based login for a manager or seller ("Staff" in
+// the UI) under the calling owner/manager's branch. This is the one place in
+// the whole app that needs Supabase's service-role Admin API: every other
+// account (branch owners) is created client-side through passwordless
+// email-OTP verification, but setting a password *someone else chose* for
+// *someone else's* login can only be done server-side with the service-role
+// key -- never something a browser-side RPC running as the calling user
+// could do safely. Creating a manager is owner-only (granting peer-level
+// access is an owner decision); creating a seller stays open to owner or
+// manager, unchanged from before.
 //
 // Deploy with (from the project root, after `supabase login` and
 // `supabase link --project-ref <ref>`):
@@ -34,7 +37,7 @@ Deno.serve(async (req) => {
   const authHeader = req.headers.get("Authorization")
   if (!authHeader) return json({ error: "Missing Authorization header" }, 401)
 
-  let body: { fullName?: string; email?: string; password?: string }
+  let body: { fullName?: string; email?: string; password?: string; role?: string }
   try {
     body = await req.json()
   } catch {
@@ -44,6 +47,7 @@ Deno.serve(async (req) => {
   const fullName = (body.fullName ?? "").trim()
   const email = (body.email ?? "").trim().toLowerCase()
   const password = body.password ?? ""
+  const role = body.role === "manager" ? "manager" : "seller"
 
   if (!fullName) return json({ error: "A full name is required" }, 400)
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) return json({ error: "A valid email is required" }, 400)
@@ -72,7 +76,10 @@ Deno.serve(async (req) => {
     .single()
 
   if (callerRowError || !caller || !caller.is_active || !["owner", "manager"].includes(caller.role)) {
-    return json({ error: "Only an active branch manager or owner may create a seller login" }, 403)
+    return json({ error: "Only an active branch manager or owner may create a staff login" }, 403)
+  }
+  if (role === "manager" && caller.role !== "owner") {
+    return json({ error: "Only the branch owner may create a manager login" }, 403)
   }
   const branchStatus = (caller as unknown as { branches: { status: string } | null }).branches?.status
   if (branchStatus !== "active") return json({ error: "This pharmacy is not active" }, 403)
@@ -95,7 +102,7 @@ Deno.serve(async (req) => {
     branch_id: caller.branch_id,
     full_name: fullName,
     email,
-    role: "seller",
+    role,
     is_active: true,
   })
   if (insertError) {

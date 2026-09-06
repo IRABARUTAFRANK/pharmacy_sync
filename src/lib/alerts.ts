@@ -32,6 +32,7 @@ export const ALERT_SOURCE_TITLE_KEYS: Record<string, TranslationKey> = {
   product_request_approved: "alerts.source.productRequestApproved",
   product_request_rejected: "alerts.source.productRequestRejected",
   out_of_stock: "alerts.source.outOfStock",
+  license_expiring: "alerts.source.licenseExpiring",
 }
 
 const SEVERITY: Record<string, AlertSeverity> = {
@@ -40,6 +41,7 @@ const SEVERITY: Record<string, AlertSeverity> = {
   product_request_approved: "info",
   product_request_rejected: "warning",
   out_of_stock: "critical",
+  license_expiring: "critical",
 }
 
 interface NotificationRow {
@@ -97,5 +99,15 @@ export async function checkOutOfStockAlerts(): Promise<void> {
 // actually gone. Also called from App.tsx's existing poll.
 export async function checkExpiredStock(): Promise<void> {
   const { error } = await supabase.rpc("check_expired_stock")
+  if (error) throw error
+}
+
+// Re-fires (at most once a day, same idempotent shape as the two checks
+// above) once the branch's license_expiry_date -- set on Branch Settings'
+// Legal & Licensing card -- comes within 90 days, and keeps firing (with an
+// increasingly urgent message) if it's ignored past the date itself. A no-op
+// if no expiry date has been set.
+export async function checkLicenseExpiry(): Promise<void> {
+  const { error } = await supabase.rpc("check_license_expiry")
   if (error) throw error
 }
