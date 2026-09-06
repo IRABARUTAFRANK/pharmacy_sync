@@ -6717,3 +6717,108 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- RRA COMPLIANCE PAGE
+-- ============================================================================
+-- Real VAT/receipt reporting from actual sales data. Deliberately does NOT
+-- claim any of the following, since none of it exists in this system:
+--   - A live RRA/EBM (Electronic Billing Machine) integration, or any real
+--     "submit to RRA" action -- branches.ebm_device_serial is stored for a
+--     future integration but nothing reads/writes to a government system.
+--   - A verified "% RRA compliant" status -- there is no compliance check to
+--     verify against, so no per-transaction or aggregate compliance score is
+--     computed or displayed anywhere here.
+--   - A receipt "delivery channel" (SMS/WhatsApp/E-Receipt/Physical) -- this
+--     app only ever produces one kind of receipt (a printable HTML document);
+--     there is no send-by-SMS/WhatsApp feature.
+-- What IS real: VAT is computed the same way complete_sale()/getSaleReceipt()
+-- already do (subtotal * tax_rate.rate_percentage), aggregated per month or
+-- per transaction directly from sale_items/tax_rates.
+
+create or replace function public.analytics_vat_by_month(p_months integer default 8)
+returns table(month_label text, month_start date, revenue numeric, vat_total numeric)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid := public.current_branch_id();
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_months < 1 or p_months > 24 then raise exception 'months must be between 1 and 24'; end if;
+
+  return query
+  with months as (
+    select date_trunc('month', current_date - (n || ' months')::interval)::date as month_start
+    from generate_series(0, p_months - 1) as n
+  ),
+  line_tax as (
+    select s.id as sale_id, date_trunc('month', s.sold_at)::date as month_start,
+           si.subtotal, round(si.subtotal * t.rate_percentage / 100, 2) as tax_amount
+    from public.sales s
+    join public.sale_items si on si.sale_id = s.id
+    join public.tax_rates t on t.id = si.tax_rate_id
+    where s.branch_id = v_branch
+      and s.sold_at >= (select min(month_start) from months)
+  )
+  select
+    to_char(m.month_start, 'Mon')::text,
+    m.month_start,
+    coalesce(round(sum(lt.subtotal + lt.tax_amount), 2), 0),
+    coalesce(round(sum(lt.tax_amount), 2), 0)
+  from months m
+  left join line_tax lt on lt.month_start = m.month_start
+  group by m.month_start
+  order by m.month_start;
+end;
+$$;
+
+revoke all on function public.analytics_vat_by_month(integer) from public, anon;
+grant execute on function public.analytics_vat_by_month(integer) to authenticated;
+
+-- Per-transaction subtotal/VAT breakdown, computed straight from sale_items
+-- (the gross, pre-discount figures VAT is actually owed on) alongside the
+-- real final total_amount (post-discount/insurance) -- these two can
+-- legitimately differ by a discount amount, which is correct, not a bug.
+create or replace function public.list_compliance_transactions(p_from date, p_to date, p_limit integer default 200)
+returns table(
+  sale_id uuid, receipt_number text, sold_at timestamptz, patient_name text, item_count integer,
+  subtotal numeric, tax_total numeric, total_amount numeric, payment_method text, has_insurance boolean
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_limit < 1 or p_limit > 2000 then raise exception 'limit must be between 1 and 2000'; end if;
+
+  return query
+  with line_agg as (
+    select si.sale_id, sum(si.subtotal) as subtotal, sum(round(si.subtotal * t.rate_percentage / 100, 2)) as tax_total, count(*) as item_count
+    from public.sale_items si
+    join public.tax_rates t on t.id = si.tax_rate_id
+    group by si.sale_id
+  )
+  select
+    s.id, coalesce(r.receipt_number, '—')::text, s.sold_at, p.full_name::text, coalesce(la.item_count, 0)::integer,
+    coalesce(la.subtotal, 0), coalesce(la.tax_total, 0), s.total_amount, s.payment_method::text,
+    exists(select 1 from public.insurance_claims ic where ic.sale_id = s.id)
+  from public.sales s
+  left join line_agg la on la.sale_id = s.id
+  left join public.receipts r on r.sale_id = s.id
+  left join public.patients p on p.id = s.patient_id
+  where s.branch_id = v_branch
+    and s.sold_at >= p_from::timestamptz and s.sold_at < (p_to + 1)::timestamptz
+  order by s.sold_at desc
+  limit p_limit;
+end;
+$$;
+
+revoke all on function public.list_compliance_transactions(date, date, integer) from public, anon;
+grant execute on function public.list_compliance_transactions(date, date, integer) to authenticated;

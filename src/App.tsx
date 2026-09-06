@@ -45,6 +45,7 @@ const PAGE_LOADERS = {
   help: () => import('./pages/HelpPage'),
   analyst: () => import('./pages/AnalystPage'),
   analytics: () => import('./pages/AnalyticsPage'),
+  compliance: () => import('./pages/CompliancePage'),
   patients: () => import('./pages/PatientsPage'),
   reports: () => import('./pages/ReportsPage'),
   branch: () => import('./pages/BranchSettingsPage'),
@@ -61,6 +62,7 @@ const AlertsPage          = lazy(PAGE_LOADERS.alerts)
 const HelpPage            = lazy(PAGE_LOADERS.help)
 const AnalystPage           = lazy(PAGE_LOADERS.analyst)
 const AnalyticsPage         = lazy(PAGE_LOADERS.analytics)
+const CompliancePage        = lazy(PAGE_LOADERS.compliance)
 const PatientsPage         = lazy(PAGE_LOADERS.patients)
 const ReportsPage          = lazy(PAGE_LOADERS.reports)
 const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
@@ -604,6 +606,7 @@ export default function App() {
       case 'insurance':     return <InsurancePage />
       case 'analyst':       return <AnalystPage />
       case 'analytics':     return <AnalyticsPage period={dateRange} />
+      case 'compliance':    return <CompliancePage />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} />
       case 'history':       return <HistoryPage period={dateRange} />

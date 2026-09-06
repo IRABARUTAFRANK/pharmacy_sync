@@ -228,6 +228,7 @@ export const NAV_ITEMS: NavItem[] = [
   // hasn't set up yet. The page, route, Edge Function, and SQL tools are all
   // still in place; re-add this row to bring it back once billing is on.
   { id: 'analytics',   label: 'Analytics & Forecasting', icon: '📊', roles: ['owner', 'manager'] },
+  { id: 'compliance',  label: 'RRA Compliance',        icon: '🏛️', roles: ['owner', 'manager'] },
   // ── Shared with seller ──────────────────────────────────────
   { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'seller'] },
   { id: 'patients',    label: 'Patients',              icon: '🩺', roles: ['owner', 'manager', 'seller'] },
