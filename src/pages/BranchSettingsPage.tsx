@@ -24,9 +24,25 @@ function Switch({ checked, onChange }: { checked: boolean; onChange: () => void 
     >
       <span style={{
         position: "absolute", top: 2, left: checked ? 19 : 2, width: 17, height: 17, borderRadius: "50%",
-        background: "#fff", transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+        background: "var(--surface)", transition: "left 0.15s", boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
       }} />
     </button>
+  )
+}
+
+// Every real alert trigger and delivery channel this app has today always
+// fires/is on -- none of them have a stored "enabled" flag anywhere, so a
+// live Switch here would toggle nothing. This mirrors that honestly instead
+// of pretending a control exists that doesn't persist anywhere.
+function AlwaysOnIndicator() {
+  const { t } = useTranslation()
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+      <div style={{ width: 38, height: 21, borderRadius: 11, background: "var(--positive)", position: "relative", flexShrink: 0 }}>
+        <span style={{ position: "absolute", top: 2, left: 19, width: 17, height: 17, borderRadius: "50%", background: "var(--surface)", boxShadow: "0 1px 3px rgba(0,0,0,0.25)" }} />
+      </div>
+      <span style={{ fontSize: 11, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{t("branchSettings.alwaysOn")}</span>
+    </div>
   )
 }
 
@@ -200,7 +216,7 @@ function InviteStaffModal({ onClose, onCreated }: { onClose: () => void; onCreat
             <button key={r} type="button" onClick={() => setRole(r)} style={{
               flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
               border: `1.5px solid ${role === r ? "var(--primary)" : "var(--border)"}`,
-              background: role === r ? "var(--primary-light)" : "#fff",
+              background: role === r ? "var(--primary-light)" : "var(--surface)",
               color: role === r ? "var(--primary)" : "var(--ink-mid)", fontWeight: role === r ? 700 : 500, fontSize: 12,
             }}>{t(ROLE_LABEL_KEY[r])}</button>
           ))}
@@ -241,7 +257,7 @@ function ChangeRoleModal({ member, onClose, onChanged }: { member: StaffMember; 
           <button key={r} type="button" onClick={() => setRole(r)} style={{
             flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
             border: `1.5px solid ${role === r ? "var(--primary)" : "var(--border)"}`,
-            background: role === r ? "var(--primary-light)" : "#fff",
+            background: role === r ? "var(--primary-light)" : "var(--surface)",
             color: role === r ? "var(--primary)" : "var(--ink-mid)", fontWeight: role === r ? 700 : 500, fontSize: 12,
           }}>{t(ROLE_LABEL_KEY[r])}</button>
         ))}
@@ -320,6 +336,8 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
   const [bankAccountName, setBankAccountName] = useState("")
   const [momoPayNumber, setMomoPayNumber] = useState("")
   const [reminderHours, setReminderHours] = useState(6)
+  const [expiryAlertThresholdDays, setExpiryAlertThresholdDays] = useState(60)
+  const [defaultReorderMin, setDefaultReorderMin] = useState(0)
   const [receiptNumberPrefix, setReceiptNumberPrefix] = useState("RCT")
   const [posCashEnabled, setPosCashEnabled] = useState(true)
   const [posMtnMomoEnabled, setPosMtnMomoEnabled] = useState(true)
@@ -391,6 +409,8 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
       setBankAccountName(details.bankAccountName ?? "")
       setMomoPayNumber(details.momoPayNumber ?? "")
       setReminderHours(details.outOfStockReminderHours)
+      setExpiryAlertThresholdDays(details.expiryAlertThresholdDays)
+      setDefaultReorderMin(details.defaultReorderMin)
       setReceiptNumberPrefix(details.receiptNumberPrefix)
       setPosCashEnabled(details.posCashEnabled)
       setPosMtnMomoEnabled(details.posMtnMomoEnabled)
@@ -514,6 +534,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
         receiptNumberPrefix: receiptNumberPrefix.trim() || "RCT",
         posCashEnabled, posMtnMomoEnabled, posAirtelMoneyEnabled, posCardEnabled, posInsuranceEnabled,
         posDefaultPaymentMethod, posRequirePatientName, posAllowDiscounts, posShowPatientHistory,
+        expiryAlertThresholdDays, defaultReorderMin,
       })
       setSuccessMsg(t("branchSettings.saveSuccess"))
       setSuccessSeq(seq => seq + 1)
@@ -641,7 +662,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
               <Card>
                 <CardHeader icon="🌐" title={t("branchSettings.localeTitle")} subtitle={t("branchSettings.localeSubtitle")} />
                 <SettingRow label={t("branchSettings.defaultLanguageLabel")} description={t("branchSettings.defaultLanguageHint")} dbRef="branches.default_language" last>
-                  <select value={defaultLanguage} onChange={e => setDefaultLanguage(e.target.value as BranchLanguage)} style={{ ...inputStyle, background: "#fff" }}>
+                  <select value={defaultLanguage} onChange={e => setDefaultLanguage(e.target.value as BranchLanguage)} style={{ ...inputStyle, background: "var(--surface)" }}>
                     <option value="en">English</option>
                     <option value="fr">Français</option>
                     <option value="rw">Ikinyarwanda</option>
@@ -703,7 +724,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
                   <Switch checked={posCardEnabled} onChange={() => setPosCardEnabled(v => !v)} />
                 </SettingRow>
                 <SettingRow label={t("branchSettings.defaultMethodLabel")} description={t("branchSettings.defaultMethodHint")} last>
-                  <select value={posDefaultPaymentMethod} onChange={e => setPosDefaultPaymentMethod(e.target.value as PaymentMethod)} style={{ ...inputStyle, background: "#fff" }}>
+                  <select value={posDefaultPaymentMethod} onChange={e => setPosDefaultPaymentMethod(e.target.value as PaymentMethod)} style={{ ...inputStyle, background: "var(--surface)" }}>
                     {posCashEnabled && <option value="cash">{t("branchSettings.methodCashLabel")}</option>}
                     {posMtnMomoEnabled && <option value="mtn_momo">{t("branchSettings.methodMtnLabel")}</option>}
                     {posAirtelMoneyEnabled && <option value="airtel_money">{t("branchSettings.methodAirtelLabel")}</option>}
@@ -753,7 +774,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
                 )}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                   <input value={newDiscountName} onChange={e => setNewDiscountName(e.target.value)} placeholder={t("branchSettings.discountNamePlaceholder")} style={{ ...inputStyle, flex: "1 1 160px" }} />
-                  <select value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as DiscountType)} style={{ ...inputStyle, width: 110, background: "#fff" }}>
+                  <select value={newDiscountType} onChange={e => setNewDiscountType(e.target.value as DiscountType)} style={{ ...inputStyle, width: 110, background: "var(--surface)" }}>
                     <option value="percentage">%</option>
                     <option value="fixed">RWF</option>
                   </select>
@@ -780,19 +801,55 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
           )}
 
           {activeTab === "alerts" && (
-            <Card>
-              <CardHeader icon="🔔" title={t("branchSettings.notificationsTitle")} subtitle={t("branchSettings.notificationsSubtitle")} />
-              <SettingRow label={t("branchSettings.reminderHoursLabel")} description={t("branchSettings.reminderHoursHint")} dbRef="branches.out_of_stock_reminder_hours" last>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <input
-                    type="number" min={1} max={168} value={reminderHours}
-                    onChange={e => setReminderHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))}
-                    style={{ ...inputStyle, width: 90 }}
-                  />
-                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.reminderHoursUnit")}</span>
-                </div>
-              </SettingRow>
-            </Card>
+            <>
+              <Card>
+                <CardHeader icon="🔔" title={t("branchSettings.triggersTitle")} subtitle={t("branchSettings.triggersSubtitle")} />
+                <SettingRow
+                  label={t("branchSettings.triggerOutOfStockLabel")} description={t("branchSettings.reminderHoursHint")}
+                  dbRef="notifications.source_type = 'out_of_stock'"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                    <input
+                      type="number" min={1} max={168} value={reminderHours}
+                      onChange={e => setReminderHours(Math.max(1, Math.min(168, Number(e.target.value) || 1)))}
+                      style={{ ...inputStyle, width: 70 }}
+                    />
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.reminderHoursUnit")}</span>
+                  </div>
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.triggerStockAdjustmentLabel")} description={t("branchSettings.triggerStockAdjustmentHint")}
+                  dbRef="notifications.source_type = 'stock_adjustment'"
+                >
+                  <AlwaysOnIndicator />
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.triggerRequestApprovedLabel")} description={t("branchSettings.triggerRequestApprovedHint")}
+                  dbRef="notifications.source_type = 'product_request_approved'"
+                >
+                  <AlwaysOnIndicator />
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.triggerRequestRejectedLabel")} description={t("branchSettings.triggerRequestRejectedHint")}
+                  dbRef="notifications.source_type = 'product_request_rejected'"
+                >
+                  <AlwaysOnIndicator />
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.triggerLicenseExpiringLabel")} description={t("branchSettings.triggerLicenseExpiringHint")}
+                  dbRef="notifications.source_type = 'license_expiring'" last
+                >
+                  <AlwaysOnIndicator />
+                </SettingRow>
+              </Card>
+
+              <Card>
+                <CardHeader icon="📬" title={t("branchSettings.deliveryTitle")} subtitle={t("branchSettings.deliverySubtitle")} />
+                <SettingRow label={t("branchSettings.deliveryInAppLabel")} description={t("branchSettings.deliveryInAppHint")} last>
+                  <AlwaysOnIndicator />
+                </SettingRow>
+              </Card>
+            </>
           )}
 
           {activeTab === "users" && (
@@ -900,7 +957,42 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
             </Card>
           )}
 
-          {(activeTab === "inventory" || activeTab === "compliance" || activeTab === "printing") && (
+          {activeTab === "inventory" && (
+            <Card>
+              <CardHeader icon="📦" title={t("branchSettings.stockLevelsTitle")} subtitle={t("branchSettings.stockLevelsSubtitle")} />
+              <SettingRow
+                label={t("branchSettings.lowStockLabel")} description={t("branchSettings.lowStockHint")}
+                dbRef="reorder_points.min_quantity comparison (Inventory Dashboard, Reports)"
+              >
+                <AlwaysOnIndicator />
+              </SettingRow>
+              <SettingRow
+                label={t("branchSettings.expiryThresholdLabel")} description={t("branchSettings.expiryThresholdHint")}
+                dbRef="branches.expiry_alert_threshold_days"
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                  <input
+                    type="number" min={1} max={365} value={expiryAlertThresholdDays}
+                    onChange={e => setExpiryAlertThresholdDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                    style={{ ...inputStyle, width: 70 }}
+                  />
+                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.daysUnit")}</span>
+                </div>
+              </SettingRow>
+              <SettingRow
+                label={t("branchSettings.defaultReorderMinLabel")} description={t("branchSettings.defaultReorderMinHint")}
+                dbRef="branches.default_reorder_min" last
+              >
+                <input
+                  type="number" min={0} value={defaultReorderMin}
+                  onChange={e => setDefaultReorderMin(Math.max(0, Number(e.target.value) || 0))}
+                  style={{ ...inputStyle, width: 90 }}
+                />
+              </SettingRow>
+            </Card>
+          )}
+
+          {(activeTab === "compliance" || activeTab === "printing") && (
             <ComingSoonPanel label={t(SETTINGS_TABS.find(tb => tb.id === activeTab)!.labelKey)} />
           )}
         </div>

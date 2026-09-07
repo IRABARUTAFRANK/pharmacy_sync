@@ -20,7 +20,7 @@ const OTHER_COLOR = "#9ab8a0"
 
 function StatTile({ label, value, accent, delayMs = 0 }: { label: string; value: string; accent?: string; delayMs?: number }) {
   return (
-    <div className="animate-fade-up" style={{ animationDelay: `${delayMs}ms`, flex: "1 1 180px", minWidth: 160, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
+    <div className="animate-fade-up" style={{ animationDelay: `${delayMs}ms`, flex: "1 1 180px", minWidth: 160, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
       <div style={{ fontSize: 22, fontWeight: 700, color: accent ?? "var(--ink)", letterSpacing: "-0.01em" }}>{value}</div>
       <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 2 }}>{label}</div>
     </div>
@@ -32,7 +32,7 @@ function ClaimsPieTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null
   const p = payload[0]
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", fontSize: 12 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 12px", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", fontSize: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: p.payload.color, flexShrink: 0 }} />
         <span style={{ fontWeight: 600, color: "var(--ink)" }}>{p.name}</span>
@@ -150,7 +150,7 @@ function ClaimsTable({ claims, providers }: { claims: BranchInsuranceClaim[]; pr
   })
 
   return (
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, padding: 16 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{t("insurancePage.claimsTitle")} <span style={{ fontWeight: 400, color: "var(--ink-faint)", fontFamily: "monospace", fontSize: 11 }}>— insurance_claims</span></div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -258,7 +258,7 @@ export default function InsurancePage() {
       {loading ? (
         <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{t("insurancePage.loading")}</div>
       ) : providers.length === 0 ? (
-        <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13, background: "#fff", border: "1px solid var(--border)", borderRadius: 12 }}>{t("insurancePage.noProviders")}</div>
+        <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12 }}>{t("insurancePage.noProviders")}</div>
       ) : (
         <div>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
@@ -269,7 +269,7 @@ export default function InsurancePage() {
           </div>
 
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
-            <div style={{ flex: "1 1 320px", minWidth: 300, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
+            <div style={{ flex: "1 1 320px", minWidth: 300, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{t("insurancePage.claimsByProviderTitle")}</div>
               <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 8 }}>{t("insurancePage.claimsByProviderSubtitle")}</div>
               {chartData.length === 0 ? (
@@ -277,7 +277,7 @@ export default function InsurancePage() {
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <PieChart>
-                    <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={2} stroke="#fff" strokeWidth={2}>
+                    <Pie data={chartData} dataKey="value" nameKey="name" innerRadius={62} outerRadius={92} paddingAngle={2} stroke="var(--surface)" strokeWidth={2}>
                       {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
                     </Pie>
                     <Tooltip content={<ClaimsPieTooltip />} />
@@ -290,7 +290,7 @@ export default function InsurancePage() {
               )}
             </div>
 
-            <div style={{ flex: "2 1 480px", minWidth: 380, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ flex: "2 1 480px", minWidth: 380, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
               <div style={{ padding: "16px 16px 4px", fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{t("insurancePage.providersTableTitle")}</div>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>

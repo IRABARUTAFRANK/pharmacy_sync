@@ -34,6 +34,8 @@ export interface BranchDetails {
   posRequirePatientName: boolean
   posAllowDiscounts: boolean
   posShowPatientHistory: boolean
+  expiryAlertThresholdDays: number
+  defaultReorderMin: number
 }
 
 export async function getMyBranchDetails(): Promise<BranchDetails> {
@@ -56,6 +58,8 @@ export async function getMyBranchDetails(): Promise<BranchDetails> {
     posDefaultPaymentMethod: (row?.pos_default_payment_method as PaymentMethod) ?? "cash",
     posRequirePatientName: row?.pos_require_patient_name ?? false, posAllowDiscounts: row?.pos_allow_discounts ?? true,
     posShowPatientHistory: row?.pos_show_patient_history ?? true,
+    expiryAlertThresholdDays: row?.expiry_alert_threshold_days ?? 60,
+    defaultReorderMin: row?.default_reorder_min ?? 0,
   }
 }
 
@@ -85,6 +89,8 @@ export interface UpdateBranchDetailsInput {
   posRequirePatientName: boolean
   posAllowDiscounts: boolean
   posShowPatientHistory: boolean
+  expiryAlertThresholdDays: number
+  defaultReorderMin: number
 }
 
 // The whole Branch Settings form saves together, one RPC call -- every field
@@ -110,6 +116,8 @@ export async function updateBranchDetails(input: UpdateBranchDetailsInput): Prom
     p_pos_insurance_enabled: input.posInsuranceEnabled, p_pos_default_payment_method: input.posDefaultPaymentMethod,
     p_pos_require_patient_name: input.posRequirePatientName, p_pos_allow_discounts: input.posAllowDiscounts,
     p_pos_show_patient_history: input.posShowPatientHistory,
+    p_expiry_alert_threshold_days: input.expiryAlertThresholdDays,
+    p_default_reorder_min: input.defaultReorderMin,
   })
   if (error) throw error
 }

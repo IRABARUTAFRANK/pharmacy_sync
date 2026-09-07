@@ -53,7 +53,7 @@ export function Sidebar({
       onFocus={() => setFocused(true)}
       onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false) }}
       style={{
-        width, minWidth: width, background: "#fff", borderRight: "1px solid var(--border)",
+        width, minWidth: width, background: "var(--surface)", borderRight: "1px solid var(--border)",
         display: "flex", flexDirection: "column", transition: "width 0.22s, min-width 0.22s",
         overflow: "hidden", flexShrink: 0, zIndex: 10,
       }}

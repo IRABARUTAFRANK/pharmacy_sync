@@ -50,7 +50,7 @@ export default function AnalystPage() {
       {error && <CenterAlert key={error} message={error} />}
       <SectionHeader title={t("analystPage.title")} subtitle={t("analystPage.subtitle")} />
 
-      <div style={{ flex: 1, overflowY: "auto", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ flex: 1, overflowY: "auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         {messages.length === 0 && (
           <div style={{ margin: "auto", maxWidth: 480, textAlign: "center" }}>
             <div style={{ fontSize: 30, marginBottom: 10 }}>🧠</div>

@@ -198,7 +198,7 @@ function NewRequestModal({ onClose, onSubmitted }: { onClose: () => void; onSubm
                 onClick={() => chooseCategory(opt.id)}
                 style={{
                   textAlign: 'left', padding: '10px 12px', borderRadius: 10, cursor: 'pointer', fontFamily: 'inherit',
-                  border: '1.5px solid var(--border)', background: '#fff', display: 'flex', gap: 8, alignItems: 'flex-start',
+                  border: '1.5px solid var(--border)', background: 'var(--surface)', display: 'flex', gap: 8, alignItems: 'flex-start',
                 }}
               >
                 <span style={{ fontSize: 17, flexShrink: 0 }}>{opt.icon}</span>
@@ -252,7 +252,7 @@ function NewRequestModal({ onClose, onSubmitted }: { onClose: () => void; onSubm
                       const pc = priorityColors[p]
                       return (
                         <button key={p} type="button" onClick={() => setPriority(p)}
-                          style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: `1px solid ${priority === p ? pc.c : 'var(--border)'}`, background: priority === p ? pc.bg : '#fff', color: priority === p ? pc.c : 'var(--ink-mid)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                          style={{ flex: 1, padding: '6px 10px', borderRadius: 7, border: `1px solid ${priority === p ? pc.c : 'var(--border)'}`, background: priority === p ? pc.bg : 'var(--surface)', color: priority === p ? pc.c : 'var(--ink-mid)', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
                         >{priorityLabels[p]}</button>
                       )
                     })}
@@ -388,7 +388,7 @@ export default function HelpPage() {
           const c = statusColors[filterKey]
           return (
             <div key={countKey} onClick={() => setStatusFilter(statusFilter === filterKey ? 'all' : filterKey)}
-              className="animate-fade-up" style={{ animationDelay: `${i * 60}ms`, background: statusFilter === filterKey ? c.bg : '#fff', border: `1.5px solid ${statusFilter === filterKey ? c.c + '60' : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
+              className="animate-fade-up" style={{ animationDelay: `${i * 60}ms`, background: statusFilter === filterKey ? c.bg : 'var(--surface)', border: `1.5px solid ${statusFilter === filterKey ? c.c + '60' : 'var(--border)'}`, borderRadius: 10, padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: c.c, fontFamily: 'var(--font-display)' }}>{loading ? '—' : counts[countKey]}</div>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink)' }}>{label}</div>
             </div>

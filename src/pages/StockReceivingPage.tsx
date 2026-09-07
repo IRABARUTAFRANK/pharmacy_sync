@@ -70,7 +70,7 @@ const packBarcodesFor = (line: LineForm) => {
 
 const inputStyle: CSSProperties = {
   width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7,
-  font: "inherit", boxSizing: "border-box", background: "#fff", color: "var(--ink)",
+  font: "inherit", boxSizing: "border-box", background: "var(--surface)", color: "var(--ink)",
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
@@ -90,7 +90,7 @@ function Toggle<T extends string>({ value, options, onChange }: { value: T; opti
       style={{
         padding: "6px 13px", borderRadius: 6, border: "none", cursor: "pointer", fontFamily: "inherit",
         fontSize: 12, fontWeight: value === option.id ? 700 : 500,
-        background: value === option.id ? "#fff" : "transparent",
+        background: value === option.id ? "var(--surface)" : "transparent",
         color: value === option.id ? "var(--primary)" : "var(--ink-muted)",
         boxShadow: value === option.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
         transition: "all 0.15s",
@@ -523,7 +523,7 @@ export default function StockReceivingPage() {
     </Card>
 
     {/* Live summary — visible for the whole wizard, not just at the end. */}
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
       {[
         { label: t("receiving.statProductLines"), value: lines.length.toLocaleString() },
         { label: t("receiving.statTotalPieces"), value: totals.pieces.toLocaleString() },
@@ -712,7 +712,7 @@ export default function StockReceivingPage() {
       </div>
     </div>
 
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
       <div style={{ flex: 1, minWidth: 220, fontSize: 11, color: disabledReason ? "#b45309" : "var(--ink-muted)" }}>
         {disabledReason ?? t("receiving.readyToSubmit", { count: lines.length, supplier: supplier.trim() })}
       </div>

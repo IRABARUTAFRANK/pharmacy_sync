@@ -156,7 +156,7 @@ function PeriodPickerModal({ def, onClose, onConfirm }: { def: ReportDef; onClos
               style={{
                 padding: "9px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                 border: `1.5px solid ${presetId === p.id ? "var(--primary)" : "var(--border)"}`,
-                background: presetId === p.id ? "var(--primary-light)" : "#fff",
+                background: presetId === p.id ? "var(--primary-light)" : "var(--surface)",
                 color: presetId === p.id ? "var(--primary)" : "var(--ink-mid)",
               }}
             >
@@ -189,7 +189,7 @@ function PeriodPickerModal({ def, onClose, onConfirm }: { def: ReportDef; onClos
 
 function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div style={{ flex: "1 1 150px", minWidth: 140, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
+    <div style={{ flex: "1 1 150px", minWidth: 140, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
       <div style={{ fontSize: 19, fontWeight: 700, color: accent ?? "var(--ink)", letterSpacing: "-0.01em" }}>{value}</div>
       <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 2 }}>{label}</div>
     </div>
@@ -197,7 +197,7 @@ function StatTile({ label, value, accent }: { label: string; value: string; acce
 }
 
 const DATE_INPUT_STYLE = { padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }
-const SELECT_STYLE = { padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12, background: "#fff" }
+const SELECT_STYLE = { padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12, background: "var(--surface)" }
 const FIELD_LABEL_STYLE = { display: "block", fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4 }
 const EMPTY_STATE_STYLE = { padding: 20, textAlign: "center" as const, color: "var(--ink-muted)", fontSize: 12 }
 
@@ -718,7 +718,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
               disabled={reportLoadingId === def.id}
               style={{
                 textAlign: "left", display: "flex", flexDirection: "column", gap: 8, padding: "16px 18px",
-                borderRadius: 12, border: "1px solid var(--border)", background: "#fff",
+                borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)",
                 cursor: reportLoadingId === def.id ? "wait" : "pointer", fontFamily: "inherit", transition: "box-shadow 0.15s, border-color 0.15s",
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = def.color; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 16px ${def.color}1A` }}
@@ -768,9 +768,9 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={trendChartData} margin={{ bottom: 8 }}>
-              <CartesianGrid strokeDasharray="4 4" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
+              <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+              <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="revenue" name={t("analyticsPage.colRevenue")} fill="#2a78d6" radius={[5, 5, 0, 0]} />
             </BarChart>
@@ -811,10 +811,15 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={categoryChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="#fff" strokeWidth={2}>
+                <Pie data={categoryChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="var(--surface)" strokeWidth={2}>
                   {categoryChartData.map((d, i) => <Cell key={i} fill={d.color} />)}
                 </Pie>
-                <Tooltip formatter={(v: any) => fmtRWFExact(Number(v))} />
+                <Tooltip
+                  formatter={(v: any) => fmtRWFExact(Number(v))}
+                  contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}
+                  itemStyle={{ color: "var(--ink)" }}
+                  labelStyle={{ color: "var(--ink-muted)" }}
+                />
                 <Legend formatter={(value: string) => <span style={{ fontSize: 11, color: "var(--ink-mid)" }}>{value}</span>} />
               </PieChart>
             </ResponsiveContainer>
@@ -915,7 +920,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
                 style={{
                   padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                   border: `1px solid ${stockFilter === f ? "var(--primary)" : "var(--border)"}`,
-                  background: stockFilter === f ? "var(--primary-light)" : "#fff",
+                  background: stockFilter === f ? "var(--primary-light)" : "var(--surface)",
                   color: stockFilter === f ? "var(--primary)" : "var(--ink-mid)",
                 }}
               >
@@ -1080,9 +1085,9 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={basketChartData} margin={{ bottom: 8 }}>
-                <CartesianGrid strokeDasharray="4 4" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
+                <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="items" name={t("analyticsPage.colItemsPerSale")} fill="#1baf7a" radius={[5, 5, 0, 0]} />
               </BarChart>
