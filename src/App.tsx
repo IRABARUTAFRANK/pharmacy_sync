@@ -67,6 +67,7 @@ const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
 const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
 const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
+const PublicReceiptPage    = lazy(() => import('./pages/PublicReceiptPage'))
 
 // Fetches a page's chunk ahead of the click that needs it -- on nav-button
 // hover, and once more as a background warm-up shortly after sign-in (see
@@ -89,7 +90,7 @@ function prefetchPage(id: string) {
 // both used to live in a separately deployed app; they're now plain in-app
 // views reached by URL fragment, with no page reload and no second server.
 
-type HashRoute = 'home' | 'admin' | 'branch' | 'reset'
+type HashRoute = 'home' | 'admin' | 'branch' | 'reset' | 'receipt'
 
 function hashToRoute(hash: string): HashRoute {
   // A "forgot password" email link lands back here with Supabase's own
@@ -105,6 +106,9 @@ function hashToRoute(hash: string): HashRoute {
   // still routes to the branch portal instead of falling through to home.
   if (hash === '#admin' || hash.startsWith('#admin?')) return 'admin'
   if (hash === '#branch' || hash.startsWith('#branch?')) return 'branch'
+  // Scanned from the "share this receipt" QR printed on a receipt --
+  // #receipt?id=<sale uuid> -- see PublicReceiptPage.tsx for the parser.
+  if (hash === '#receipt' || hash.startsWith('#receipt?')) return 'receipt'
   return 'home'
 }
 
@@ -524,6 +528,7 @@ export default function App() {
   if (hashRoute === 'admin') return <Suspense fallback={loadingFallback}><AdminPortal /></Suspense>
   if (hashRoute === 'branch') return <Suspense fallback={loadingFallback}><BranchPortal /></Suspense>
   if (hashRoute === 'reset') return <Suspense fallback={loadingFallback}><ResetPassword /></Suspense>
+  if (hashRoute === 'receipt') return <Suspense fallback={loadingFallback}><PublicReceiptPage /></Suspense>
 
   if (introPhase !== 'done') return <IntroSplash exiting={introPhase === 'exiting'} />
 

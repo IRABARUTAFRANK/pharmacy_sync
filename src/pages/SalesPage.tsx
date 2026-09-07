@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react"
+import QRCode from "qrcode"
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Btn, CenterAlert, ChartTooltip, SectionHeader } from "../components"
+import { Btn, CenterAlert, ChartTooltip, Logo, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { findPatientByIdentifier, upsertPatient, type PatientGender } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
+import { downloadReceiptPdf } from "../lib/receiptPdf"
 import { useScanner } from "../lib/scanner"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, listSaleHistory, loadCoverageOverrides, loadInsuranceProviders,
   loadPosDashboardSnapshot, scanBarcode,
   type InsuranceProvider, type PosDashboardSnapshot, type ReceiptData, type SaleHistoryRow, type ScannedBarcode, type SellMode,
 } from "../lib/sales"
+import { buildVerificationQrPayload, mapTaxRateToVsdcCode } from "../lib/vsdc"
 
 // One physical scan (pack or carton) becomes one cart line. Its own barcode
 // code is the cart identity — scanning the same code twice within one sale is
@@ -67,26 +70,133 @@ function piecesFromMode(item: ScannedBarcode, mode: SellMode, quantity: number):
 
 // ── Printable receipt — shared between "just completed" and Transactions history reprints ──
 
+// Paper/roll options the size picker below offers. `printWidth` is the roll
+// width minus 2x the print margin so content doesn't overflow the printable
+// area once @page margin is applied; `previewWidth` only affects the
+// on-screen card so the picker feels immediate before anyone prints.
+type ReceiptPrintSize = "thermal80" | "thermal58" | "a5" | "a4"
+const RECEIPT_SIZE_CONFIG: Record<ReceiptPrintSize, { pageSize: string; pageMargin: string; printWidth: string; previewWidth: number }> = {
+  thermal80: { pageSize: "80mm auto", pageMargin: "2mm", printWidth: "76mm", previewWidth: 320 },
+  thermal58: { pageSize: "58mm auto", pageMargin: "2mm", printWidth: "54mm", previewWidth: 240 },
+  a5: { pageSize: "A5", pageMargin: "12mm", printWidth: "180mm", previewWidth: 480 },
+  a4: { pageSize: "A4", pageMargin: "15mm", printWidth: "190mm", previewWidth: 560 },
+}
+const RECEIPT_PRINT_SIZE_KEY = "pharmsync.receiptPrintSize"
+
+function loadStoredPrintSize(): ReceiptPrintSize {
+  try {
+    const stored = localStorage.getItem(RECEIPT_PRINT_SIZE_KEY)
+    if (stored === "thermal80" || stored === "thermal58" || stored === "a5" || stored === "a4") return stored
+  } catch { /* localStorage unavailable (private browsing / restricted context) -- fall back below */ }
+  return "thermal80"
+}
+
 export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; onClose?: () => void; closeLabel?: string }) {
   const { t } = useTranslation()
   const genderLabel = (g: string | null) =>
     g === "male" ? t("patients.genderMale") : g === "female" ? t("patients.genderFemale") : g === "other" ? t("patients.genderOther") : null
 
-  return (
-    <div>
-      <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 14 }}>
+  const [printSize, setPrintSize] = useState<ReceiptPrintSize>(loadStoredPrintSize)
+  const sizeConfig = RECEIPT_SIZE_CONFIG[printSize]
+  const updatePrintSize = (size: ReceiptPrintSize) => {
+    setPrintSize(size)
+    try { localStorage.setItem(RECEIPT_PRINT_SIZE_KEY, size) } catch { /* ignore -- picker still works for this session */ }
+  }
+
+  // The EBM-compliant fields (SDI ID, verification code, invoice number) are
+  // only ever non-null once this branch is registered with RRA's VSDC and
+  // complete_sale() has actually submitted the sale -- see src/lib/vsdc.ts.
+  const isEbmRegistered = !!(data.ebmSdcId && data.ebmMrcNo && data.ebmReceiptSignature && data.ebmInvoiceNumber)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isEbmRegistered) { setQrDataUrl(null); return }
+    let cancelled = false
+    const payload = buildVerificationQrPayload({
+      sdcId: data.ebmSdcId!, mrcNo: data.ebmMrcNo!, invcNo: data.ebmInvoiceNumber!,
+      rcptSign: data.ebmReceiptSignature!, issuedAt: data.issuedAt,
+    })
+    QRCode.toDataURL(payload, { width: 96, margin: 0 }).then(url => { if (!cancelled) setQrDataUrl(url) }).catch(() => { if (!cancelled) setQrDataUrl(null) })
+    return () => { cancelled = true }
+  }, [isEbmRegistered, data.ebmSdcId, data.ebmMrcNo, data.ebmReceiptSignature, data.ebmInvoiceNumber, data.issuedAt])
+
+  // Public "scan to view online" QR -- unrelated to EBM/VSDC registration
+  // above: this one always renders, on every receipt, and points at
+  // PublicReceiptPage's own unauthenticated route, not at RRA's verification
+  // payload. Kept as separate state/effect so the two purposes (RRA auditor
+  // vs. customer) never get tangled.
+  const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const shareUrl = `${window.location.origin}${window.location.pathname}#receipt?id=${data.saleId}`
+    QRCode.toDataURL(shareUrl, { width: 96, margin: 0 }).then(url => { if (!cancelled) setShareQrDataUrl(url) }).catch(() => { if (!cancelled) setShareQrDataUrl(null) })
+    return () => { cancelled = true }
+  }, [data.saleId])
+
+  const handleDownloadPdf = () => {
+    void downloadReceiptPdf(data, { printSize, qrDataUrl, isEbmRegistered, t })
+  }
+
+  const printSizePicker = (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+        {t("salesPage.receiptSizeLabel")}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {(["thermal80", "thermal58", "a5", "a4"] as ReceiptPrintSize[]).map(size => {
+          const label = {
+            thermal80: t("salesPage.receiptSizeThermal80"), thermal58: t("salesPage.receiptSizeThermal58"),
+            a5: t("salesPage.receiptSizeA5"), a4: t("salesPage.receiptSizeA4"),
+          }[size]
+          return (
+            <button key={size} onClick={() => updatePrintSize(size)} style={{
+              flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
+              border: `1.5px solid ${printSize === size ? "var(--primary)" : "var(--border)"}`,
+              background: printSize === size ? "var(--primary-light)" : "#fff",
+              color: printSize === size ? "var(--primary)" : "var(--ink-mid)",
+              fontWeight: printSize === size ? 700 : 400, fontSize: 13,
+            }}>{label}</button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  const actionBar = (showSizePicker: boolean) => (
+    <div className="no-print" style={{ marginBottom: 14 }}>
+      {showSizePicker && printSizePicker}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="secondary" onClick={handleDownloadPdf}>⬇ {t("salesPage.receiptDownloadPdfButton")}</Btn>
         <Btn variant="primary" onClick={() => window.print()}>🖨 {t("salesPage.receiptPrintButton")}</Btn>
         {onClose && <Btn variant="ghost" onClick={onClose}>{closeLabel ?? t("salesPage.receiptNewSale")}</Btn>}
       </div>
-      <div style={{ maxWidth: 480, margin: "0 auto", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "26px 24px", fontFamily: "var(--font-body)" }}>
-        {/* Letterhead */}
-        <div style={{ textAlign: "center", marginBottom: 16 }}>
-          {data.branchLogoUrl && (
-            <img src={data.branchLogoUrl} alt={data.branchName} style={{ width: 64, height: 64, objectFit: "contain", margin: "0 auto 8px" }} />
-          )}
-          <div style={{ fontWeight: 800, fontSize: 19, letterSpacing: "0.01em", color: "var(--primary)", textTransform: "uppercase" }}>{data.branchName}</div>
-          <div style={{ fontWeight: 700, fontSize: 12, letterSpacing: "0.15em", color: "var(--ink-muted)", marginTop: 2 }}>{t("salesPage.receiptHeading")}</div>
-          <div style={{ borderTop: "2px solid var(--primary)", width: 64, margin: "8px auto 0" }} />
+    </div>
+  )
+
+  return (
+    <div>
+      <style>{`
+        @media print {
+          @page { size: ${sizeConfig.pageSize}; margin: ${sizeConfig.pageMargin}; }
+          .receipt-print-area { width: ${sizeConfig.printWidth} !important; max-width: ${sizeConfig.printWidth} !important; }
+        }
+      `}</style>
+      {actionBar(true)}
+      <div className="receipt-print-area" style={{ maxWidth: sizeConfig.previewWidth, margin: "0 auto", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "26px 24px", fontFamily: "var(--font-body)" }}>
+        {/* Letterhead: PharmSync brand mark opposite the pharmacy's own logo */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <Logo size={30} showWordmark={false} />
+          <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: "0.01em", color: "var(--primary)", textTransform: "uppercase" }}>{data.branchName}</div>
+          </div>
+          {data.branchLogoUrl ? (
+            <img src={data.branchLogoUrl} alt={data.branchName} style={{ height: 40, width: 40, objectFit: "contain", flexShrink: 0 }} />
+          ) : <div style={{ width: 40, flexShrink: 0 }} />}
+        </div>
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <div style={{
+            fontWeight: 700, fontSize: 12, letterSpacing: "0.15em", color: "#fff", background: "var(--primary)",
+            padding: "5px 0", borderRadius: 4,
+          }}>{t("salesPage.receiptHeading")}</div>
         </div>
 
         {/* No / Client / contact block, left; Date, right */}
@@ -127,6 +237,7 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
               <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColQty")}</th>
               <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColUnitPrice")}</th>
               <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColTotal")}</th>
+              <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColVat")}</th>
             </tr>
           </thead>
           <tbody>
@@ -142,24 +253,58 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
                 <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top" }}>{item.quantity}</td>
                 <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top" }}>{fmtRWFExact(item.unitPrice)}</td>
                 <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top", fontWeight: 600 }}>{fmtRWFExact(item.subtotal)}</td>
+                <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top" }}>{item.taxRatePercentage}% ({mapTaxRateToVsdcCode(item.taxRatePercentage)})</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 8, marginTop: 10, fontSize: 12, display: "flex", flexDirection: "column", gap: 3 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.subtotal")}</span><span>{fmtRWFExact(data.subtotal)}</span></div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.tax")}</span><span>{fmtRWFExact(data.taxTotal)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.receiptSubtotalBeforeVat")}</span><span>{fmtRWFExact(data.subtotal)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.receiptVatSummary")}</span><span>{fmtRWFExact(data.taxTotal)}</span></div>
           {data.insuranceCoveredTotal > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}><span>{t("salesPage.receiptInsurancePaid")}</span><span>-{fmtRWFExact(data.insuranceCoveredTotal)}</span></div>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 14, borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 3 }}>
-            <span>{t("salesPage.receiptPatientPaid")}</span><span>{fmtRWFExact(data.patientOwedTotal)}</span>
+            <span>{t("salesPage.receiptGrandTotal")}</span><span>{fmtRWFExact(data.patientOwedTotal)}</span>
           </div>
         </div>
+
+        {/* RRA EBM/VSDC compliance block */}
+        <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 10, marginTop: 14, textAlign: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", color: "var(--ink-muted)", marginBottom: 8 }}>{t("salesPage.receiptComplianceTitle")}</div>
+          {isEbmRegistered ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+              {qrDataUrl && <img src={qrDataUrl} alt={t("salesPage.receiptQrLabel")} style={{ width: 72, height: 72 }} />}
+              <div style={{ textAlign: "left", fontSize: 10, color: "var(--ink-mid)", display: "flex", flexDirection: "column", gap: 2 }}>
+                <div>{t("salesPage.receiptQrLabel")}</div>
+                <div><b>{t("salesPage.receiptVerificationCode")}:</b> {data.ebmReceiptSignature}</div>
+                <div><b>{t("salesPage.receiptSdiId")}:</b> {data.ebmSdcId}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 10, color: "var(--ink-faint)", fontStyle: "italic" }}>{t("salesPage.receiptEbmPending")}</div>
+          )}
+        </div>
+
+        {/* Scan-to-view-online QR -- independent of EBM/VSDC status above,
+            always rendered. Opens PublicReceiptPage, which shows this exact
+            receipt to whoever holds the link. */}
+        <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 10, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+          {shareQrDataUrl && <img src={shareQrDataUrl} alt={t("salesPage.receiptShareQrTitle")} style={{ width: 72, height: 72 }} />}
+          <div style={{ textAlign: "left", fontSize: 10, color: "var(--ink-mid)", maxWidth: 220 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>{t("salesPage.receiptShareQrTitle")}</div>
+            <div>{t("salesPage.receiptShareQrCaption")}</div>
+          </div>
+        </div>
+
         <div style={{ textAlign: "center", fontSize: 10, color: "var(--ink-faint)", marginTop: 18 }}>{t("salesPage.receiptThankYou")}</div>
+        {isEbmRegistered && (
+          <div style={{ textAlign: "center", fontSize: 9, fontWeight: 600, color: "var(--ink-muted)", marginTop: 6 }}>{t("salesPage.receiptEbmCertifiedFooter")}</div>
+        )}
         <div style={{ textAlign: "center", fontSize: 9, color: "var(--ink-faint)", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--bg-alt)" }}>{t("salesPage.receiptPoweredBy")}</div>
       </div>
+      {actionBar(false)}
     </div>
   )
 }
