@@ -1,16 +1,19 @@
 import { useEffect, useRef, useState } from "react"
+import QRCode from "qrcode"
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Btn, CenterAlert, ChartTooltip, SectionHeader } from "../components"
+import { Btn, CenterAlert, ChartTooltip, Logo, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { listBranchPatients, upsertPatient, type PatientGender, type PatientListRow } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
+import { downloadReceiptPdf } from "../lib/receiptPdf"
 import { useScanner } from "../lib/scanner"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, listSaleHistory, loadCoverageOverrides, loadInsuranceProviders,
   loadPosDashboardSnapshot, scanBarcode,
   type InsuranceProvider, type PosDashboardSnapshot, type ReceiptData, type SaleHistoryRow, type ScannedBarcode, type SellMode,
 } from "../lib/sales"
+import { buildVerificationQrPayload, mapTaxRateToVsdcCode } from "../lib/vsdc"
 
 // One physical scan (pack or carton) becomes one cart line. Its own barcode
 // code is the cart identity — scanning the same code twice within one sale is
@@ -67,26 +70,133 @@ function piecesFromMode(item: ScannedBarcode, mode: SellMode, quantity: number):
 
 // ── Printable receipt — shared between "just completed" and Transactions history reprints ──
 
+// Paper/roll options the size picker below offers. `printWidth` is the roll
+// width minus 2x the print margin so content doesn't overflow the printable
+// area once @page margin is applied; `previewWidth` only affects the
+// on-screen card so the picker feels immediate before anyone prints.
+type ReceiptPrintSize = "thermal80" | "thermal58" | "a5" | "a4"
+const RECEIPT_SIZE_CONFIG: Record<ReceiptPrintSize, { pageSize: string; pageMargin: string; printWidth: string; previewWidth: number }> = {
+  thermal80: { pageSize: "80mm auto", pageMargin: "2mm", printWidth: "76mm", previewWidth: 320 },
+  thermal58: { pageSize: "58mm auto", pageMargin: "2mm", printWidth: "54mm", previewWidth: 240 },
+  a5: { pageSize: "A5", pageMargin: "12mm", printWidth: "180mm", previewWidth: 480 },
+  a4: { pageSize: "A4", pageMargin: "15mm", printWidth: "190mm", previewWidth: 560 },
+}
+const RECEIPT_PRINT_SIZE_KEY = "pharmsync.receiptPrintSize"
+
+function loadStoredPrintSize(): ReceiptPrintSize {
+  try {
+    const stored = localStorage.getItem(RECEIPT_PRINT_SIZE_KEY)
+    if (stored === "thermal80" || stored === "thermal58" || stored === "a5" || stored === "a4") return stored
+  } catch { /* localStorage unavailable (private browsing / restricted context) -- fall back below */ }
+  return "thermal80"
+}
+
 export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; onClose?: () => void; closeLabel?: string }) {
   const { t } = useTranslation()
   const genderLabel = (g: string | null) =>
     g === "male" ? t("patients.genderMale") : g === "female" ? t("patients.genderFemale") : g === "other" ? t("patients.genderOther") : null
 
-  return (
-    <div>
-      <div className="no-print" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 14 }}>
+  const [printSize, setPrintSize] = useState<ReceiptPrintSize>(loadStoredPrintSize)
+  const sizeConfig = RECEIPT_SIZE_CONFIG[printSize]
+  const updatePrintSize = (size: ReceiptPrintSize) => {
+    setPrintSize(size)
+    try { localStorage.setItem(RECEIPT_PRINT_SIZE_KEY, size) } catch { /* ignore -- picker still works for this session */ }
+  }
+
+  // The EBM-compliant fields (SDI ID, verification code, invoice number) are
+  // only ever non-null once this branch is registered with RRA's VSDC and
+  // complete_sale() has actually submitted the sale -- see src/lib/vsdc.ts.
+  const isEbmRegistered = !!(data.ebmSdcId && data.ebmMrcNo && data.ebmReceiptSignature && data.ebmInvoiceNumber)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isEbmRegistered) { setQrDataUrl(null); return }
+    let cancelled = false
+    const payload = buildVerificationQrPayload({
+      sdcId: data.ebmSdcId!, mrcNo: data.ebmMrcNo!, invcNo: data.ebmInvoiceNumber!,
+      rcptSign: data.ebmReceiptSignature!, issuedAt: data.issuedAt,
+    })
+    QRCode.toDataURL(payload, { width: 96, margin: 0 }).then(url => { if (!cancelled) setQrDataUrl(url) }).catch(() => { if (!cancelled) setQrDataUrl(null) })
+    return () => { cancelled = true }
+  }, [isEbmRegistered, data.ebmSdcId, data.ebmMrcNo, data.ebmReceiptSignature, data.ebmInvoiceNumber, data.issuedAt])
+
+  // Public "scan to view online" QR -- unrelated to EBM/VSDC registration
+  // above: this one always renders, on every receipt, and points at
+  // PublicReceiptPage's own unauthenticated route, not at RRA's verification
+  // payload. Kept as separate state/effect so the two purposes (RRA auditor
+  // vs. customer) never get tangled.
+  const [shareQrDataUrl, setShareQrDataUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const shareUrl = `${window.location.origin}${window.location.pathname}#receipt?id=${data.saleId}`
+    QRCode.toDataURL(shareUrl, { width: 96, margin: 0 }).then(url => { if (!cancelled) setShareQrDataUrl(url) }).catch(() => { if (!cancelled) setShareQrDataUrl(null) })
+    return () => { cancelled = true }
+  }, [data.saleId])
+
+  const handleDownloadPdf = () => {
+    void downloadReceiptPdf(data, { printSize, qrDataUrl, isEbmRegistered, t })
+  }
+
+  const printSizePicker = (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+        {t("salesPage.receiptSizeLabel")}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {(["thermal80", "thermal58", "a5", "a4"] as ReceiptPrintSize[]).map(size => {
+          const label = {
+            thermal80: t("salesPage.receiptSizeThermal80"), thermal58: t("salesPage.receiptSizeThermal58"),
+            a5: t("salesPage.receiptSizeA5"), a4: t("salesPage.receiptSizeA4"),
+          }[size]
+          return (
+            <button key={size} onClick={() => updatePrintSize(size)} style={{
+              flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
+              border: `1.5px solid ${printSize === size ? "var(--primary)" : "var(--border)"}`,
+              background: printSize === size ? "var(--primary-light)" : "var(--surface)",
+              color: printSize === size ? "var(--primary)" : "var(--ink-mid)",
+              fontWeight: printSize === size ? 700 : 400, fontSize: 13,
+            }}>{label}</button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  const actionBar = (showSizePicker: boolean) => (
+    <div className="no-print" style={{ marginBottom: 14 }}>
+      {showSizePicker && printSizePicker}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="secondary" onClick={handleDownloadPdf}>⬇ {t("salesPage.receiptDownloadPdfButton")}</Btn>
         <Btn variant="primary" onClick={() => window.print()}>🖨 {t("salesPage.receiptPrintButton")}</Btn>
         {onClose && <Btn variant="ghost" onClick={onClose}>{closeLabel ?? t("salesPage.receiptNewSale")}</Btn>}
       </div>
-      <div style={{ maxWidth: 480, margin: "0 auto", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "26px 24px", fontFamily: "var(--font-body)" }}>
-        {/* Letterhead */}
-        <div style={{ textAlign: "center", marginBottom: 16 }}>
-          {data.branchLogoUrl && (
-            <img src={data.branchLogoUrl} alt={data.branchName} style={{ width: 64, height: 64, objectFit: "contain", margin: "0 auto 8px" }} />
-          )}
-          <div style={{ fontWeight: 800, fontSize: 19, letterSpacing: "0.01em", color: "var(--primary)", textTransform: "uppercase" }}>{data.branchName}</div>
-          <div style={{ fontWeight: 700, fontSize: 12, letterSpacing: "0.15em", color: "var(--ink-muted)", marginTop: 2 }}>{t("salesPage.receiptHeading")}</div>
-          <div style={{ borderTop: "2px solid var(--primary)", width: 64, margin: "8px auto 0" }} />
+    </div>
+  )
+
+  return (
+    <div>
+      <style>{`
+        @media print {
+          @page { size: ${sizeConfig.pageSize}; margin: ${sizeConfig.pageMargin}; }
+          .receipt-print-area { width: ${sizeConfig.printWidth} !important; max-width: ${sizeConfig.printWidth} !important; }
+        }
+      `}</style>
+      {actionBar(true)}
+      <div className="receipt-print-area" style={{ maxWidth: sizeConfig.previewWidth, margin: "0 auto", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "26px 24px", fontFamily: "var(--font-body)" }}>
+        {/* Letterhead: PharmSync brand mark opposite the pharmacy's own logo */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <Logo size={30} showWordmark={false} />
+          <div style={{ textAlign: "center", flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 17, letterSpacing: "0.01em", color: "var(--primary)", textTransform: "uppercase" }}>{data.branchName}</div>
+          </div>
+          {data.branchLogoUrl ? (
+            <img src={data.branchLogoUrl} alt={data.branchName} style={{ height: 40, width: 40, objectFit: "contain", flexShrink: 0 }} />
+          ) : <div style={{ width: 40, flexShrink: 0 }} />}
+        </div>
+        <div style={{ textAlign: "center", marginTop: 10 }}>
+          <div style={{
+            fontWeight: 700, fontSize: 12, letterSpacing: "0.15em", color: "#fff", background: "var(--primary)",
+            padding: "5px 0", borderRadius: 4,
+          }}>{t("salesPage.receiptHeading")}</div>
         </div>
 
         {/* No / Client / contact block, left; Date, right */}
@@ -127,6 +237,7 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
               <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColQty")}</th>
               <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColUnitPrice")}</th>
               <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColTotal")}</th>
+              <th style={{ textAlign: "right", padding: "6px 4px", fontSize: 9, letterSpacing: "0.04em" }}>{t("salesPage.receiptColVat")}</th>
             </tr>
           </thead>
           <tbody>
@@ -142,24 +253,58 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
                 <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top" }}>{item.quantity}</td>
                 <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top" }}>{fmtRWFExact(item.unitPrice)}</td>
                 <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top", fontWeight: 600 }}>{fmtRWFExact(item.subtotal)}</td>
+                <td style={{ padding: "6px 4px", textAlign: "right", verticalAlign: "top" }}>{item.taxRatePercentage}% ({mapTaxRateToVsdcCode(item.taxRatePercentage)})</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 8, marginTop: 10, fontSize: 12, display: "flex", flexDirection: "column", gap: 3 }}>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.subtotal")}</span><span>{fmtRWFExact(data.subtotal)}</span></div>
-          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.tax")}</span><span>{fmtRWFExact(data.taxTotal)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.receiptSubtotalBeforeVat")}</span><span>{fmtRWFExact(data.subtotal)}</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}><span>{t("salesPage.receiptVatSummary")}</span><span>{fmtRWFExact(data.taxTotal)}</span></div>
           {data.insuranceCoveredTotal > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}><span>{t("salesPage.receiptInsurancePaid")}</span><span>-{fmtRWFExact(data.insuranceCoveredTotal)}</span></div>
           )}
           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 14, borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 3 }}>
-            <span>{t("salesPage.receiptPatientPaid")}</span><span>{fmtRWFExact(data.patientOwedTotal)}</span>
+            <span>{t("salesPage.receiptGrandTotal")}</span><span>{fmtRWFExact(data.patientOwedTotal)}</span>
           </div>
         </div>
+
+        {/* RRA EBM/VSDC compliance block */}
+        <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 10, marginTop: 14, textAlign: "center" }}>
+          <div style={{ fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", color: "var(--ink-muted)", marginBottom: 8 }}>{t("salesPage.receiptComplianceTitle")}</div>
+          {isEbmRegistered ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+              {qrDataUrl && <img src={qrDataUrl} alt={t("salesPage.receiptQrLabel")} style={{ width: 72, height: 72 }} />}
+              <div style={{ textAlign: "left", fontSize: 10, color: "var(--ink-mid)", display: "flex", flexDirection: "column", gap: 2 }}>
+                <div>{t("salesPage.receiptQrLabel")}</div>
+                <div><b>{t("salesPage.receiptVerificationCode")}:</b> {data.ebmReceiptSignature}</div>
+                <div><b>{t("salesPage.receiptSdiId")}:</b> {data.ebmSdcId}</div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 10, color: "var(--ink-faint)", fontStyle: "italic" }}>{t("salesPage.receiptEbmPending")}</div>
+          )}
+        </div>
+
+        {/* Scan-to-view-online QR -- independent of EBM/VSDC status above,
+            always rendered. Opens PublicReceiptPage, which shows this exact
+            receipt to whoever holds the link. */}
+        <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 10, marginTop: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+          {shareQrDataUrl && <img src={shareQrDataUrl} alt={t("salesPage.receiptShareQrTitle")} style={{ width: 72, height: 72 }} />}
+          <div style={{ textAlign: "left", fontSize: 10, color: "var(--ink-mid)", maxWidth: 220 }}>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>{t("salesPage.receiptShareQrTitle")}</div>
+            <div>{t("salesPage.receiptShareQrCaption")}</div>
+          </div>
+        </div>
+
         <div style={{ textAlign: "center", fontSize: 10, color: "var(--ink-faint)", marginTop: 18 }}>{t("salesPage.receiptThankYou")}</div>
+        {isEbmRegistered && (
+          <div style={{ textAlign: "center", fontSize: 9, fontWeight: 600, color: "var(--ink-muted)", marginTop: 6 }}>{t("salesPage.receiptEbmCertifiedFooter")}</div>
+        )}
         <div style={{ textAlign: "center", fontSize: 9, color: "var(--ink-faint)", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--bg-alt)" }}>{t("salesPage.receiptPoweredBy")}</div>
       </div>
+      {actionBar(false)}
     </div>
   )
 }
@@ -252,10 +397,10 @@ function PatientStep({ draft, onChange, onClear, resolvedId }: {
   const modeBtn = (active: boolean) => ({
     flex: 1, padding: "8px 10px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
     border: `1.5px solid ${active ? "var(--primary)" : "var(--border)"}`,
-    background: active ? "var(--primary-light)" : "#fff", color: active ? "var(--primary)" : "var(--ink-mid)",
+    background: active ? "var(--primary-light)" : "var(--surface)", color: active ? "var(--primary)" : "var(--ink-mid)",
   })
 
-  return <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
+  return <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
       {t("salesPage.patientSectionTitle")}
     </div>
@@ -306,7 +451,7 @@ function PatientStep({ draft, onChange, onClear, resolvedId }: {
         {resolvedId && <p style={{ margin: "0 0 10px", fontSize: 11, color: "#16a34a" }}>{t("salesPage.patientFoundHint")}</p>}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 }}>
           <input value={draft.fullName} onChange={e => onChange({ ...draft, fullName: e.target.value })} placeholder={t("salesPage.patientFullName")} style={inputStyle} />
-          <select value={draft.gender} onChange={e => onChange({ ...draft, gender: e.target.value as PatientGender | "" })} style={{ ...inputStyle, background: "#fff" }}>
+          <select value={draft.gender} onChange={e => onChange({ ...draft, gender: e.target.value as PatientGender | "" })} style={{ ...inputStyle, background: "var(--surface)" }}>
             <option value="">{t("salesPage.patientGenderRequired")}</option>
             <option value="male">{t("patients.genderMale")}</option>
             <option value="female">{t("patients.genderFemale")}</option>
@@ -348,7 +493,7 @@ interface PendingScan {
 
 function PosStatTile({ icon, value, valueColor, label, sub }: { icon: string; value: string; valueColor: string; label: string; sub: string }) {
   return (
-    <div style={{ flex: "1 1 200px", background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
+    <div style={{ flex: "1 1 200px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <span style={{ fontSize: 22, fontWeight: 800, color: valueColor, fontFamily: "var(--font-display)", letterSpacing: "-0.02em" }}>{value}</span>
         <span style={{ fontSize: 18 }}>{icon}</span>
@@ -378,7 +523,17 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
   const [recentSales, setRecentSales] = useState<SaleHistoryRow[]>([])
   const scanRef = useRef<HTMLInputElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
+  const checkoutSectionRef = useRef<HTMLDivElement>(null)
   const scanner = useScanner()
+
+  // A scan should always bring the cashier back to the checkout panel (scan
+  // box, pending-confirmation card, cart) even if they'd scrolled down to the
+  // hourly chart or the recent-transactions table -- most useful for the
+  // global barcode-scanner listener, which can fire from anywhere on this
+  // page, but applied to the manual scan box too for the same reason.
+  function scrollToCheckout() {
+    checkoutSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
   useEffect(() => {
     void Promise.all([listTaxRates(), loadInsuranceProviders()]).then(([rates, provs]) => { setTaxRates(rates); setProviders(provs) })
@@ -420,6 +575,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
   async function handleScan() {
     const code = scanInput.trim()
     if (!code || scanning || pending) return
+    scrollToCheckout()
     if (cart.some(item => item.code.toUpperCase() === code.toUpperCase())) {
       setError(t("salesPage.cartDuplicateError", { code }))
       setScanInput("")
@@ -447,6 +603,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
   // quantity selection, it only skips having to type the code by hand.
   async function processGlobalScan(code: string) {
     if (!code || scanning || pending) return
+    scrollToCheckout()
     if (cart.some(item => item.code.toUpperCase() === code.toUpperCase())) {
       setError(t("salesPage.cartDuplicateError", { code }))
       return
@@ -602,60 +759,36 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
       <SectionHeader title={t("page.sales")} subtitle={t("salesPage.subtitle")} />
 
       {snapshot && (
-        <>
-          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
-            <PosStatTile
-              icon="💰" valueColor="#16a34a"
-              value={fmtRWFExact(snapshot.todayRevenue)}
-              label={t("salesPage.dashRevenueLabel")}
-              sub={t("salesPage.dashRevenueSub", { count: snapshot.todayTransactions })}
-            />
-            <PosStatTile
-              icon="🧺" valueColor="#16a34a"
-              value={fmtRWFExact(snapshot.avgBasketValue)}
-              label={t("salesPage.dashBasketLabel")}
-              sub={snapshot.avgBasketChangePct == null
-                ? t("salesPage.dashBasketNoBaseline")
-                : t("salesPage.dashBasketChange", { pct: `${snapshot.avgBasketChangePct > 0 ? "+" : ""}${snapshot.avgBasketChangePct.toFixed(1)}` })}
-            />
-            <PosStatTile
-              icon="🏥" valueColor="#7c3aed"
-              value={String(snapshot.pendingClaimsCount)}
-              label={t("salesPage.dashClaimsLabel")}
-              sub={t("salesPage.dashClaimsSub", { amount: fmtRWFExact(snapshot.pendingClaimsAmount) })}
-            />
-          </div>
-
-          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{t("salesPage.dashHourlyTitle")}</div>
-            <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 10 }}>
-              {t("salesPage.dashHourlySub", { date: new Date().toLocaleDateString() })}
-            </div>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={snapshot.hourly} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id="gPosHourly" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-                <XAxis dataKey="hour" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval={1} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="revenue" name={t("salesPage.dashHourlyRevenueLabel")} stroke="#16a34a" fill="url(#gPosHourly)" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </>
+        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
+          <PosStatTile
+            icon="💰" valueColor="#16a34a"
+            value={fmtRWFExact(snapshot.todayRevenue)}
+            label={t("salesPage.dashRevenueLabel")}
+            sub={t("salesPage.dashRevenueSub", { count: snapshot.todayTransactions })}
+          />
+          <PosStatTile
+            icon="🧺" valueColor="#16a34a"
+            value={fmtRWFExact(snapshot.avgBasketValue)}
+            label={t("salesPage.dashBasketLabel")}
+            sub={snapshot.avgBasketChangePct == null
+              ? t("salesPage.dashBasketNoBaseline")
+              : t("salesPage.dashBasketChange", { pct: `${snapshot.avgBasketChangePct > 0 ? "+" : ""}${snapshot.avgBasketChangePct.toFixed(1)}` })}
+          />
+          <PosStatTile
+            icon="🏥" valueColor="#7c3aed"
+            value={String(snapshot.pendingClaimsCount)}
+            label={t("salesPage.dashClaimsLabel")}
+            sub={t("salesPage.dashClaimsSub", { amount: fmtRWFExact(snapshot.pendingClaimsAmount) })}
+          />
+        </div>
       )}
 
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div ref={checkoutSectionRef} style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         {/* Left: patient + scan + cart */}
         <div style={{ flex: "2 1 460px", minWidth: 340 }}>
           <PatientStep draft={patientDraft} onChange={setPatientDraft} onClear={() => setPatientDraft(BLANK_PATIENT)} resolvedId={null} />
 
-          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 8 }}>
               <input
                 ref={scanRef}
@@ -690,7 +823,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
               : t("salesPage.pendingSummaryPack", { code: pending.item.code, pieces: maxPiecesPerPack, price: fmtRWFExact(pending.item.sellingPrice) })
 
             return (
-              <div style={{ background: "#fff", border: "1px solid var(--accent)", borderRadius: 12, padding: 16, marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
+              <div style={{ background: "var(--surface)", border: "1px solid var(--accent)", borderRadius: 12, padding: 16, marginBottom: 14, boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
                   {isCarton ? t("salesPage.pendingConfirmCartonTitle") : t("salesPage.pendingConfirmPackTitle")}
                 </div>
@@ -773,7 +906,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
             )
           })()}
 
-          <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" }}>
             {lines.length === 0 ? (
               <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{t("salesPage.cartEmpty")}</div>
             ) : (
@@ -801,12 +934,12 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
         </div>
 
         {/* Right: insurance + totals + complete */}
-        <div style={{ flex: "1 1 300px", minWidth: 280, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: 16, position: "sticky", top: 0 }}>
+        <div style={{ flex: "1 1 300px", minWidth: 280, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, position: "sticky", top: 0 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>{t("salesPage.paymentLabel")}</div>
           <select
             value={providerId}
             onChange={e => setProviderId(e.target.value)}
-            style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit", marginBottom: 16, background: "#fff" }}
+            style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit", marginBottom: 16, background: "var(--surface)" }}
           >
             <option value="">{t("salesPage.selfPayOption")}</option>
             {providers.map(p => <option key={p.id} value={p.id}>{t("salesPage.providerOption", { name: p.name, pct: p.defaultCoveragePercentage })}</option>)}
@@ -833,7 +966,31 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
         </div>
       </div>
 
-      <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
+      {snapshot && (
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)" }}>{t("salesPage.dashHourlyTitle")}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-muted)", marginBottom: 10 }}>
+            {t("salesPage.dashHourlySub", { date: new Date().toLocaleDateString() })}
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={snapshot.hourly} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="gPosHourly" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#16a34a" stopOpacity={0.18} />
+                  <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+              <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} interval={1} />
+              <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
+              <Tooltip content={<ChartTooltip />} />
+              <Area type="monotone" dataKey="revenue" name={t("salesPage.dashHourlyRevenueLabel")} stroke="#16a34a" fill="url(#gPosHourly)" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
         <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{t("salesPage.dashRecentTitle")}</div>

@@ -119,7 +119,7 @@ export function AdjustModal({ batch, onClose, onSaved }: { batch: InventoryRow; 
       <div>
         <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("stockAdjustment.typeLabel")}</label>
         <select value={type} onChange={e => selectType(e.target.value as StockAdjustmentType)}
-          style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box", background: "#fff" }}>
+          style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box", background: "var(--surface)" }}>
           {([...REMOVE_TYPES, "correction"] as StockAdjustmentType[]).map(opt => <option key={opt} value={opt}>{TYPE_LABELS[opt]}</option>)}
         </select>
       </div>
@@ -127,8 +127,8 @@ export function AdjustModal({ batch, onClose, onSaved }: { batch: InventoryRow; 
         <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("stockAdjustment.directionLabel")}</label>
           <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => setDirection("remove")} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: `1.5px solid ${direction === "remove" ? "var(--primary)" : "var(--border)"}`, background: direction === "remove" ? "var(--primary-light)" : "#fff", color: direction === "remove" ? "var(--primary)" : "var(--ink-mid)" }}>{t("stockAdjustment.directionRemove")}</button>
-            <button onClick={() => setDirection("add")} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: `1.5px solid ${direction === "add" ? "var(--primary)" : "var(--border)"}`, background: direction === "add" ? "var(--primary-light)" : "#fff", color: direction === "add" ? "var(--primary)" : "var(--ink-mid)" }}>{t("stockAdjustment.directionAdd")}</button>
+            <button onClick={() => setDirection("remove")} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: `1.5px solid ${direction === "remove" ? "var(--primary)" : "var(--border)"}`, background: direction === "remove" ? "var(--primary-light)" : "var(--surface)", color: direction === "remove" ? "var(--primary)" : "var(--ink-mid)" }}>{t("stockAdjustment.directionRemove")}</button>
+            <button onClick={() => setDirection("add")} style={{ flex: 1, padding: "8px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: `1.5px solid ${direction === "add" ? "var(--primary)" : "var(--border)"}`, background: direction === "add" ? "var(--primary-light)" : "var(--surface)", color: direction === "add" ? "var(--primary)" : "var(--ink-mid)" }}>{t("stockAdjustment.directionAdd")}</button>
           </div>
         </div>
       )}
@@ -208,7 +208,7 @@ function ProductCard({ group, barcodes, onAdjustBatch, onSetReorder }: {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const below = group.minQuantity > 0 && group.totalAvailable < group.minQuantity
-  return <div className="animate-fade-in" style={{ background: "#fff", border: `1px solid ${below ? "#fca5a5" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px" }}>
+  return <div className="animate-fade-in" style={{ background: "var(--surface)", border: `1px solid ${below ? "#fca5a5" : "var(--border)"}`, borderRadius: 10, padding: "12px 16px" }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
       <button onClick={() => setOpen(v => !v)} style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0, textAlign: "left" }}>
         <div>
@@ -353,11 +353,11 @@ export default function ReportsPage() {
     <PackagingExplainer />
 
     <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10 }}>
-      <div className="animate-fade-up" style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
+      <div className="animate-fade-up" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 10, padding: "14px 16px" }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: "var(--primary)" }}>{loading ? "—" : totalProducts}</div>
         <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{t("reports.tileTotalProducts")}</div>
       </div>
-      <div className="animate-fade-up" style={{ animationDelay: "60ms", background: belowCount > 0 ? "#fef2f2" : "#fff", border: `1px solid ${belowCount > 0 ? "#fca5a5" : "var(--border)"}`, borderRadius: 10, padding: "14px 16px" }}>
+      <div className="animate-fade-up" style={{ animationDelay: "60ms", background: belowCount > 0 ? "#fef2f2" : "var(--surface)", border: `1px solid ${belowCount > 0 ? "#fca5a5" : "var(--border)"}`, borderRadius: 10, padding: "14px 16px" }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: belowCount > 0 ? "#dc2626" : "var(--ink)" }}>{loading ? "—" : belowCount}</div>
         <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{t("reports.tileBelowMinimum")}</div>
       </div>
@@ -386,7 +386,7 @@ export default function ReportsPage() {
       ))}
     </div>
 
-    <div style={{ background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "16px 18px" }}>
       <SectionHeader title={t("stockAdjustment.recentTitle")} subtitle={t("stockAdjustment.recentSubtitle")} />
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>

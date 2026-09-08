@@ -1,3 +1,4 @@
+import { getMyBranchDetails } from "./branch"
 import { supabase } from "./supabase"
 
 export interface InventoryRow {
@@ -38,7 +39,8 @@ export interface InventoryDataset {
 const asNumber = (value: string | number | null | undefined) => Number(value ?? 0)
 
 export async function loadInventoryDataset(): Promise<InventoryDataset> {
-  const results = await Promise.all([
+  const [branch, ...results] = await Promise.all([
+    getMyBranchDetails(),
     supabase.from("stock_batches").select("*").order("received_at", { ascending: false }),
     supabase.from("product_variants").select("*"), supabase.from("products").select("*"),
     supabase.from("barcodes").select("*"), supabase.from("suppliers").select("*"),
@@ -48,6 +50,8 @@ export async function loadInventoryDataset(): Promise<InventoryDataset> {
   const failed = results.find(result => result.error)
   if (failed?.error) throw failed.error
   const [batches, variants, products, barcodes, suppliers, reorderPoints, categories, categorizations, taxRates] = results.map(result => result.data ?? []) as any[][]
+  const expiryThresholdDays = branch.expiryAlertThresholdDays
+  const defaultReorderMin = branch.defaultReorderMin
   const today = new Date()
   const rows = batches.map(batch => {
     const variant = variants.find(item => item.id === batch.product_variant_id)
@@ -66,14 +70,14 @@ export async function loadInventoryDataset(): Promise<InventoryDataset> {
       .reduce((total, item) => total + asNumber(item.quantity_available) * asNumber(item.pieces_per_pack), 0)
     const barcodeStatus = batchBarcodes.find(item => item.barcode_type === "box")?.status ?? batchBarcodes[0]?.status ?? "active"
     const daysToExpiry = Math.ceil((new Date(batch.expiry_date).getTime() - today.getTime()) / 86_400_000)
-    const minQuantity = asNumber(reorder?.min_quantity)
+    const minQuantity = reorder ? asNumber(reorder.min_quantity) : defaultReorderMin
     const maxQuantity = reorder?.max_quantity == null ? undefined : asNumber(reorder.max_quantity)
     // Precedence matters: a batch that is both expiring and overstocked is an
     // expiry problem first. "over" only applies when a maximum has actually
     // been set for the product -- an unset maximum means "no ceiling", not 0.
     const stockStatus: InventoryRow["stock_status"] =
       quantityAvailable === 0 || barcodeStatus === "sold_out" ? "zero"
-      : daysToExpiry < 60 || barcodeStatus === "expired" ? "expiry"
+      : daysToExpiry < expiryThresholdDays || barcodeStatus === "expired" ? "expiry"
       : quantityAvailable < minQuantity || barcodeStatus === "recalled" || barcodeStatus === "damaged" ? "low"
       : maxQuantity != null && maxQuantity > 0 && quantityAvailable > maxQuantity ? "over"
       : "ok"

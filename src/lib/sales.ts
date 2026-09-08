@@ -340,6 +340,14 @@ export interface ReceiptData {
   insuranceCoveredTotal: number
   patientOwedTotal: number
   grandTotal: number
+  // RRA EBM/VSDC compliance data (see src/lib/vsdc.ts). Null until this
+  // branch is registered with RRA and complete_sale() actually submits the
+  // sale to VSDC -- the receipt UI shows a "pending" notice in that case
+  // instead of printing fabricated compliance details.
+  ebmSdcId: string | null
+  ebmMrcNo: string | null
+  ebmReceiptSignature: string | null
+  ebmInvoiceNumber: number | null
 }
 
 export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
@@ -434,6 +442,45 @@ export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
     insuranceProviderName: (providerRes.data as any)?.name ?? null,
     items: receiptItems, subtotal, taxTotal, insuranceCoveredTotal,
     patientOwedTotal: subtotal + taxTotal - insuranceCoveredTotal, grandTotal: subtotal + taxTotal,
+    // TODO: once complete_sale() submits to VSDC and stores the result on
+    // public.receipts, select and map those columns here instead of nulls.
+    ebmSdcId: null, ebmMrcNo: null, ebmReceiptSignature: null, ebmInvoiceNumber: null,
+  }
+}
+
+// ── Public receipt lookup — powers the "scan to view online" QR printed on
+// every receipt (see ReceiptView in src/pages/SalesPage.tsx). Backed by the
+// narrow security-definer RPC get_public_receipt() (see
+// src/datatabase/2026-09-07_public_receipt_lookup.sql) rather than direct
+// table reads under RLS -- the sale id itself is the only access control,
+// same trust model as handing someone the paper receipt. This must never
+// grow a second parameter that could turn into a filter/enumeration
+// surface; it only ever fetches the one sale id it's given.
+export async function getPublicSaleReceipt(saleId: string): Promise<ReceiptData> {
+  const { data, error } = await supabase.rpc("get_public_receipt", { p_sale_id: saleId })
+  if (error) raise(error, "Could not load this receipt.")
+  if (!data) throw new Error("This receipt could not be found. The link may be incorrect.")
+  const row = data as any
+  return {
+    saleId: row.saleId, receiptNumber: row.receiptNumber, issuedAt: row.issuedAt,
+    branchName: row.branchName ?? "—",
+    branchTin: row.branchTin ?? null, branchAddress: row.branchAddress ?? null, branchPhone: row.branchPhone ?? null,
+    branchLogoUrl: row.branchLogoPath ? supabase.storage.from("branch-logos").getPublicUrl(row.branchLogoPath).data.publicUrl : null,
+    branchBankAccountNumber: row.branchBankAccountNumber ?? null, branchBankAccountName: row.branchBankAccountName ?? null,
+    branchMomoPayNumber: row.branchMomoPayNumber ?? null,
+    cashierName: row.cashierName ?? "—",
+    patientName: row.patientName ?? null, patientGender: row.patientGender ?? null, patientAge: row.patientAge ?? null, patientContact: row.patientContact ?? null,
+    insuranceProviderName: row.insuranceProviderName ?? null,
+    items: (row.items ?? []).map((i: any) => ({
+      code: i.code, productName: i.productName, dosage: i.dosage ?? null, form: i.form ?? null,
+      quantity: i.quantity, unitPrice: Number(i.unitPrice), subtotal: Number(i.subtotal),
+      taxRatePercentage: Number(i.taxRatePercentage), taxAmount: Number(i.taxAmount),
+      insuranceCovered: Number(i.insuranceCovered), patientOwed: Number(i.patientOwed),
+    })),
+    subtotal: Number(row.subtotal), taxTotal: Number(row.taxTotal), insuranceCoveredTotal: Number(row.insuranceCoveredTotal),
+    patientOwedTotal: Number(row.patientOwedTotal), grandTotal: Number(row.grandTotal),
+    ebmSdcId: row.ebmSdcId ?? null, ebmMrcNo: row.ebmMrcNo ?? null, ebmReceiptSignature: row.ebmReceiptSignature ?? null,
+    ebmInvoiceNumber: row.ebmInvoiceNumber ?? null,
   }
 }
 

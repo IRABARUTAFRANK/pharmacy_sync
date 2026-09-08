@@ -46,6 +46,7 @@ const PAGE_LOADERS = {
   help: () => import('./pages/HelpPage'),
   analyst: () => import('./pages/AnalystPage'),
   analytics: () => import('./pages/AnalyticsPage'),
+  compliance: () => import('./pages/CompliancePage'),
   patients: () => import('./pages/PatientsPage'),
   reports: () => import('./pages/ReportsPage'),
   branch: () => import('./pages/BranchSettingsPage'),
@@ -62,12 +63,14 @@ const AlertsPage          = lazy(PAGE_LOADERS.alerts)
 const HelpPage            = lazy(PAGE_LOADERS.help)
 const AnalystPage           = lazy(PAGE_LOADERS.analyst)
 const AnalyticsPage         = lazy(PAGE_LOADERS.analytics)
+const CompliancePage        = lazy(PAGE_LOADERS.compliance)
 const PatientsPage         = lazy(PAGE_LOADERS.patients)
 const ReportsPage          = lazy(PAGE_LOADERS.reports)
 const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
 const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
 const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
+const PublicReceiptPage    = lazy(() => import('./pages/PublicReceiptPage'))
 
 // Fetches a page's chunk ahead of the click that needs it -- on nav-button
 // hover, and once more as a background warm-up shortly after sign-in (see
@@ -90,7 +93,7 @@ function prefetchPage(id: string) {
 // both used to live in a separately deployed app; they're now plain in-app
 // views reached by URL fragment, with no page reload and no second server.
 
-type HashRoute = 'home' | 'admin' | 'branch' | 'reset'
+type HashRoute = 'home' | 'admin' | 'branch' | 'reset' | 'receipt'
 
 function hashToRoute(hash: string): HashRoute {
   // A "forgot password" email link lands back here with Supabase's own
@@ -106,6 +109,9 @@ function hashToRoute(hash: string): HashRoute {
   // still routes to the branch portal instead of falling through to home.
   if (hash === '#admin' || hash.startsWith('#admin?')) return 'admin'
   if (hash === '#branch' || hash.startsWith('#branch?')) return 'branch'
+  // Scanned from the "share this receipt" QR printed on a receipt --
+  // #receipt?id=<sale uuid> -- see PublicReceiptPage.tsx for the parser.
+  if (hash === '#receipt' || hash.startsWith('#receipt?')) return 'receipt'
   return 'home'
 }
 
@@ -147,7 +153,7 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
   return (
     <div style={{
       position: 'absolute', right: 0, top: '110%', width: 340, zIndex: 100,
-      background: '#fff', border: '1px solid var(--border)', borderRadius: 12,
+      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
       boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
     }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -206,7 +212,7 @@ function SearchNavDropdown({ matches, needle, highlight, onSelect }: {
   return (
     <div style={{
       position: 'absolute', left: 0, right: 0, top: '110%', zIndex: 100,
-      background: '#fff', border: '1px solid var(--border)', borderRadius: 12,
+      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
       boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
     }}>
       <div style={{ maxHeight: 280, overflowY: 'auto' }}>
@@ -238,7 +244,7 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose, onReplayTour
   return (
     <div style={{
       position: 'absolute', right: 0, top: '110%', width: 220, zIndex: 100,
-      background: '#fff', border: '1px solid var(--border)', borderRadius: 12,
+      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
       boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
     }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
@@ -256,7 +262,7 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose, onReplayTour
               onClick={() => { setTheme(preset.id); setActiveTheme(preset.id) }}
               style={{
                 width: 22, height: 22, borderRadius: '50%', background: preset.swatch, cursor: 'pointer', padding: 0, flexShrink: 0,
-                border: '2px solid #fff',
+                border: '2px solid var(--surface)',
                 boxShadow: activeTheme === preset.id ? '0 0 0 2px var(--ink)' : '0 0 0 1px var(--border)',
               }}
             />
@@ -539,6 +545,7 @@ export default function App() {
   if (hashRoute === 'admin') return <Suspense fallback={loadingFallback}><AdminPortal /></Suspense>
   if (hashRoute === 'branch') return <Suspense fallback={loadingFallback}><BranchPortal /></Suspense>
   if (hashRoute === 'reset') return <Suspense fallback={loadingFallback}><ResetPassword /></Suspense>
+  if (hashRoute === 'receipt') return <Suspense fallback={loadingFallback}><PublicReceiptPage /></Suspense>
 
   if (introPhase !== 'done') return <IntroSplash exiting={introPhase === 'exiting'} />
 
@@ -619,6 +626,7 @@ export default function App() {
       case 'insurance':     return <InsurancePage />
       case 'analyst':       return <AnalystPage />
       case 'analytics':     return <AnalyticsPage period={dateRange} />
+      case 'compliance':    return <CompliancePage />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} />
       case 'history':       return <HistoryPage period={dateRange} />
@@ -769,7 +777,7 @@ export default function App() {
 
         {/* Top Bar */}
         <header className="app-chrome app-topbar" style={{
-          height: 60, background: '#fff', borderBottom: '1px solid var(--border)',
+          height: 60, background: 'var(--surface)', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0,
         }}>
           {/* Pins the sidebar expanded, overriding hover-to-collapse (Sidebar.tsx's `pinned` prop) --
@@ -882,7 +890,7 @@ export default function App() {
               {alertCount > 0 && (
                 <span style={{
                   position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, padding: '0 3px',
-                  background: '#dc2626', color: '#fff', borderRadius: 999, border: '2px solid #fff',
+                  background: '#dc2626', color: '#fff', borderRadius: 999, border: '2px solid var(--surface)',
                   fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
                 }}>
                   {alertCount > 99 ? '99+' : alertCount}

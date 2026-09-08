@@ -126,6 +126,91 @@ export async function loadSalesForecast(opts: { productId?: string | null; categ
   }
 }
 
+// One point per bucketed period (day/week/month, auto-picked server-side
+// from the requested span unless overridden) for the Analytics page's
+// forecast chart -- see ai_sales_forecast_series() in
+// src/datatabase/2026-09-07_sales_forecast_series.sql. Complements
+// loadSalesForecast() above (same regression, same inputs) rather than
+// replacing it: that one stays the lump-sum summary the AI analyst also
+// reads as a tool; this one is what gets plotted. A period has EITHER
+// actual* populated (history) OR forecast*/bounds populated (future),
+// except the single bridge period where both are set so the two lines
+// connect with no visual gap.
+export interface SalesForecastPoint {
+  periodStart: string
+  isForecast: boolean
+  actualRevenue: number | null
+  actualQuantity: number | null
+  forecastRevenue: number | null
+  forecastQuantity: number | null
+  lowerBound: number | null
+  upperBound: number | null
+}
+
+export async function loadSalesForecastSeries(opts: {
+  productId?: string | null; categoryId?: string | null; daysHistory?: number; horizonDays?: number; bucket?: "day" | "week" | "month"
+}): Promise<SalesForecastPoint[]> {
+  const { data, error } = await supabase.rpc("ai_sales_forecast_series", {
+    p_product_id: opts.productId ?? null, p_category_id: opts.categoryId ?? null,
+    p_days_history: opts.daysHistory ?? 90, p_horizon_days: opts.horizonDays ?? 30, p_bucket: opts.bucket ?? null,
+  })
+  if (error) raise(error, "Could not compute a forecast series.")
+  return (data ?? []).map((row: any) => ({
+    periodStart: row.period_start, isForecast: row.is_forecast,
+    actualRevenue: row.actual_revenue == null ? null : Number(row.actual_revenue),
+    actualQuantity: row.actual_quantity == null ? null : Number(row.actual_quantity),
+    forecastRevenue: row.forecast_revenue == null ? null : Number(row.forecast_revenue),
+    forecastQuantity: row.forecast_quantity == null ? null : Number(row.forecast_quantity),
+    lowerBound: row.lower_bound == null ? null : Number(row.lower_bound),
+    upperBound: row.upper_bound == null ? null : Number(row.upper_bound),
+  }))
+}
+
+// Remembers this run's future points (see ai_sales_forecast_series above)
+// so a later run can show what was predicted next to what actually
+// happened -- see loadSalesForecastAccuracy() below. Save-side dedup (one
+// snapshot per scope per day) happens in the RPC itself, so calling this on
+// every auto-run is fine -- it won't flood the table.
+export async function saveSalesForecastSnapshot(opts: {
+  productId?: string | null; categoryId?: string | null; bucket: "day" | "week" | "month"
+  points: Array<{ periodStart: string; predictedRevenue: number | null; predictedQuantity: number | null; lowerBound: number | null; upperBound: number | null }>
+}): Promise<void> {
+  const { error } = await supabase.rpc("save_sales_forecast_snapshot", {
+    p_product_id: opts.productId ?? null, p_category_id: opts.categoryId ?? null, p_bucket: opts.bucket,
+    p_points: opts.points.map(p => ({
+      period_start: p.periodStart, predicted_revenue: p.predictedRevenue, predicted_quantity: p.predictedQuantity,
+      lower_bound: p.lowerBound, upper_bound: p.upperBound,
+    })),
+  })
+  if (error) raise(error, "Could not save this forecast for later comparison.")
+}
+
+// For each historical period in [from, to], the most recent prediction that
+// was actually made before that period started -- i.e. "what did we guess,
+// in advance, for this since-elapsed period" -- so it can be plotted next
+// to the real actual figure for the same period.
+export interface SalesForecastAccuracyPoint {
+  periodStart: string
+  predictedRevenue: number | null
+  predictedQuantity: number | null
+  predictedAt: string
+}
+
+export async function loadSalesForecastAccuracy(opts: {
+  productId?: string | null; categoryId?: string | null; from: string; to: string
+}): Promise<SalesForecastAccuracyPoint[]> {
+  const { data, error } = await supabase.rpc("ai_sales_forecast_accuracy", {
+    p_product_id: opts.productId ?? null, p_category_id: opts.categoryId ?? null, p_from: opts.from, p_to: opts.to,
+  })
+  if (error) raise(error, "Could not load past forecast accuracy.")
+  return (data ?? []).map((row: any) => ({
+    periodStart: row.period_start,
+    predictedRevenue: row.predicted_revenue == null ? null : Number(row.predicted_revenue),
+    predictedQuantity: row.predicted_quantity == null ? null : Number(row.predicted_quantity),
+    predictedAt: row.predicted_at,
+  }))
+}
+
 export interface InsuranceSummaryRow {
   providerName: string
   claimCount: number

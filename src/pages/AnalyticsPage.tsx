@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Btn, Card, CenterAlert, ChartTooltip, ExportModal, Modal, SectionHeader, StatusBadge, Table } from "../components"
 import { fmtRWFExact } from "../data"
 import type { ReportSection } from "../lib/export"
@@ -11,11 +11,11 @@ import { loadReceivingReference, type ReceivingCategory, type ReceivingProduct }
 import {
   loadBasketSize, loadBranchSnapshot, loadCategoryBreakdown, loadDeadStock, loadDiscountUsage, loadInsuranceClaimAging,
   loadInsuranceProviderComparison, loadInsuranceSummary, loadInventoryTurnover, loadPatientRetention, loadPatientSummary,
-  loadRecallLog, loadSalesForecast, loadSalesHeatmap, loadSalesTrend, loadSellerPerformance, loadSellerProductivity,
-  loadStockAdjustments, loadStockStatus, loadSupplierPerformance, loadTopProducts,
+  loadRecallLog, loadSalesForecast, loadSalesForecastAccuracy, loadSalesForecastSeries, loadSalesHeatmap, loadSalesTrend, loadSellerPerformance, loadSellerProductivity,
+  loadStockAdjustments, loadStockStatus, loadSupplierPerformance, loadTopProducts, saveSalesForecastSnapshot,
   type BasketSizePoint, type BranchSnapshot, type CategoryBreakdownRow, type ClaimAgingBucket, type DeadStockRow,
   type DiscountUsageRow, type InsuranceSummaryRow, type InventoryTurnoverRow, type PatientRetentionRow, type PatientSummary,
-  type ProviderComparisonRow, type RecallLogRow, type SalesForecast, type SalesHeatmapCell, type SalesTrendPoint,
+  type ProviderComparisonRow, type RecallLogRow, type SalesForecast, type SalesForecastAccuracyPoint, type SalesForecastPoint, type SalesHeatmapCell, type SalesTrendPoint,
   type SellerPerformanceRow, type SellerProductivityRow, type StockAdjustmentRow, type StockFilter, type StockStatusRow,
   type SupplierPerformanceRow, type TopProductRow, type TrendBucket,
 } from "../lib/analytics"
@@ -156,7 +156,7 @@ function PeriodPickerModal({ def, onClose, onConfirm }: { def: ReportDef; onClos
               style={{
                 padding: "9px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                 border: `1.5px solid ${presetId === p.id ? "var(--primary)" : "var(--border)"}`,
-                background: presetId === p.id ? "var(--primary-light)" : "#fff",
+                background: presetId === p.id ? "var(--primary-light)" : "var(--surface)",
                 color: presetId === p.id ? "var(--primary)" : "var(--ink-mid)",
               }}
             >
@@ -189,7 +189,7 @@ function PeriodPickerModal({ def, onClose, onConfirm }: { def: ReportDef; onClos
 
 function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div style={{ flex: "1 1 150px", minWidth: 140, background: "#fff", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
+    <div style={{ flex: "1 1 150px", minWidth: 140, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
       <div style={{ fontSize: 19, fontWeight: 700, color: accent ?? "var(--ink)", letterSpacing: "-0.01em" }}>{value}</div>
       <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 2 }}>{label}</div>
     </div>
@@ -197,9 +197,28 @@ function StatTile({ label, value, accent }: { label: string; value: string; acce
 }
 
 const DATE_INPUT_STYLE = { padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12 }
-const SELECT_STYLE = { padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12, background: "#fff" }
+const SELECT_STYLE = { padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12, background: "var(--surface)" }
 const FIELD_LABEL_STYLE = { display: "block", fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase" as const, letterSpacing: "0.05em", marginBottom: 4 }
 const EMPTY_STATE_STYLE = { padding: 20, textAlign: "center" as const, color: "var(--ink-muted)", fontSize: 12 }
+
+// ai_sales_forecast_series() auto-picks day/week/month bucketing server-side
+// from the requested span rather than returning which one it chose -- this
+// infers it from the actual gap between the first two points so the x-axis
+// label style matches what was returned, without adding a second RPC field.
+function inferForecastGranularity(periods: string[]): "day" | "week" | "month" {
+  if (periods.length < 2) return "month"
+  const gapDays = (new Date(periods[1]).getTime() - new Date(periods[0]).getTime()) / 86400000
+  if (gapDays <= 2) return "day"
+  if (gapDays <= 10) return "week"
+  return "month"
+}
+
+function formatForecastPeriodLabel(iso: string, granularity: "day" | "week" | "month", lang: string): string {
+  const d = new Date(iso)
+  return granularity === "month"
+    ? d.toLocaleDateString(lang, { month: "short", year: "2-digit" })
+    : d.toLocaleDateString(lang, { month: "short", day: "numeric" })
+}
 
 // Everything on this page calls the same read-only, branch-scoped SQL
 // functions the AI analyst uses as tools -- directly, no LLM involved. Real
@@ -260,6 +279,8 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
   const [forecastHorizon, setForecastHorizon] = useState(30)
   const [forecastHistory, setForecastHistory] = useState(90)
   const [forecast, setForecast] = useState<SalesForecast | null>(null)
+  const [forecastSeries, setForecastSeries] = useState<SalesForecastPoint[]>([])
+  const [forecastAccuracy, setForecastAccuracy] = useState<SalesForecastAccuracyPoint[]>([])
   const [forecastLoading, setForecastLoading] = useState(false)
 
   const [insurance, setInsurance] = useState<InsuranceSummaryRow[]>([])
@@ -353,16 +374,66 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
     setForecastLoading(true)
     setError("")
     try {
-      setForecast(await loadSalesForecast({
-        productId: forecastProductId || null, categoryId: forecastCategoryId || null,
-        daysHistory: forecastHistory, horizonDays: forecastHorizon,
-      }))
+      const scope = { productId: forecastProductId || null, categoryId: forecastCategoryId || null, daysHistory: forecastHistory, horizonDays: forecastHorizon }
+      const [summary, series] = await Promise.all([loadSalesForecast(scope), loadSalesForecastSeries(scope)])
+      setForecast(summary)
+      setForecastSeries(series)
+
+      // Remember this run's future points (deduped to one per day server-
+      // side) so a later run can show what was predicted next to what
+      // actually happened -- see the forecastAccuracy line on the chart.
+      // Best-effort: a failure here shouldn't block showing the forecast
+      // itself, just means today's snapshot didn't get saved.
+      const actualPeriods = series.filter(p => !p.isForecast).map(p => p.periodStart)
+      const futurePoints = series.filter(p => p.isForecast)
+      if (futurePoints.length > 0) {
+        const bucket = inferForecastGranularity(series.map(p => p.periodStart))
+        void saveSalesForecastSnapshot({
+          productId: scope.productId, categoryId: scope.categoryId, bucket,
+          points: futurePoints.map(p => ({
+            periodStart: p.periodStart, predictedRevenue: p.forecastRevenue, predictedQuantity: p.forecastQuantity,
+            lowerBound: p.lowerBound, upperBound: p.upperBound,
+          })),
+        }).catch(reason => console.error("Could not save forecast snapshot:", reason))
+      }
+      if (actualPeriods.length > 0) {
+        loadSalesForecastAccuracy({
+          productId: scope.productId, categoryId: scope.categoryId,
+          from: actualPeriods[0], to: actualPeriods[actualPeriods.length - 1],
+        }).then(setForecastAccuracy).catch(reason => console.error("Could not load forecast accuracy:", reason))
+      } else {
+        setForecastAccuracy([])
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("analyticsPage.errorForecast"))
     } finally {
       setForecastLoading(false)
     }
   }
+
+  // Runs on its own -- on first load, and again whenever the picked medicine/
+  // category or the history/horizon window changes -- so the chart is always
+  // showing the current selection without waiting on a button click. The
+  // 400ms debounce is only to stop every keystroke in the history/horizon
+  // number inputs from firing its own request; picking a product still feels
+  // instant since a select's onChange only fires once per pick anyway.
+  useEffect(() => {
+    const handle = setTimeout(() => { void runForecast() }, 400)
+    return () => clearTimeout(handle)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forecastProductId, forecastCategoryId, forecastHistory, forecastHorizon])
+
+  const forecastGranularity = useMemo(() => inferForecastGranularity(forecastSeries.map(p => p.periodStart)), [forecastSeries])
+  const forecastChartData = useMemo(() => {
+    const accuracyByPeriod = new Map(forecastAccuracy.map(a => [a.periodStart, a.predictedRevenue]))
+    return forecastSeries.map(p => ({
+      label: formatForecastPeriodLabel(p.periodStart, forecastGranularity, lang),
+      actualRevenue: p.actualRevenue,
+      forecastRevenue: p.forecastRevenue,
+      previouslyPredictedRevenue: accuracyByPeriod.get(p.periodStart) ?? undefined,
+      range: p.lowerBound != null && p.upperBound != null ? [p.lowerBound, p.upperBound] : undefined,
+    }))
+  }, [forecastSeries, forecastAccuracy, forecastGranularity, lang])
 
   const [pickerDef, setPickerDef] = useState<ReportDef | null>(null)
   const [reportLoadingId, setReportLoadingId] = useState<string | null>(null)
@@ -647,7 +718,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
               disabled={reportLoadingId === def.id}
               style={{
                 textAlign: "left", display: "flex", flexDirection: "column", gap: 8, padding: "16px 18px",
-                borderRadius: 12, border: "1px solid var(--border)", background: "#fff",
+                borderRadius: 12, border: "1px solid var(--border)", background: "var(--surface)",
                 cursor: reportLoadingId === def.id ? "wait" : "pointer", fontFamily: "inherit", transition: "box-shadow 0.15s, border-color 0.15s",
               }}
               onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.borderColor = def.color; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 4px 16px ${def.color}1A` }}
@@ -697,9 +768,9 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={trendChartData} margin={{ bottom: 8 }}>
-              <CartesianGrid strokeDasharray="4 4" />
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
+              <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+              <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="revenue" name={t("analyticsPage.colRevenue")} fill="#2a78d6" radius={[5, 5, 0, 0]} />
             </BarChart>
@@ -740,10 +811,15 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
-                <Pie data={categoryChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="#fff" strokeWidth={2}>
+                <Pie data={categoryChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="var(--surface)" strokeWidth={2}>
                   {categoryChartData.map((d, i) => <Cell key={i} fill={d.color} />)}
                 </Pie>
-                <Tooltip formatter={(v: any) => fmtRWFExact(Number(v))} />
+                <Tooltip
+                  formatter={(v: any) => fmtRWFExact(Number(v))}
+                  contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}
+                  itemStyle={{ color: "var(--ink)" }}
+                  labelStyle={{ color: "var(--ink-muted)" }}
+                />
                 <Legend formatter={(value: string) => <span style={{ fontSize: 11, color: "var(--ink-mid)" }}>{value}</span>} />
               </PieChart>
             </ResponsiveContainer>
@@ -788,6 +864,33 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
 
         {forecast && (
           <div>
+            {forecastChartData.length > 1 && (
+              <div style={{ marginBottom: 16 }}>
+                <ResponsiveContainer width="100%" height={280}>
+                  <ComposedChart data={forecastChartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="gForecastBand" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#16a34a" stopOpacity={0.18} />
+                        <stop offset="100%" stopColor="#16a34a" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={70} tickFormatter={v => fmtRWFExact(v)} />
+                    <Tooltip content={(props: any) => <ChartTooltip {...props} payload={props.payload?.filter((p: any) => p.value != null && p.dataKey !== "range")} />} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Area type="monotone" dataKey="range" name={t("analyticsPage.forecastBandLabel")} stroke="none" fill="url(#gForecastBand)" connectNulls legendType="none" />
+                    <Line type="monotone" dataKey="actualRevenue" name={t("analyticsPage.forecastActualLabel")} stroke="#16a34a" strokeWidth={2.5} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="forecastRevenue" name={t("analyticsPage.forecastDashedLabel")} stroke="#16a34a" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="previouslyPredictedRevenue" name={t("analyticsPage.forecastPredictedLabel")} stroke="#eb6834" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 3 }} connectNulls={false} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+                <div style={{ fontSize: 11, color: "var(--ink-faint)", textAlign: "center", marginTop: 4 }}>{t("analyticsPage.forecastBandCaption")}</div>
+                {forecastAccuracy.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--ink-faint)", textAlign: "center", marginTop: 2 }}>{t("analyticsPage.forecastAccuracyCaption")}</div>
+                )}
+              </div>
+            )}
             <div style={{ fontSize: 12, color: "var(--ink-muted)", marginBottom: 10 }}>
               <strong style={{ color: "var(--ink)" }}>{forecast.scope}</strong> · {t("analyticsPage.forecastBasedOn", { days: forecast.daysOfHistory })} ·{" "}
               {t("analyticsPage.forecastTrendIs")}{" "}
@@ -817,7 +920,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
                 style={{
                   padding: "5px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                   border: `1px solid ${stockFilter === f ? "var(--primary)" : "var(--border)"}`,
-                  background: stockFilter === f ? "var(--primary-light)" : "#fff",
+                  background: stockFilter === f ? "var(--primary-light)" : "var(--surface)",
                   color: stockFilter === f ? "var(--primary)" : "var(--ink-mid)",
                 }}
               >
@@ -982,9 +1085,9 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
           ) : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={basketChartData} margin={{ bottom: 8 }}>
-                <CartesianGrid strokeDasharray="4 4" />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
+                <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="items" name={t("analyticsPage.colItemsPerSale")} fill="#1baf7a" radius={[5, 5, 0, 0]} />
               </BarChart>

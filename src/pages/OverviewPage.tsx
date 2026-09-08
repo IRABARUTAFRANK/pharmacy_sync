@@ -63,7 +63,7 @@ function WidgetSwitch({ checked, onChange }: { checked: boolean; onChange: () =>
     >
       <span style={{
         position: 'absolute', top: 2, left: checked ? 19 : 2, width: 17, height: 17, borderRadius: '50%',
-        background: '#fff', transition: 'left 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+        background: 'var(--surface)', transition: 'left 0.15s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
       }} />
     </button>
   )
@@ -214,9 +214,9 @@ function TrendDrillDownModal({ metric, data, onClose, onViewFullReport }: { metr
                   <stop offset="95%" stopColor={color} stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={16} />
-              <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
+              <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} minTickGap={16} />
+              <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
               <Tooltip content={<ChartTooltip />} />
               <Area type="monotone" dataKey={metric} name={valueLabel} stroke={color} fill={`url(#${gradientId})`} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
             </AreaChart>
@@ -300,7 +300,12 @@ function InventoryDrillDownModal({ data, onClose, onViewFullReport }: { data: Ov
                     <Pie data={breakdown} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={3} dataKey="value">
                       {breakdown.map((slice, i) => <Cell key={i} fill={slice.color} />)}
                     </Pie>
-                    <Tooltip formatter={(v: any) => fmtRWFExact(Number(v))} />
+                    <Tooltip
+                      formatter={(v: any) => fmtRWFExact(Number(v))}
+                      contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+                      itemStyle={{ color: 'var(--ink)' }}
+                      labelStyle={{ color: 'var(--ink-muted)' }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -384,10 +389,10 @@ function ExpiringDrillDownModal({ data, onClose, onViewFullReport }: { data: Ove
           {hasRisk ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={data.expiringBreakdown} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-                <XAxis dataKey="bucketKey" tick={{ fontSize: 10 }} axisLine={false} tickLine={false}
+                <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+                <XAxis dataKey="bucketKey" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false}
                   tickFormatter={(key: TranslationKey) => t(key)} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
+                <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(v).toLocaleString()} />
                 <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="value" name={t('overviewPage.drillDownValueAtRiskLabel')} radius={[5, 5, 0, 0]} barSize={36}>
                   {data.expiringBreakdown.map((b, i) => <Cell key={i} fill={EXPIRY_BUCKET_COLOR[b.bucketKey] ?? '#dc2626'} />)}
@@ -450,7 +455,7 @@ function KPICard({ tile, active, onClick }: { tile: Tile; active: boolean; onCli
     <div
       onClick={onClick}
       style={{
-        background: active ? tile.color + '08' : '#fff',
+        background: active ? tile.color + '08' : 'var(--surface)',
         borderRadius: 12, padding: '18px 20px',
         border: `1.5px solid ${active ? tile.color + '60' : 'var(--border)'}`,
         display: 'flex', flexDirection: 'column', gap: 10,
@@ -499,7 +504,7 @@ function KPICard({ tile, active, onClick }: { tile: Tile; active: boolean; onCli
 
 function Panel({ icon, title, msg }: { icon: string; title: string; msg: string }) {
   return (
-    <div style={{ maxWidth: 620, margin: '56px auto', background: '#fff', border: '1px solid var(--border)', borderRadius: 14, padding: 32, textAlign: 'center' }}>
+    <div style={{ maxWidth: 620, margin: '56px auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 32, textAlign: 'center' }}>
       <div style={{ fontSize: 30, marginBottom: 12 }}>{icon}</div>
       <h1 style={{ margin: 0, fontSize: 18, color: 'var(--ink)' }}>{title}</h1>
       <p style={{ color: 'var(--ink-muted)', lineHeight: 1.6, margin: '10px auto 0', maxWidth: 460, fontSize: 13 }}>{msg}</p>
@@ -710,12 +715,12 @@ export default function OverviewPage({
                         <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={16} />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} minTickGap={16} />
+                    <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false}
                       tickFormatter={v => Math.round(v).toLocaleString()} />
                     <Tooltip content={<ChartTooltip />} />
-                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
                     <Area type="monotone" dataKey="revenue" name={t('overviewPage.seriesRevenue')} stroke="#1e5fa8" fill="url(#gRev)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
                     <Area type="monotone" dataKey="vat" name={t('overviewPage.seriesVatCollected')} stroke="#60a5fa" fill="url(#gVat)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                   </AreaChart>
@@ -734,10 +739,10 @@ export default function OverviewPage({
               {visibleCategories.length > 0 ? (
                 <ResponsiveContainer width="100%" height={230}>
                   <BarChart data={visibleCategories} layout="vertical" margin={{ left: 0, right: 8 }}>
-                    <CartesianGrid strokeDasharray="4 4" stroke="#f0f0f0" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 10 }} axisLine={false} tickLine={false}
+                    <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false}
                       tickFormatter={v => Math.round(v).toLocaleString()} />
-                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={88}
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} width={88}
                       tickFormatter={(name: string) => dataLabel(name, t)} />
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="sales" name={t('overviewPage.seriesRevenue')} radius={[0, 5, 5, 0]} barSize={13} cursor="pointer"
@@ -762,12 +767,12 @@ export default function OverviewPage({
               <SectionHeader title={t('overviewPage.dailyTransactionsTitle')} subtitle={t('overviewPage.dailyTransactionsSubtitle')} />
               <ResponsiveContainer width="100%" height={185}>
                 <BarChart data={data.dailyTransactions} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-                  <CartesianGrid stroke="#f0f0f0" strokeDasharray="4 4" />
-                  <XAxis dataKey="dayKey" tick={{ fontSize: 11 }} axisLine={false} tickLine={false}
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+                  <XAxis dataKey="dayKey" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false}
                     tickFormatter={(key: TranslationKey) => t(key)} />
-                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
                   <Bar dataKey="txn" name={t('overviewPage.seriesTransactions')} fill="#1e5fa8" radius={[4, 4, 0, 0]} barSize={22} />
                 </BarChart>
               </ResponsiveContainer>
@@ -790,7 +795,14 @@ export default function OverviewPage({
                   >
                     {(hasSplit ? data.paymentSplit : [{ color: '#eaf5eb' }]).map((slice: any, i: number) => <Cell key={i} fill={slice.color} />)}
                   </Pie>
-                  {hasSplit && <Tooltip formatter={(v: any) => `${v}%`} />}
+                  {hasSplit && (
+                    <Tooltip
+                      formatter={(v: any) => `${v}%`}
+                      contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }}
+                      itemStyle={{ color: 'var(--ink)' }}
+                      labelStyle={{ color: 'var(--ink-muted)' }}
+                    />
+                  )}
                 </PieChart>
               </ResponsiveContainer>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
@@ -839,7 +851,7 @@ export default function OverviewPage({
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 8 }}>
           {data.insights.map((insight, i) => (
-            <div key={i} style={{ background: '#fff', borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border)' }}>
+            <div key={i} style={{ background: 'var(--surface)', borderRadius: 8, padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'flex-start', border: '1px solid var(--border)' }}>
               <span style={{ fontSize: 14, flexShrink: 0, marginTop: 1 }}>{INSIGHT_STYLE[insight.tone].icon}</span>
               <span style={{ fontSize: 12, color: 'var(--ink-mid)', lineHeight: 1.5 }}>{t(insight.textKey, insight.vars)}</span>
             </div>
