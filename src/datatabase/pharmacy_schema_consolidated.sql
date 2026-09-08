@@ -258,6 +258,15 @@
   create index if not exists idx_sale_items_sale on public.sale_items(sale_id);
   create index if not exists idx_notifications_branch_unread on public.notifications(branch_id, is_read);
 
+  -- sale_items.barcode_id and sales.patient_id are both FKs with no index.
+  -- Deleting a barcode or patient forces a sequential scan of sale_items or
+  -- sales (respectively) per deleted row to check the foreign key -- fine at
+  -- small scale, but it hits Postgres's statement_timeout once either table
+  -- has a few hundred thousand rows (found via a large-scale load test, but
+  -- the same slowdown applies to any real branch after enough normal use).
+  create index if not exists idx_sale_items_barcode on public.sale_items(barcode_id);
+  create index if not exists idx_sales_patient on public.sales(patient_id);
+
   -- ============================================================================
   -- RLS HELPER FUNCTIONS
   -- ============================================================================
