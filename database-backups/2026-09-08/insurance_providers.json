@@ -1,0 +1,16 @@
+[
+  {
+    "contact_info": "0789765328",
+    "default_coverage_percentage": 95,
+    "id": "1aa9d195-50be-44e8-b16e-8a43d8a1b6cc",
+    "name": "RSSB",
+    "tin": null
+  },
+  {
+    "contact_info": "0723567896",
+    "default_coverage_percentage": 85,
+    "id": "5f42d232-5078-46ed-83d4-a6b987f309f8",
+    "name": "MMI",
+    "tin": "1234567"
+  }
+]

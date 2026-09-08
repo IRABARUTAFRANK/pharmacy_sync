@@ -1,0 +1,17 @@
+[
+  {
+    "id": "a2000000-0000-0000-0000-000000000001",
+    "name": "Exempt",
+    "rate_percentage": 0
+  },
+  {
+    "id": "a2000000-0000-0000-0000-000000000002",
+    "name": "Standard VAT",
+    "rate_percentage": 18
+  },
+  {
+    "id": "9438095f-e179-4187-886d-7eb8d25d13ee",
+    "name": "Standard Rate",
+    "rate_percentage": 18
+  }
+]

@@ -1,0 +1,146 @@
+[
+  {
+    "description": "Broad-spectrum antibiotic",
+    "generic_name": "Amoxicillin Trihydrate",
+    "id": "a4000000-0000-0000-0000-000000000001",
+    "name": "Amoxicillin",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Pain and fever relief",
+    "generic_name": "Acetaminophen",
+    "id": "a4000000-0000-0000-0000-000000000002",
+    "name": "Paracetamol",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Disposable 3-ply mask",
+    "generic_name": null,
+    "id": "a4000000-0000-0000-0000-000000000003",
+    "name": "Surgical Mask",
+    "product_type": "supply",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002"
+  },
+  {
+    "description": "NSAID pain and inflammation relief",
+    "generic_name": "Ibuprofen",
+    "id": "a4000000-0000-0000-0000-000000000004",
+    "name": "Ibuprofen",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Malaria treatment",
+    "generic_name": "Artemether/Lumefantrine",
+    "id": "a4000000-0000-0000-0000-000000000005",
+    "name": "Coartem",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Antihistamine for allergy relief",
+    "generic_name": "Cetirizine Hydrochloride",
+    "id": "a4000000-0000-0000-0000-000000000006",
+    "name": "Cetirizine",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Acid reflux and ulcer treatment",
+    "generic_name": "Omeprazole",
+    "id": "a4000000-0000-0000-0000-000000000007",
+    "name": "Omeprazole",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Type 2 diabetes management",
+    "generic_name": "Metformin Hydrochloride",
+    "id": "a4000000-0000-0000-0000-000000000008",
+    "name": "Metformin",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Blood pressure management",
+    "generic_name": "Amlodipine Besylate",
+    "id": "a4000000-0000-0000-0000-000000000009",
+    "name": "Amlodipine",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Immune support supplement",
+    "generic_name": "Ascorbic Acid",
+    "id": "a4000000-0000-0000-0000-00000000000a",
+    "name": "Vitamin C",
+    "product_type": "other",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002"
+  },
+  {
+    "description": "Cough suppressant syrup",
+    "generic_name": "Dextromethorphan",
+    "id": "a4000000-0000-0000-0000-00000000000b",
+    "name": "Cough Syrup",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Dehydration treatment",
+    "generic_name": "Oral Rehydration Salts",
+    "id": "a4000000-0000-0000-0000-00000000000c",
+    "name": "ORS",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Topical anti-inflammatory cream",
+    "generic_name": "Hydrocortisone",
+    "id": "a4000000-0000-0000-0000-00000000000d",
+    "name": "Hydrocortisone Cream",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Nitrile examination gloves",
+    "generic_name": null,
+    "id": "a4000000-0000-0000-0000-00000000000e",
+    "name": "Disposable Gloves",
+    "product_type": "supply",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002"
+  },
+  {
+    "description": "Antiseptic solution",
+    "generic_name": "Povidone-Iodine",
+    "id": "a4000000-0000-0000-0000-000000000010",
+    "name": "Betadine",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Family planning barrier protection",
+    "generic_name": null,
+    "id": "a4000000-0000-0000-0000-000000000011",
+    "name": "Condoms",
+    "product_type": "supply",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000002"
+  },
+  {
+    "description": "Injectable diabetes management",
+    "generic_name": "Human Insulin",
+    "id": "a4000000-0000-0000-0000-000000000012",
+    "name": "Insulin",
+    "product_type": "medicine",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  },
+  {
+    "description": "Sterile wound plasters",
+    "generic_name": null,
+    "id": "a4000000-0000-0000-0000-00000000000f",
+    "name": "Adhesive Bandage",
+    "product_type": "supply",
+    "tax_rate_id": "a2000000-0000-0000-0000-000000000001"
+  }
+]
