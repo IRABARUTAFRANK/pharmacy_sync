@@ -6,6 +6,7 @@ import type { ReportSection } from "../lib/export"
 import { useTranslation } from "../lib/i18n"
 import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
 import { useGlobalSearch } from "../lib/search"
+import { usePagedList, LoadMoreButton } from "../lib/pagination"
 import {
   getSaleReceipt, listSaleHistory, loadDailyRevenueTrend,
   type DailyRevenuePoint, type InsuranceClaimStatus, type ReceiptData, type SaleHistoryRow,
@@ -125,6 +126,8 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
 
   // Every tile reflects whatever the filters above currently show, so the
   // number on screen always matches the rows underneath it.
+  const { visible: paged, hasMore, showMore, shown, total: pagedTotal } = usePagedList(filtered, [query, dateFrom, dateTo, sourceFilter, claimStatusFilter])
+
   const grossRevenue = filtered.reduce((sum, r) => sum + r.totalAmount, 0)
   const insuranceRevenue = filtered.filter(r => r.insuranceProviderName).reduce((sum, r) => sum + r.totalAmount, 0)
   const pendingClaimsCount = filtered.filter(r => r.claimStatus === "submitted" || r.claimStatus === "approved").length
@@ -289,7 +292,7 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
         ) : (
           <Table
             columns={TXN_COLUMNS.filter(c => visibleColumns.has(c.key))}
-            rows={filtered.map(r => ({
+            rows={paged.map(r => ({
               receipt: <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--primary)' }}>{r.receiptNumber}</span>,
               when: new Date(r.soldAt).toLocaleString(),
               patient: r.patientName ?? <span style={{ color: "var(--ink-faint)" }}>{t("transactions.noPatient")}</span>,
@@ -304,6 +307,9 @@ export default function TransactionsPage({ period }: { period?: OverviewPeriod }
             }))}
             onRowClick={row => void openReceipt(row._saleId as string)}
           />
+        )}
+        {!loading && filtered.length > 0 && (
+          <LoadMoreButton hasMore={hasMore} shown={shown} total={pagedTotal} onClick={showMore} />
         )}
       </div>
 

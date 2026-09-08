@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { Logo } from "../components";
+import { useTranslation, LanguageSwitcher } from "../lib/i18n";
 
 // Shared split-screen shell for the public auth/registration pages
 // (BranchPortal.tsx and BranchAccessPage.tsx's LoginView) — photo panel on
@@ -9,7 +10,7 @@ import { Logo } from "../components";
 // so the whole "get access" journey reads as one product, not a bolt-on.
 
 export function AuthShell({
-  image, imageAlt, eyebrow, tagline, children, onBack, backLabel = "Back to PharmSync",
+  image, imageAlt, eyebrow, tagline, children, onBack, backLabel,
 }: {
   image: string;
   imageAlt: string;
@@ -19,6 +20,9 @@ export function AuthShell({
   onBack: () => void;
   backLabel?: string;
 }) {
+  const { t } = useTranslation();
+  const back = backLabel ?? t("common.backToPharmSync");
+
   return (
     <div style={{ minHeight: "100vh", display: "flex", background: "#f8fafb" }}>
       {/* Photo panel */}
@@ -26,9 +30,12 @@ export function AuthShell({
         <img src={image} alt={imageAlt} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(165deg, rgba(30,95,168,.35) 0%, rgba(15,23,42,.55) 55%, rgba(15,23,42,.88) 100%)" }} />
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 48 }}>
-          <a href="#" onClick={e => { e.preventDefault(); onBack(); }} className="flex items-center gap-2.5">
-            <Logo size={36} tone="dark" />
-          </a>
+          <div className="flex items-center justify-between gap-3">
+            <a href="#" onClick={e => { e.preventDefault(); onBack(); }} className="flex items-center gap-2.5">
+              <Logo size={36} tone="dark" />
+            </a>
+            <LanguageSwitcher variant="dark" />
+          </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "#93c5fd", fontFamily: "var(--font-display)" }}>
               {eyebrow}
@@ -42,16 +49,17 @@ export function AuthShell({
 
       {/* Form panel */}
       <div style={{ flex: "1 1 auto", display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <header className="lg:hidden" style={{ padding: "18px 20px", borderBottom: "1px solid #e8edf4", background: "#fff" }}>
+        <header className="lg:hidden" style={{ padding: "18px 20px", borderBottom: "1px solid #e8edf4", background: "#fff", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <a href="#" onClick={e => { e.preventDefault(); onBack(); }} className="flex items-center gap-2.5">
             <Logo size={30} />
           </a>
+          <LanguageSwitcher />
         </header>
         <div className="hidden lg:flex" style={{ justifyContent: "flex-end", padding: "20px 32px 0" }}>
           <a href="#" onClick={e => { e.preventDefault(); onBack(); }}
             className="text-sm font-semibold"
             style={{ color: "#6b7280", fontFamily: "var(--font-body)", textDecoration: "none" }}>
-            ← {backLabel}
+            ← {back}
           </a>
         </div>
         <main style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "32px 20px 56px" }}>
@@ -72,6 +80,7 @@ export function PasswordInput({
   leftIcon?: ReactNode;
   style?: React.CSSProperties;
 } & Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "style">) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   return (
     <div style={{ position: "relative" }}>
@@ -81,7 +90,7 @@ export function PasswordInput({
         type="button"
         tabIndex={-1}
         onClick={() => setVisible(v => !v)}
-        aria-label={visible ? "Hide password" : "Show password"}
+        aria-label={visible ? t("auth.hidePassword") : t("auth.showPassword")}
         style={{
           position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
           background: "none", border: 0, cursor: "pointer", padding: 4, display: "flex", color: "#9ca3af",

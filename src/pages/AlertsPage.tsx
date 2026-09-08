@@ -4,6 +4,7 @@ import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
 import { errorMessage } from '../lib/supabase'
 import { Card, StatusBadge, Btn, ColumnPicker } from '../components'
+import { usePagedList, LoadMoreButton } from '../lib/pagination'
 
 type ColKey = 'source_type' | 'is_read' | 'created_at'
 
@@ -91,6 +92,8 @@ export default function AlertsPage() {
     return ns
   }, [alerts, sourceFilter, readFilter, searchTerm, t])
 
+  const { visible: paged, hasMore, showMore, shown, total } = usePagedList(filtered, [sourceFilter, readFilter, searchTerm])
+
   const unreadCount = alerts.filter(n => !n.isRead).length
   const recallCount = alerts.filter(n => n.sourceType === 'batch_recall').length
   const outOfStockCount = alerts.filter(n => n.sourceType === 'out_of_stock' && !n.isRead).length
@@ -119,7 +122,6 @@ export default function AlertsPage() {
       <Card>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{t('alertsPage.title')}</h2>
-          <span style={{ fontSize: 11, color: 'var(--ink-muted)' }}>{t('alertsPage.liveDataNotice')}</span>
           <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
             style={{ padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 7, fontSize: 11, fontFamily: 'inherit', background: 'var(--bg)', cursor: 'pointer', outline: 'none' }}>
             <option value="all">{t('alertsPage.allSources')}</option>
@@ -148,7 +150,7 @@ export default function AlertsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(n => {
+              {paged.map(n => {
                 const sc = sourceColors[n.sourceType] ?? { c: '#475569', bg: '#e2e8f0' }
                 const label = ALERT_SOURCE_TITLE_KEYS[n.sourceType] ? t(ALERT_SOURCE_TITLE_KEYS[n.sourceType]) : n.sourceType
                 return (
@@ -179,6 +181,7 @@ export default function AlertsPage() {
             </tbody>
           </table>
         </div>
+        <LoadMoreButton hasMore={hasMore} shown={shown} total={total} onClick={showMore} />
         <div style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-faint)' }}>
           {t('alertsPage.footerCount', { count: filtered.length })} · {t('alertsPage.footerColumns', { visible: visibleCols.size, total: COLUMN_DEFS.length })}
         </div>

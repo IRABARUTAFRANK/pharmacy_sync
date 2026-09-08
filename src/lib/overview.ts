@@ -1,4 +1,20 @@
 import { supabase } from "./supabase"
+import { fmtRWFExact } from "../data"
+import type { TranslationKey } from "./i18n/en"
+
+// Category and product-name fallbacks are sentinels rather than English
+// prose: they double as data values (the category filter compares against
+// them), so they must stay stable across locales. pages/OverviewPage.tsx maps
+// them to translated copy at render time only.
+export const UNCATEGORISED = "__pharmsync_uncategorised__"
+export const UNKNOWN_PRODUCT = "__pharmsync_unknownProduct__"
+export const UNNAMED_PRODUCT = "__pharmsync_unnamedProduct__"
+
+export const DATA_FALLBACK_KEYS: Record<string, TranslationKey> = {
+  [UNCATEGORISED]: "overviewPage.uncategorised",
+  [UNKNOWN_PRODUCT]: "overviewPage.unknownProduct",
+  [UNNAMED_PRODUCT]: "overviewPage.unnamedProduct",
+}
 
 // Live data behind pages/OverviewPage.tsx. Every figure here traces to a real
 // table -- nothing is padded to make the dashboard look busier than the
@@ -27,7 +43,8 @@ interface Range {
   end: Date
   prevStart: Date
   prevEnd: Date
-  label: string
+  labelKey: TranslationKey
+  vsPreviousKey: TranslationKey
   bucket: "day" | "month"
 }
 
@@ -46,31 +63,37 @@ function startOfWeek(value: Date): Date {
 export function resolveRange(period: OverviewPeriod, now: Date = new Date()): Range {
   let start: Date
   let end: Date = now
-  let label: string
+  let labelKey: TranslationKey
+  let vsPreviousKey: TranslationKey
 
   switch (period) {
     case "today":
       start = startOfDay(now)
-      label = "Today"
+      labelKey = "overviewPage.periodToday"
+      vsPreviousKey = "overviewPage.vsPreviousToday"
       break
     case "thisWeek":
       start = startOfWeek(now)
-      label = "This week"
+      labelKey = "overviewPage.periodThisWeek"
+      vsPreviousKey = "overviewPage.vsPreviousThisWeek"
       break
     case "lastMonth":
       start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       end = new Date(now.getFullYear(), now.getMonth(), 1)
-      label = "Last month"
+      labelKey = "overviewPage.periodLastMonth"
+      vsPreviousKey = "overviewPage.vsPreviousLastMonth"
       break
     case "quarter":
       start = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)
-      label = "This quarter"
+      labelKey = "overviewPage.periodThisQuarter"
+      vsPreviousKey = "overviewPage.vsPreviousThisQuarter"
       break
     case "thisMonth":
     case "custom":
     default:
       start = new Date(now.getFullYear(), now.getMonth(), 1)
-      label = "This month"
+      labelKey = "overviewPage.periodThisMonth"
+      vsPreviousKey = "overviewPage.vsPreviousThisMonth"
       break
   }
 
@@ -83,7 +106,8 @@ export function resolveRange(period: OverviewPeriod, now: Date = new Date()): Ra
     end,
     prevStart: new Date(start.getTime() - span),
     prevEnd: start,
-    label,
+    labelKey,
+    vsPreviousKey,
     bucket: span > 62 * DAY_MS ? "month" : "day",
   }
 }
@@ -115,7 +139,7 @@ export interface TrendPoint {
 }
 
 export interface ExpiryBucket {
-  bucket: string
+  bucketKey: TranslationKey
   count: number
   value: number
 }
@@ -126,13 +150,13 @@ export interface CategorySlice {
 }
 
 export interface DayBar {
-  day: string
+  dayKey: TranslationKey
   txn: number
   amount: number
 }
 
 export interface SplitSlice {
-  name: string
+  nameKey: TranslationKey
   value: number
   amount: number
   color: string
@@ -151,11 +175,13 @@ export interface TopProduct {
 
 export interface Insight {
   tone: "good" | "warn" | "bad" | "info"
-  text: string
+  textKey: TranslationKey
+  vars?: Record<string, string | number>
 }
 
 export interface OverviewData {
-  periodLabel: string
+  periodLabelKey: TranslationKey
+  vsPreviousKey: TranslationKey
   bucket: "day" | "month"
   revenue: Delta
   transactions: Delta
@@ -261,15 +287,15 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   const variantById = new Map<string, any>(variants.map(v => [v.id, v]))
   const productById = new Map<string, any>(products.map(p => [p.id, p]))
   const categoryById = new Map<string, string>(categories.map(c => [c.id, c.name as string]))
-  const categoryByProduct = new Map<string, string>(categorization.map(c => [c.product_id, categoryById.get(c.category_id) ?? "Uncategorised"]))
+  const categoryByProduct = new Map<string, string>(categorization.map(c => [c.product_id, categoryById.get(c.category_id) ?? UNCATEGORISED]))
 
   const variantLabel = (variantId: string): string => {
     const variant = variantById.get(variantId)
-    if (!variant) return "Unknown product"
+    if (!variant) return UNKNOWN_PRODUCT
     const name = productById.get(variant.product_id)?.name
     // Label from the variant that was actually sold -- dosage belongs to the
     // variant, so picking any other one would print the wrong strength.
-    return [name, variant.dosage, variant.form].filter(Boolean).join(" ") || "Unnamed product"
+    return [name, variant.dosage, variant.form].filter(Boolean).join(" ") || UNNAMED_PRODUCT
   }
 
   // ── Current stock ────────────────────────────────────────────────────────
@@ -287,16 +313,19 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   // Same 90-day population as expiringBatches/expiringValue, split into how
   // soon each batch actually expires -- the drill-down's urgency chart reads
   // straight off this, no separate query.
-  const EXPIRY_BUCKETS = ["Already Expired", "≤ 30 Days", "31–60 Days", "61–90 Days"] as const
+  const EXPIRY_BUCKETS = [
+    "overviewPage.expiryAlreadyExpired", "overviewPage.expiryWithin30",
+    "overviewPage.expiry31to60", "overviewPage.expiry61to90",
+  ] as const satisfies readonly TranslationKey[]
   const expiryBucketAgg = new Map<string, { batchIds: Set<string>; value: number }>(
     EXPIRY_BUCKETS.map(label => [label, { batchIds: new Set<string>(), value: 0 }]),
   )
   const expiryBucketLabel = (expiryDate: string): (typeof EXPIRY_BUCKETS)[number] => {
     const daysUntil = (new Date(expiryDate).getTime() - now.getTime()) / DAY_MS
-    if (daysUntil < 0) return "Already Expired"
-    if (daysUntil <= 30) return "≤ 30 Days"
-    if (daysUntil <= 60) return "31–60 Days"
-    return "61–90 Days"
+    if (daysUntil < 0) return "overviewPage.expiryAlreadyExpired"
+    if (daysUntil <= 30) return "overviewPage.expiryWithin30"
+    if (daysUntil <= 60) return "overviewPage.expiry31to60"
+    return "overviewPage.expiry61to90"
   }
 
   for (const barcode of barcodes) {
@@ -331,7 +360,7 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
 
   const expiringBreakdown: ExpiryBucket[] = EXPIRY_BUCKETS.map(label => {
     const bucket = expiryBucketAgg.get(label)!
-    return { bucket: label, count: bucket.batchIds.size, value: bucket.value }
+    return { bucketKey: label, count: bucket.batchIds.size, value: bucket.value }
   })
 
   const belowReorder = reorderPoints.filter(
@@ -414,8 +443,11 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   const revenueTrend = Array.from(trendBuckets.values())
 
   // ── Daily transactions, Monday..Sunday of the current week ───────────────
-  const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-  const dailyTransactions: DayBar[] = DAY_LABELS.map(day => ({ day, txn: 0, amount: 0 }))
+  const DAY_KEYS: TranslationKey[] = [
+    "overviewPage.dayMon", "overviewPage.dayTue", "overviewPage.dayWed", "overviewPage.dayThu",
+    "overviewPage.dayFri", "overviewPage.daySat", "overviewPage.daySun",
+  ]
+  const dailyTransactions: DayBar[] = DAY_KEYS.map(dayKey => ({ dayKey, txn: 0, amount: 0 }))
   for (const sale of sales) {
     const offset = Math.floor((startOfDay(new Date(sale.sold_at)).getTime() - weekStart.getTime()) / DAY_MS)
     if (offset < 0 || offset > 6) continue
@@ -443,7 +475,7 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
     if (!variantId) continue
     const line = lineOf(item)
     const productId = variantById.get(variantId)?.product_id
-    const category = (productId && categoryByProduct.get(productId)) || "Uncategorised"
+    const category = (productId && categoryByProduct.get(productId)) || UNCATEGORISED
     categoryTotals.set(category, (categoryTotals.get(category) ?? 0) + line.total)
     const agg = variantAgg.get(variantId) ?? { units: 0, revenue: 0 }
     agg.units += line.qty
@@ -471,7 +503,7 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
         rank: index + 1,
         variantId,
         name: variantLabel(variantId),
-        category: (productId && categoryByProduct.get(productId)) || "Uncategorised",
+        category: (productId && categoryByProduct.get(productId)) || UNCATEGORISED,
         units: agg.units,
         revenue: agg.revenue,
         stock: stockByVariant.get(variantId) ?? 0,
@@ -491,8 +523,8 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   const splitBase = coveredNow + patientNow
   const paymentSplit: SplitSlice[] = splitBase > 0
     ? [
-        { name: "Patient paid", value: Math.round((patientNow / splitBase) * 100), amount: patientNow, color: "#1e5fa8" },
-        { name: "Insurance", value: Math.round((coveredNow / splitBase) * 100), amount: coveredNow, color: "#60a5fa" },
+        { nameKey: "overviewPage.splitPatientPaid", value: Math.round((patientNow / splitBase) * 100), amount: patientNow, color: "#1e5fa8" },
+        { nameKey: "overviewPage.splitInsurance", value: Math.round((coveredNow / splitBase) * 100), amount: coveredNow, color: "#60a5fa" },
       ]
     : []
 
@@ -503,21 +535,27 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   if (revenueChange !== null) {
     insights.push({
       tone: revenueChange >= 0 ? "good" : "warn",
-      text: `Revenue is ${revenueChange >= 0 ? "up" : "down"} ${Math.abs(revenueChange).toFixed(1)}% against the previous window of equal length.`,
+      textKey: revenueChange >= 0 ? "overviewPage.insightRevenueUp" : "overviewPage.insightRevenueDown",
+      vars: { pct: Math.abs(revenueChange).toFixed(1) },
     })
   } else if (revenueNow > 0) {
-    insights.push({ tone: "info", text: "First period with recorded sales — no earlier window to compare against yet." })
+    insights.push({ tone: "info", textKey: "overviewPage.insightFirstPeriod" })
   }
 
   if (expiringBatches.size > 0) {
     insights.push({
       tone: expiringValue > inventoryValue * 0.1 ? "bad" : "warn",
-      text: `${expiringBatches.size} batch${expiringBatches.size === 1 ? "" : "es"} holding RWF ${Math.round(expiringValue).toLocaleString()} of stock expire within 90 days.`,
+      textKey: expiringBatches.size === 1 ? "overviewPage.insightExpiringOne" : "overviewPage.insightExpiringMany",
+      vars: { count: expiringBatches.size, value: fmtRWFExact(expiringValue) },
     })
   }
 
   if (belowReorder > 0) {
-    insights.push({ tone: "warn", text: `${belowReorder} product${belowReorder === 1 ? " is" : "s are"} below their reorder point and should be restocked.` })
+    insights.push({
+      tone: "warn",
+      textKey: belowReorder === 1 ? "overviewPage.insightBelowReorderOne" : "overviewPage.insightBelowReorderMany",
+      vars: { count: belowReorder },
+    })
   }
 
   // Days of cover: how long current stock lasts at this period's selling rate.
@@ -526,16 +564,18 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   if (dailyRevenue > 0 && inventoryValue > 0) {
     insights.push({
       tone: inventoryValue / dailyRevenue < 21 ? "warn" : "info",
-      text: `At the current selling rate, stock on hand covers about ${Math.round(inventoryValue / dailyRevenue)} days of trading.`,
+      textKey: "overviewPage.insightDaysOfCover",
+      vars: { days: Math.round(inventoryValue / dailyRevenue) },
     })
   }
 
   if (insights.length === 0) {
-    insights.push({ tone: "info", text: "No sales recorded in this period yet — every figure above reads zero until the pharmacy trades." })
+    insights.push({ tone: "info", textKey: "overviewPage.insightNoSales" })
   }
 
   return {
-    periodLabel: range.label,
+    periodLabelKey: range.labelKey,
+    vsPreviousKey: range.vsPreviousKey,
     bucket: range.bucket,
     revenue: { value: revenueNow, changePct: revenueChange },
     transactions: { value: currentSaleIds.size, changePct: changePct(currentSaleIds.size, previousSaleIds.size) },

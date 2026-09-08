@@ -26,7 +26,7 @@ export interface InventoryRow {
   barcode_status: string
   min_quantity: number
   max_quantity?: number
-  stock_status: "ok" | "low" | "zero" | "expiry"
+  stock_status: "ok" | "low" | "zero" | "expiry" | "over"
 }
 
 export interface InventoryDataset {
@@ -67,18 +67,30 @@ export async function loadInventoryDataset(): Promise<InventoryDataset> {
     const barcodeStatus = batchBarcodes.find(item => item.barcode_type === "box")?.status ?? batchBarcodes[0]?.status ?? "active"
     const daysToExpiry = Math.ceil((new Date(batch.expiry_date).getTime() - today.getTime()) / 86_400_000)
     const minQuantity = asNumber(reorder?.min_quantity)
-    const stockStatus: InventoryRow["stock_status"] = quantityAvailable === 0 || barcodeStatus === "sold_out" ? "zero" : daysToExpiry < 60 || barcodeStatus === "expired" ? "expiry" : quantityAvailable < minQuantity || barcodeStatus === "recalled" || barcodeStatus === "damaged" ? "low" : "ok"
-    return { product_id: product?.id ?? "", branch_id: batch.branch_id, product_type: product?.product_type ?? "medicine", name: [product?.name, variant?.dosage].filter(Boolean).join(" ") || "Unnamed product", generic_name: product?.generic_name ?? undefined, tax_rate: taxRate ? (asNumber(taxRate.rate_percentage) === 0 ? "Exempt" : `${taxRate.rate_percentage}%`) : "—", variant_id: variant?.id ?? "", dosage: variant?.dosage ?? undefined, form: variant?.form ?? undefined, unit: variant?.unit ?? undefined, category: category?.name ?? "Uncategorised", batch_id: batch.id, batch_number: batch.batch_number, expiry_date: batch.expiry_date, cost_price: asNumber(batch.cost_price), selling_price: asNumber(batch.selling_price), quantity_received: asNumber(batch.quantity_received), received_at: batch.received_at, manufacturer_name: batch.manufacturer_name ?? undefined, delivery_code: batch.delivery_code ?? undefined, supplier_name: supplier?.supplier_name ?? "—", quantity_available: quantityAvailable, barcode_status: barcodeStatus, min_quantity: minQuantity, max_quantity: reorder?.max_quantity == null ? undefined : asNumber(reorder.max_quantity), stock_status: stockStatus }
+    const maxQuantity = reorder?.max_quantity == null ? undefined : asNumber(reorder.max_quantity)
+    // Precedence matters: a batch that is both expiring and overstocked is an
+    // expiry problem first. "over" only applies when a maximum has actually
+    // been set for the product -- an unset maximum means "no ceiling", not 0.
+    const stockStatus: InventoryRow["stock_status"] =
+      quantityAvailable === 0 || barcodeStatus === "sold_out" ? "zero"
+      : daysToExpiry < 60 || barcodeStatus === "expired" ? "expiry"
+      : quantityAvailable < minQuantity || barcodeStatus === "recalled" || barcodeStatus === "damaged" ? "low"
+      : maxQuantity != null && maxQuantity > 0 && quantityAvailable > maxQuantity ? "over"
+      : "ok"
+    return { product_id: product?.id ?? "", branch_id: batch.branch_id, product_type: product?.product_type ?? "medicine", name: [product?.name, variant?.dosage].filter(Boolean).join(" ") || "Unnamed product", generic_name: product?.generic_name ?? undefined, tax_rate: taxRate ? (asNumber(taxRate.rate_percentage) === 0 ? "Exempt" : `${taxRate.rate_percentage}%`) : "—", variant_id: variant?.id ?? "", dosage: variant?.dosage ?? undefined, form: variant?.form ?? undefined, unit: variant?.unit ?? undefined, category: category?.name ?? "Uncategorised", batch_id: batch.id, batch_number: batch.batch_number, expiry_date: batch.expiry_date, cost_price: asNumber(batch.cost_price), selling_price: asNumber(batch.selling_price), quantity_received: asNumber(batch.quantity_received), received_at: batch.received_at, manufacturer_name: batch.manufacturer_name ?? undefined, delivery_code: batch.delivery_code ?? undefined, supplier_name: supplier?.supplier_name ?? "—", quantity_available: quantityAvailable, barcode_status: barcodeStatus, min_quantity: minQuantity, max_quantity: maxQuantity, stock_status: stockStatus }
   })
   const supplierUnits = suppliers.map(supplier => ({ name: supplier.supplier_name, units: batches.filter(batch => batch.supplier_id === supplier.id).reduce((total, batch) => total + asNumber(batch.quantity_received), 0) })).filter(item => item.units > 0)
   return { rows, barcodes, supplierUnits }
 }
 
-// public.reorder_points already has full RLS + grants scoped to the signed-in
-// branch (branch_id = current_branch_id()), so this writes directly rather
-// than through an RPC. unique(product_id, branch_id) on the table is what
-// makes the upsert idempotent -- one reorder point per product per branch.
-export async function upsertReorderPoint(productId: string, branchId: string, minQuantity: number, maxQuantity: number | null): Promise<void> {
+// Stock levels for a product at a branch: min_quantity is the level that
+// flags "Low stock" (time to order a delivery), max_quantity the level above
+// which it flags "Overstocked". public.reorder_points already has full RLS +
+// grants scoped to the signed-in branch (branch_id = current_branch_id()), so
+// this writes directly rather than through an RPC. unique(product_id,
+// branch_id) is what makes the upsert idempotent -- one row per product per
+// branch.
+export async function upsertStockLevels(productId: string, branchId: string, minQuantity: number, maxQuantity: number | null): Promise<void> {
   const { error } = await supabase
     .from("reorder_points")
     .upsert({ product_id: productId, branch_id: branchId, min_quantity: minQuantity, max_quantity: maxQuantity }, { onConflict: "product_id,branch_id" })

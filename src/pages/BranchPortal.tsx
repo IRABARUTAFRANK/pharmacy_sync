@@ -9,11 +9,16 @@ import {
   requestPharmacyOtp,
   submitPharmacyRegistration,
   verifyPharmacyOtp,
+  ONBOARDING_SERVICE_ERROR,
+  ONBOARDING_RELOAD_FAILED,
+  ONBOARDING_NOT_APPROVED,
 } from "../lib/onboarding";
 import { updatePassword } from "../lib/auth";
 import type { BranchRecord } from "../lib/store";
 import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell";
 import pharmacyImg from "../assets/stock2.jpg";
+import { useTranslation } from "../lib/i18n";
+import type { TranslationKey } from "../lib/i18n/en";
 
 type Step = "form" | "pending" | "otp" | "password" | "denied" | "success";
 
@@ -33,10 +38,32 @@ function stepForStatus(status: BranchRecord["status"]): Step {
   return "pending";
 }
 
+// The onboarding codes this screen can phrase in the applicant's language.
+const ONBOARDING_MESSAGE_KEYS: Record<string, TranslationKey> = {
+  [ONBOARDING_SERVICE_ERROR]: "register.errorServiceUnavailable",
+  [ONBOARDING_RELOAD_FAILED]: "register.errorSavedNotReloaded",
+  [ONBOARDING_NOT_APPROVED]: "register.errorNotApproved",
+};
+
 const SESSION_KEY = "psync_application_session";
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function BranchPortal() {
+  const { t, tNode } = useTranslation();
+
+  // A thrown onboarding code becomes translated copy; a real server error
+  // keeps its own message (more useful than a generic line); anything else
+  // falls back to this call site's own message.
+  const explain = useCallback(
+    (reason: unknown, fallback: TranslationKey) => {
+      const raw = reason instanceof Error ? reason.message : "";
+      const key = ONBOARDING_MESSAGE_KEYS[raw];
+      if (key) return t(key);
+      return raw || t(fallback);
+    },
+    [t]
+  );
+
   const [step, setStep] = useState<Step>("form");
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [application, setApplication] = useState<BranchRecord | null>(null);
@@ -156,12 +183,12 @@ export default function BranchPortal() {
 
   function validate() {
     const errors: Partial<typeof form> = {};
-    if (!form.pharmacyName.trim()) errors.pharmacyName = "Pharmacy name is required";
-    if (!form.phone.trim()) errors.phone = "Phone number is required";
-    else if (!/^\+?[\d\s\-()]{9,}$/.test(form.phone)) errors.phone = "Enter a valid phone number";
-    if (!form.email.trim()) errors.email = "Email address is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = "Enter a valid email";
-    if (!form.location.trim()) errors.location = "Location is required";
+    if (!form.pharmacyName.trim()) errors.pharmacyName = t("register.errorPharmacyNameRequired");
+    if (!form.phone.trim()) errors.phone = t("register.errorPhoneRequired");
+    else if (!/^\+?[\d\s\-()]{9,}$/.test(form.phone)) errors.phone = t("register.errorPhoneInvalid");
+    if (!form.email.trim()) errors.email = t("register.errorEmailRequired");
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) errors.email = t("register.errorEmailInvalid");
+    if (!form.location.trim()) errors.location = t("register.errorLocationRequired");
     return errors;
   }
 
@@ -185,7 +212,7 @@ export default function BranchPortal() {
       sessionStorage.setItem(SESSION_KEY, created.id);
       setStep("pending");
     } catch (reason) {
-      setSubmitError(reason instanceof Error ? reason.message : "Registration failed. Please try again.");
+      setSubmitError(explain(reason, "register.errorSubmitFailed"));
     } finally {
       setSubmitting(false);
     }
@@ -194,14 +221,14 @@ export default function BranchPortal() {
   async function handleCheckStatus(e: React.FormEvent) {
     e.preventDefault();
     const target = checkEmail.trim().toLowerCase();
-    if (!target) { setCheckError("Enter the email you registered with."); return; }
+    if (!target) { setCheckError(t("register.errorCheckEmailRequired")); return; }
     setCheckBusy(true);
     setCheckError("");
     try {
       const found = await resumeFromEmailLink(target);
-      if (!found) setCheckError("No application found for that email.");
+      if (!found) setCheckError(t("register.errorNoApplication"));
     } catch (reason) {
-      setCheckError(reason instanceof Error ? reason.message : "Could not look that up right now.");
+      setCheckError(explain(reason, "register.errorCheckFailed"));
     } finally {
       setCheckBusy(false);
     }
@@ -212,9 +239,9 @@ export default function BranchPortal() {
     setResendInfo("");
     try {
       await requestPharmacyOtp(email);
-      setResendInfo(`A new link and 6-digit code were sent to ${email}.`);
+      setResendInfo(t("register.otpResent", { email }));
     } catch (reason) {
-      setResendInfo(reason instanceof Error ? reason.message : "Could not send the code right now.");
+      setResendInfo(explain(reason, "register.errorResendFailed"));
     } finally {
       setResending(false);
     }
@@ -248,25 +275,25 @@ export default function BranchPortal() {
 
   async function verifyOtp() {
     const entered = otp.join("");
-    if (entered.length < 6 || !application) { setOtpError("Enter the complete 6-digit code"); return; }
+    if (entered.length < 6 || !application) { setOtpError(t("register.errorOtpIncomplete")); return; }
     setOtpError("");
     try {
       const account = await verifyPharmacyOtp(application.email, entered);
       setActivated(account);
       setStep("password");
     } catch (reason) {
-      setOtpError(reason instanceof Error ? reason.message : "Incorrect code. Check your email and try again.");
+      setOtpError(explain(reason, "register.errorOtpIncorrect"));
     }
   }
 
   async function handleSetPassword(e: React.FormEvent) {
     e.preventDefault();
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setPasswordError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      setPasswordError(t("auth.errorPasswordTooShort", { count: MIN_PASSWORD_LENGTH }));
       return;
     }
     if (password !== confirmPassword) {
-      setPasswordError("Passwords do not match");
+      setPasswordError(t("auth.errorPasswordMismatch"));
       return;
     }
     setPasswordError("");
@@ -275,7 +302,7 @@ export default function BranchPortal() {
       await updatePassword(password);
       setStep("success");
     } catch (reason) {
-      setPasswordError(reason instanceof Error ? reason.message : "Could not set your password. Please try again.");
+      setPasswordError(explain(reason, "register.errorSetPasswordFailed"));
     } finally {
       setSettingPassword(false);
     }
@@ -289,19 +316,19 @@ export default function BranchPortal() {
 
   const shownBranch = activated ?? application;
 
-  const eyebrow = "Branch registration";
-  const tagline = "Every branch, one live inventory — receive once, sell everywhere, never lose a batch.";
+  const eyebrow = t("register.eyebrow");
+  const tagline = t("register.tagline");
 
   return (
-    <AuthShell image={pharmacyImg} imageAlt="Dense pharmacy medicine shelves with organized stock" eyebrow={eyebrow} tagline={tagline} onBack={backToHome}>
+    <AuthShell image={pharmacyImg} imageAlt={t("register.imageAlt")} eyebrow={eyebrow} tagline={tagline} onBack={backToHome}>
 
       {/* Progress steps */}
       {step !== "form" && step !== "denied" && (
         <div className="flex items-center gap-0 mb-8">
           {[
-            { label: "Register", done: true },
-            { label: "Verify", done: step === "otp" || step === "password" || step === "success" },
-            { label: "Set password", done: step === "password" || step === "success" },
+            { label: t("register.stepRegister"), done: true },
+            { label: t("register.stepVerify"), done: step === "otp" || step === "password" || step === "success" },
+            { label: t("register.stepSetPassword"), done: step === "password" || step === "success" },
           ].map((s, i) => (
             <div key={i} className="flex items-center flex-1">
               <div className="flex flex-col items-center">
@@ -325,45 +352,45 @@ export default function BranchPortal() {
       {step === "form" && (
         <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
           <div className="px-6 py-6">
-            <h1 className="text-2xl font-extrabold" style={authCardHeading}>Register your pharmacy</h1>
-            <p className="text-sm mt-2" style={authBody}>Apply for a PharmSync portal. Our admin team will verify and activate your account.</p>
+            <h1 className="text-2xl font-extrabold" style={authCardHeading}>{t("register.formTitle")}</h1>
+            <p className="text-sm mt-2" style={authBody}>{t("register.formSubtitle")}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-5">
-            <Field label="Pharmacy Name" icon={<Building2 className="w-4 h-4" />} error={formErrors.pharmacyName}>
+            <Field label={t("register.pharmacyNameLabel")} icon={<Building2 className="w-4 h-4" />} error={formErrors.pharmacyName}>
               <input
                 type="text"
-                placeholder="e.g. Nairobi Central Pharmacy"
+                placeholder={t("register.pharmacyNamePlaceholder")}
                 value={form.pharmacyName}
                 onChange={(e) => setForm((f) => ({ ...f, pharmacyName: e.target.value }))}
                 style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.pharmacyName ? "#fca5a5" : "#e2e8f0" }}
               />
             </Field>
 
-            <Field label="Phone Number" icon={<Phone className="w-4 h-4" />} error={formErrors.phone}>
+            <Field label={t("register.phoneLabel")} icon={<Phone className="w-4 h-4" />} error={formErrors.phone}>
               <input
                 type="tel"
-                placeholder="+254 7XX XXX XXX"
+                placeholder={t("register.phonePlaceholder")}
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                 style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.phone ? "#fca5a5" : "#e2e8f0" }}
               />
             </Field>
 
-            <Field label="Email Address" icon={<Mail className="w-4 h-4" />} error={formErrors.email}>
+            <Field label={t("register.emailLabel")} icon={<Mail className="w-4 h-4" />} error={formErrors.email}>
               <input
                 type="email"
-                placeholder="branch@yourpharmacy.com"
+                placeholder={t("auth.emailPlaceholder")}
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.email ? "#fca5a5" : "#e2e8f0" }}
               />
             </Field>
 
-            <Field label="Branch Location" icon={<MapPin className="w-4 h-4" />} error={formErrors.location}>
+            <Field label={t("register.locationLabel")} icon={<MapPin className="w-4 h-4" />} error={formErrors.location}>
               <input
                 type="text"
-                placeholder="e.g. Nairobi, Tom Mboya St, Ground Floor"
+                placeholder={t("register.locationPlaceholder")}
                 value={form.location}
                 onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
                 style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.location ? "#fca5a5" : "#e2e8f0" }}
@@ -373,7 +400,7 @@ export default function BranchPortal() {
             <div className="rounded-xl p-3 flex gap-2" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#d97706" }} />
               <p className="text-xs" style={{ color: "#b45309", fontFamily: "var(--font-body)" }}>
-                Our admin team will call the phone number you provide to verify your identity before approving your registration.
+                {t("register.verifyCallNotice")}
               </p>
             </div>
 
@@ -387,7 +414,7 @@ export default function BranchPortal() {
             <button type="submit" disabled={submitting}
               className="flex items-center justify-center gap-2"
               style={{ ...authPrimaryButton, opacity: submitting ? 0.7 : 1 }}>
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <>Submit Application <ArrowRight className="w-4 h-4" /></>}
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <>{t("register.submitButton")} <ArrowRight className="w-4 h-4" /></>}
             </button>
           </form>
         </div>
@@ -401,24 +428,24 @@ export default function BranchPortal() {
           {!checkStatusOpen ? (
             <button type="button" onClick={() => setCheckStatusOpen(true)}
               className="text-sm font-semibold" style={{ color: "var(--primary)", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-              Already applied? Check your application status
+              {t("register.checkStatusLink")}
             </button>
           ) : (
             <form onSubmit={handleCheckStatus} className="text-left space-y-3">
               <label className="text-xs font-semibold block" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>
-                Email you registered with
+                {t("register.checkStatusLabel")}
               </label>
               <div className="flex gap-2">
                 <input
                   type="email" autoFocus
                   value={checkEmail} onChange={(e) => { setCheckEmail(e.target.value); setCheckError(""); }}
-                  placeholder="branch@yourpharmacy.com" disabled={checkBusy}
+                  placeholder={t("auth.emailPlaceholder")} disabled={checkBusy}
                   style={{ ...authInput, flex: 1 }}
                 />
                 <button type="submit" disabled={checkBusy}
                   className="px-4 rounded-xl text-sm font-semibold shrink-0"
                   style={{ ...authPrimaryButton, width: "auto", opacity: checkBusy ? 0.7 : 1 }}>
-                  {checkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Check"}
+                  {checkBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("register.checkStatusButton")}
                 </button>
               </div>
               {checkError && (
@@ -438,32 +465,33 @@ export default function BranchPortal() {
             <Phone className="w-7 h-7" style={{ color: "#b45309" }} />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold" style={authCardHeading}>Application under review</h2>
+            <h2 className="text-xl font-extrabold" style={authCardHeading}>{t("register.pendingTitle")}</h2>
             <p className="text-sm mt-2 leading-relaxed" style={authBody}>
-              Your registration for <span className="font-semibold" style={{ color: "#1e5fa8" }}>{shownBranch.pharmacyName}</span> has
-              been received. Our admin team will call <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.phone}</span> to
-              verify your identity.
+              {tNode("register.pendingBody", {
+                pharmacy: <span className="font-semibold" style={{ color: "#1e5fa8" }}>{shownBranch.pharmacyName}</span>,
+                phone: <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.phone}</span>,
+              })}
             </p>
           </div>
 
           <div className="rounded-xl p-4 text-left space-y-1" style={{ background: "#f8fafb", border: "1px solid #e2e8f0" }}>
-            <p className="text-[10px] uppercase tracking-widest" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>Your Application ID</p>
+            <p className="text-[10px] uppercase tracking-widest" style={{ color: "#94a3b8", fontFamily: "var(--font-display)" }}>{t("register.applicationIdLabel")}</p>
             <p className="font-mono text-base font-bold" style={{ color: "#1e5fa8" }}>{shownBranch.applicationCode ?? shownBranch.id}</p>
-            <p className="text-xs" style={{ color: "#6b7280" }}>Save this ID — you may need it if you contact support.</p>
+            <p className="text-xs" style={{ color: "#6b7280" }}>{t("register.applicationIdHint")}</p>
           </div>
 
           <div className="rounded-xl p-4 text-left" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.18)" }}>
-            <p className="text-xs font-semibold" style={{ color: "var(--primary)" }}>You can close this page now.</p>
+            <p className="text-xs font-semibold" style={{ color: "var(--primary)" }}>{t("register.pendingCloseTitle")}</p>
             <p className="text-xs mt-1" style={{ color: "#334155" }}>
-              Once approved, we'll email <span className="font-semibold">{shownBranch.email}</span> an activation
-              link and a 6-digit code. The link takes you straight to the code entry screen — it (and the code)
-              expire 3 hours after we send them, so verify soon after you get it.
+              {tNode("register.pendingCloseBody", {
+                email: <span className="font-semibold">{shownBranch.email}</span>,
+              })}
             </p>
           </div>
 
           <div className="flex items-center gap-2 justify-center text-sm" style={{ color: "#94a3b8" }}>
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            <span className="text-xs">Waiting for admin approval…</span>
+            <span className="text-xs">{t("register.waitingApproval")}</span>
           </div>
         </div>
       )}
@@ -475,18 +503,18 @@ export default function BranchPortal() {
             <AlertCircle className="w-7 h-7" style={{ color: "#dc2626" }} />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold" style={authCardHeading}>Application not active</h2>
+            <h2 className="text-xl font-extrabold" style={authCardHeading}>{t("register.deniedTitle")}</h2>
             <p className="text-sm mt-2 leading-relaxed" style={authBody}>
-              Your registration for <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.pharmacyName}</span> could
-              not be activated.
+              {tNode("register.deniedBody", {
+                pharmacy: <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.pharmacyName}</span>,
+              })}
             </p>
           </div>
           <div className="rounded-xl p-4 text-left" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
-            <p className="text-xs font-semibold" style={{ color: "#b91c1c" }}>{shownBranch.deniedReason ?? "This application was denied."}</p>
+            <p className="text-xs font-semibold" style={{ color: "#b91c1c" }}>{shownBranch.deniedReason ?? t("register.deniedDefaultReason")}</p>
           </div>
           <p className="text-xs" style={{ color: "#94a3b8" }}>
-            If your activation link or code expired before you could use it, contact support or submit a new
-            application — a fresh application gets a fresh 3-hour window.
+            {t("register.deniedFooter")}
           </p>
         </div>
       )}
@@ -498,10 +526,11 @@ export default function BranchPortal() {
             <KeyRound className="w-7 h-7" style={{ color: "#1e5fa8" }} />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold" style={authCardHeading}>Enter verification code</h2>
+            <h2 className="text-xl font-extrabold" style={authCardHeading}>{t("register.otpTitle")}</h2>
             <p className="text-sm mt-2" style={authBody}>
-              An activation link and 6-digit code were sent to <span className="font-semibold" style={{ color: "#1e5fa8" }}>{application.email}</span>.
-              Enter the code below — it expires 3 hours after it was sent.
+              {tNode("register.otpBody", {
+                email: <span className="font-semibold" style={{ color: "#1e5fa8" }}>{application.email}</span>,
+              })}
             </p>
           </div>
 
@@ -538,7 +567,7 @@ export default function BranchPortal() {
             className="flex items-center justify-center gap-2"
             style={{ ...authPrimaryButton, opacity: otp.join("").length < 6 ? 0.5 : 1, cursor: otp.join("").length < 6 ? "not-allowed" : "pointer" }}>
             <ShieldCheck className="w-4 h-4" />
-            Verify code
+            {t("register.otpVerifyButton")}
           </button>
 
           <button
@@ -548,7 +577,7 @@ export default function BranchPortal() {
             style={{ color: "#6b7280", fontFamily: "var(--font-body)" }}
           >
             {resending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-            Resend code
+            {t("register.otpResendButton")}
           </button>
           {resendInfo && <p className="text-[11px] -mt-3" style={{ color: "#94a3b8" }}>{resendInfo}</p>}
         </div>
@@ -561,29 +590,28 @@ export default function BranchPortal() {
             <Lock className="w-7 h-7" style={{ color: "var(--primary)" }} />
           </div>
           <div>
-            <h2 className="text-xl font-extrabold" style={authCardHeading}>Set your password</h2>
+            <h2 className="text-xl font-extrabold" style={authCardHeading}>{t("register.passwordTitle")}</h2>
             <p className="text-sm mt-2" style={authBody}>
-              Verified — your account is active. Choose a password now; from here on you'll sign in with your email
-              and this password, not another emailed code.
+              {t("register.passwordSubtitle")}
             </p>
           </div>
 
           <form onSubmit={handleSetPassword} className="text-left space-y-4">
             <div>
-              <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>Password</label>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>{t("auth.passwordLabel")}</label>
               <PasswordInput
                 autoFocus autoComplete="new-password"
                 value={password} onChange={e => { setPassword(e.target.value); setPasswordError(""); }}
-                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                placeholder={t("auth.passwordMinPlaceholder", { count: MIN_PASSWORD_LENGTH })}
                 style={authInput}
               />
             </div>
             <div>
-              <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>Confirm password</label>
+              <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>{t("register.confirmPasswordLabel")}</label>
               <PasswordInput
                 autoComplete="new-password"
                 value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setPasswordError(""); }}
-                placeholder="Re-enter your password"
+                placeholder={t("auth.confirmPasswordPlaceholder")}
                 style={authInput}
               />
             </div>
@@ -598,7 +626,7 @@ export default function BranchPortal() {
             <button type="submit" disabled={settingPassword}
               className="flex items-center justify-center gap-2"
               style={{ ...authPrimaryButton, opacity: settingPassword ? 0.7 : 1 }}>
-              {settingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : "Set password & continue"}
+              {settingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : t("register.passwordSubmitButton")}
             </button>
           </form>
         </div>
@@ -611,42 +639,42 @@ export default function BranchPortal() {
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: "rgba(255,255,255,0.2)" }}>
               <CheckCircle2 className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-extrabold text-white" style={{ fontFamily: "var(--font-display)" }}>Account activated!</h2>
+            <h2 className="text-xl font-extrabold text-white" style={{ fontFamily: "var(--font-display)" }}>{t("register.successTitle")}</h2>
             <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.85)" }}>{shownBranch.pharmacyName}</p>
           </div>
 
           <div className="p-6 space-y-4">
             <CodeDisplay
-              label="Your Branch System Code"
+              label={t("register.branchCodeLabel")}
               value={shownBranch.branchCode ?? "—"}
-              description="This is your permanent identifier in the PharmSync database. Keep it safe."
+              description={t("register.branchCodeHint")}
               copied={copied === shownBranch.branchCode}
               onCopy={() => copyToClipboard(shownBranch.branchCode ?? "")}
             />
             <CodeDisplay
-              label="Activation Code"
+              label={t("register.activationCodeLabel")}
               value={shownBranch.activationCode ?? "—"}
-              description="Use this code when setting up PharmSync on your devices."
+              description={t("register.activationCodeHint")}
               copied={copied === shownBranch.activationCode}
               onCopy={() => copyToClipboard(shownBranch.activationCode ?? "")}
             />
 
             <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.2)", color: "#1a4f8f" }}>
-              <p className="font-semibold">Your account is now active</p>
-              <p>• Pharmacy: <span className="font-medium">{shownBranch.pharmacyName}</span></p>
-              {shownBranch.location && <p>• Location: <span className="font-medium">{shownBranch.location}</span></p>}
-              <p>• Email: <span className="font-medium">{application?.email}</span></p>
+              <p className="font-semibold">{t("register.successActiveTitle")}</p>
+              <p>• {t("register.successPharmacyLabel")}: <span className="font-medium">{shownBranch.pharmacyName}</span></p>
+              {shownBranch.location && <p>• {t("register.successLocationLabel")}: <span className="font-medium">{shownBranch.location}</span></p>}
+              <p>• {t("register.successEmailLabel")}: <span className="font-medium">{application?.email}</span></p>
             </div>
 
             <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.2)", color: "var(--primary-dark)" }}>
-              <p className="font-semibold">Next: open your operations dashboard</p>
-              <p>Go to the PharmSync dashboard and sign in with this email and the password you just set.</p>
+              <p className="font-semibold">{t("register.successNextTitle")}</p>
+              <p>{t("register.successNextBody")}</p>
             </div>
 
             <button type="button" onClick={backToHome}
               className="flex items-center justify-center gap-2"
               style={authPrimaryButton}>
-              Go to sign in
+              {t("register.successButton")}
             </button>
           </div>
         </div>

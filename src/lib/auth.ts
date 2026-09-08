@@ -2,6 +2,12 @@ import { supabase } from "./supabase"
 
 export type AppRole = "owner" | "manager" | "pharmacist" | "staff" | "seller"
 
+// Thrown instead of an English sentence so the sign-in screen can render this
+// case through the translation dictionary -- lib/ has no React context and so
+// no access to t(). Callers match on this code and fall back to the generic
+// credentials message for anything else.
+export const NO_BRANCH_PROFILE = "NO_BRANCH_PROFILE"
+
 export interface BranchDirectoryEntry { id: string; name: string }
 export interface BranchAccess {
   userId: string
@@ -32,7 +38,7 @@ export async function signInToBranch(email: string, password: string): Promise<B
   const access = await restoreBranchAccess()
   if (!access) {
     await supabase.auth.signOut()
-    throw new Error("This account has no active pharmacy profile. Ask an administrator to assign a branch.")
+    throw new Error(NO_BRANCH_PROFILE)
   }
   return access
 }
