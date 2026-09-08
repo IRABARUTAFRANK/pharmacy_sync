@@ -144,18 +144,6 @@ async function buildReceiptPdfDoc(data: ReceiptData, opts: {
   return doc
 }
 
-// In-app "Download PDF" button (SalesPage/TransactionsPage receipts) -- a
-// real click handler, so a plain .save() download is never blocked.
-export async function downloadReceiptPdf(data: ReceiptData, opts: {
-  printSize: ReceiptPrintSize
-  qrDataUrl: string | null
-  isEbmRegistered: boolean
-  t: T
-}) {
-  const doc = await buildReceiptPdfDoc(data, opts)
-  doc.save(`receipt-${data.receiptNumber}.pdf`)
-}
-
 // Powers the QR-scan flow: builds the same PDF and hands back a Blob so
 // PublicReceiptPage.tsx can navigate the whole tab to it (see that file for
 // why a redirect, not a triggered download, is what actually works on

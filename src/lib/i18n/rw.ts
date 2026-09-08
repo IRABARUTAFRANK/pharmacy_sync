@@ -627,6 +627,7 @@ const rw: Record<TranslationKey, string> = {
   "alerts.source.productRequestRejected": "Icyifuzo cy'Igicuruzwa Cyanzwe",
   "alerts.source.outOfStock": "Byashize mu Bubiko",
   "alerts.source.licenseExpiring": "Uruhushya rwa Farumasi",
+  "alerts.source.forecastCompleted": "Igisubizo cy'Iteganyagihe",
   "alerts.source.notification": "Imenyesha",
 
   // ── Alerts page ────────────────────────────────────────────────────────────
@@ -935,6 +936,10 @@ const rw: Record<TranslationKey, string> = {
   "salesPage.coverageLoadError": "Ntibyashobotse kubona itwarwa ry'iki kigo cy'ubwishingizi.",
   "salesPage.completeSaleError": "Ntibishoboka kurangiza iri gurisha.",
   "salesPage.saleCompletedNotice": "Igurisha ryarangiye kandi inyemezabuguzi yabitswe.",
+  "salesPage.printPromptTitle": "Igurisha ryarangiye",
+  "salesPage.printPromptBody": "Inyemezabuguzi imaze kubikwa. Waba ushaka kuyicapa?",
+  "salesPage.printPromptSkip": "Oya, simbura",
+  "salesPage.printPromptPrint": "Capa",
   "salesPage.receiptPrintButton": "Sohora Inyemezabuguzi",
   "salesPage.receiptNewSale": "Igurisha Rishya",
   "salesPage.receiptLabelReceipt": "Inyemezabuguzi",

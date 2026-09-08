@@ -627,6 +627,7 @@ const en = {
   "alerts.source.productRequestRejected": "Product Request Declined",
   "alerts.source.outOfStock": "Out of Stock",
   "alerts.source.licenseExpiring": "Pharmacy License",
+  "alerts.source.forecastCompleted": "Forecast Result",
   "alerts.source.notification": "Notification",
 
   // ── Alerts page ────────────────────────────────────────────────────────────
@@ -935,6 +936,10 @@ const en = {
   "salesPage.coverageLoadError": "Could not load coverage for this provider.",
   "salesPage.completeSaleError": "Could not complete this sale.",
   "salesPage.saleCompletedNotice": "Sale completed and receipt saved.",
+  "salesPage.printPromptTitle": "Sale completed",
+  "salesPage.printPromptBody": "The receipt has already been saved. Would you like to print it?",
+  "salesPage.printPromptSkip": "No, skip",
+  "salesPage.printPromptPrint": "Print",
   "salesPage.receiptPrintButton": "Print Receipt",
   "salesPage.receiptNewSale": "New Sale",
   "salesPage.receiptLabelReceipt": "Receipt",
