@@ -5,7 +5,7 @@ import { useTranslation } from "../lib/i18n"
 import { useGlobalSearch } from "../lib/search"
 import { adjustStock, listStockAdjustments, type StockAdjustmentRecord, type StockAdjustmentType } from "../lib/adjustments"
 import { BARCODE_STATUS_TITLE_KEYS, packagingSummary } from "../lib/barcodes"
-import { loadInventoryDataset, upsertReorderPoint, type InventoryDataset, type InventoryRow } from "../lib/inventory"
+import { loadInventoryDataset, upsertStockLevels, type InventoryDataset, type InventoryRow } from "../lib/inventory"
 import { errorMessage } from "../lib/supabase"
 
 const REMOVE_TYPES: StockAdjustmentType[] = ["damage", "loss", "return", "expired_writeoff", "recalled"]
@@ -218,7 +218,7 @@ function ProductCard({ group, barcodes, onAdjustBatch, onSetReorder }: {
           </div>
           <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>
             {t("stockAdjustment.batchesCount", { count: group.batches.length })}
-            {group.minQuantity > 0 && ` · ${t("reports.reorderMinShort", { min: group.minQuantity })}`}
+            {group.minQuantity > 0 && ` · ${t("reports.minimumShort", { min: group.minQuantity })}`}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -228,7 +228,7 @@ function ProductCard({ group, barcodes, onAdjustBatch, onSetReorder }: {
       </button>
       <button onClick={() => onSetReorder(group)}
         style={{ fontSize: 10, fontWeight: 700, color: "var(--primary)", background: "none", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 }}>
-        {t("reports.setReorderPoint")}
+        {t("reports.setStockLevels")}
       </button>
     </div>
     {open && group.batches.map(batch => <BatchRow key={batch.batch_id} batch={batch} barcodes={barcodes} onAdjust={() => onAdjustBatch(batch)} />)}
@@ -263,42 +263,42 @@ function ReorderPointModal({ group, onClose, onSaved }: { group: ProductGroup; o
 
   async function save() {
     const min = Number.parseInt(minQuantity, 10)
-    if (!Number.isFinite(min) || min < 0) { setError(t("inventoryPage.reorderMinInvalid")); return }
+    if (!Number.isFinite(min) || min < 0) { setError(t("inventoryPage.stockLevelMinInvalid")); return }
     const max = maxQuantity.trim() ? Number.parseInt(maxQuantity, 10) : null
-    if (max != null && (!Number.isFinite(max) || max < min)) { setError(t("inventoryPage.reorderMaxInvalid")); return }
+    if (max != null && (!Number.isFinite(max) || max < min)) { setError(t("inventoryPage.stockLevelMaxInvalid")); return }
     setBusy(true)
     setError(null)
     try {
-      await upsertReorderPoint(group.productId, group.branchId, min, max)
+      await upsertStockLevels(group.productId, group.branchId, min, max)
       onSaved()
     } catch (reason) {
-      setError(errorMessage(reason, t("inventoryPage.reorderSaveError")))
+      setError(errorMessage(reason, t("inventoryPage.stockLevelsSaveError")))
     } finally {
       setBusy(false)
     }
   }
 
-  return <Modal title={t("inventoryPage.reorderModalTitle", { product: group.name })} onClose={onClose} width={420}>
+  return <Modal title={t("inventoryPage.stockLevelsModalTitle", { product: group.name })} onClose={onClose} width={420}>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>
-        {t("inventoryPage.reorderExplainer")}
+        {t("inventoryPage.stockLevelsExplainer")}
       </p>
       {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
-          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.reorderMin")}</label>
+          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.stockLevelMin")}</label>
           <input type="number" min="0" value={minQuantity} onChange={e => setMinQuantity(e.target.value)}
             style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box" }} />
         </div>
         <div>
-          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.reorderMax")}</label>
+          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.stockLevelMax")}</label>
           <input type="number" min="0" value={maxQuantity} onChange={e => setMaxQuantity(e.target.value)}
             style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box" }} />
         </div>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <Btn variant="ghost" onClick={onClose}>{t("inventoryPage.cancel")}</Btn>
-        <Btn variant="primary" onClick={() => void save()}>{busy ? t("inventoryPage.saving") : t("inventoryPage.saveReorderPoint")}</Btn>
+        <Btn variant="primary" onClick={() => void save()}>{busy ? t("inventoryPage.saving") : t("inventoryPage.saveStockLevels")}</Btn>
       </div>
     </div>
   </Modal>
@@ -359,7 +359,7 @@ export default function ReportsPage() {
       </div>
       <div className="animate-fade-up" style={{ animationDelay: "60ms", background: belowCount > 0 ? "#fef2f2" : "var(--surface)", border: `1px solid ${belowCount > 0 ? "#fca5a5" : "var(--border)"}`, borderRadius: 10, padding: "14px 16px" }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: belowCount > 0 ? "#dc2626" : "var(--ink)" }}>{loading ? "—" : belowCount}</div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{t("reports.tileBelowReorder")}</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)" }}>{t("reports.tileBelowMinimum")}</div>
       </div>
     </div>
 

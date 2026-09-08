@@ -1,0 +1,279 @@
+title Pharmacy ERP Data Model — Final
+
+// ===== CORE =====
+branches [icon: home, color: blue] {
+  id uuid pk
+  name varchar
+  address varchar
+  phone varchar
+   created_at timestamptz
+}
+
+users [icon: user, color: blue] {
+  id uuid pk
+  branch_id uuid fk
+  full_name varchar
+  email varchar
+  password_hash varchar
+  otp varchar
+  role varchar
+  is_active boolean
+  created_at timestamptz
+}
+
+branch_settings [icon: settings, color: blue] {
+  id uuid pk
+  branch_id uuid fk
+  updated_by uuid fk
+  setting_key varchar
+  setting_value text
+  updated_at timestamptz
+}
+
+// ===== CATALOG =====
+product_categories [icon: folder, color: green] {
+  id uuid pk
+  branch_id uuid fk
+  name varchar
+  description text
+}
+
+products [icon: package, color: green] {
+  id uuid pk
+  tax_rate_id uuid fk
+  product_type varchar
+  name varchar
+  generic_name varchar
+  description text
+}
+
+product_variants [icon: layers, color: green] {
+  id uuid pk
+  product_id uuid fk
+  dosage varchar
+  form varchar
+  unit varchar
+  created_at timestamptz
+}
+
+reorder_points [icon: alert-triangle, color: green] {
+  id uuid pk
+  product_id uuid fk
+  branch_id uuid fk
+  min_quantity int
+  max_quantity int
+}
+
+branch_product_categorization [icon: link, color: green] {
+  branch_id uuid pk
+  product_id uuid pk
+  category_id uuid fk
+}
+
+// ===== STOCK =====
+suppliers [icon: people, color: greenyellow] {
+  id uuid pk
+  supplier_name varchar
+  contact varchar
+  location varchar
+  created_at timestamptz
+}
+
+stock_batches [icon: archive, color: orange] {
+  id uuid pk
+  product_variant_id uuid fk
+  branch_id uuid fk
+  supplier_id uuid fk
+  manufacturer_name varchar
+  delivery_code varchar
+  logged_by uuid fk
+  batch_number varchar
+  expiry_date date
+  cost_price numeric
+  selling_price numeric
+  quantity_received int
+  received_at timestamptz
+}
+
+barcodes [icon: hash, color: orange] {
+  id uuid pk
+  stock_batch_id uuid fk
+  parent_barcode_id uuid fk
+  barcode_type varchar
+  code varchar
+  code_source varchar
+  child_count int
+  pieces_per_pack int
+  quantity_available int
+  status varchar
+  created_at timestamptz
+}
+
+batch_recalls [icon: alert-octagon, color: red] {
+  id uuid pk
+  product_variant_id uuid fk
+  batch_number varchar
+  manufacturer_name varchar
+  reason text
+  recalled_by uuid fk
+  recalled_at timestamptz
+}
+
+stock_adjustments [icon: edit, color: orange] {
+  id uuid pk
+  stock_batch_id uuid fk
+  barcode_id uuid fk
+  adjustment_type varchar
+  quantity int
+  reason text
+  performed_by uuid fk
+  adjusted_at timestamptz
+}
+
+notifications [icon: bell, color: red] {
+  id uuid pk
+  branch_id uuid fk
+  source_type varchar
+  source_id uuid
+  message text
+  is_read boolean
+  created_at timestamptz
+}
+
+// ===== SALES =====
+tax_rates [icon: percent, color: purple] {
+  id uuid pk
+  name varchar
+  rate_percentage numeric
+}
+
+discounts [icon: tag, color: purple] {
+  id uuid pk
+  name varchar
+  discount_type varchar
+  value numeric
+  valid_from date
+  valid_to date
+}
+
+insurance_providers [icon: briefcase, color: purple] {
+  id uuid pk
+  name varchar
+  contact_info text
+  default_coverage_percentage numeric
+}
+
+insurance_product_coverage [icon: link, color: purple] {
+  insurance_provider_id uuid pk
+  product_id uuid pk
+  coverage_percentage numeric
+}
+
+sales [icon: shopping-cart, color: purple] {
+  id uuid pk
+  branch_id uuid fk
+  cashier_id uuid fk
+  discount_id uuid fk
+  total_amount numeric
+  sold_at timestamptz
+}
+
+sale_items [icon: list, color: purple] {
+  id uuid pk
+  sale_id uuid fk
+  barcode_id uuid fk
+  tax_rate_id uuid fk
+  quantity int
+  unit_price numeric
+  subtotal numeric
+}
+
+receipts [icon: file-text, color: purple] {
+  id uuid pk
+  sale_id uuid fk
+  receipt_number varchar
+  issued_at timestamptz
+}
+
+insurance_claims [icon: shield, color: purple] {
+  id uuid pk
+  sale_id uuid fk
+  insurance_provider_id uuid fk
+  coverage_percentage_applied numeric
+  claim_amount numeric
+  status varchar
+  submitted_at timestamptz
+}
+
+// ===== ANALYTICS / OPS =====
+sales_forecasts [icon: trending-up, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  product_variant_id uuid fk
+  forecast_period varchar
+  predicted_quantity int
+  generated_at timestamptz
+}
+
+dashboard_reports [icon: bar-chart, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  report_type varchar
+  data jsonb
+  generated_at timestamptz
+}
+
+support_tickets [icon: life-buoy, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  raised_by uuid fk
+  subject varchar
+  description text
+  status varchar
+  created_at timestamptz
+}
+
+// ===== RELATIONSHIPS =====
+users.branch_id - branches.id
+branch_settings.branch_id > branches.id
+branch_settings.updated_by > users.id
+
+products.tax_rate_id > tax_rates.id
+product_variants.product_id > products.id
+reorder_points.product_id > products.id
+reorder_points.branch_id > branches.id
+product_categories.branch_id > branches.id
+branch_product_categorization.branch_id > branches.id
+branch_product_categorization.product_id > products.id
+branch_product_categorization.category_id > product_categories.id
+
+stock_batches.product_variant_id > product_variants.id
+stock_batches.branch_id > branches.id
+stock_batches.supplier_id > suppliers.id
+stock_batches.logged_by > users.id
+barcodes.stock_batch_id > stock_batches.id
+barcodes.parent_barcode_id > barcodes.id
+batch_recalls.product_variant_id > product_variants.id
+batch_recalls.recalled_by > users.id
+stock_adjustments.stock_batch_id > stock_batches.id
+stock_adjustments.barcode_id > barcodes.id
+stock_adjustments.performed_by > users.id
+notifications.branch_id > branches.id
+
+sales.branch_id > branches.id
+sales.cashier_id > users.id
+sales.discount_id > discounts.id
+sale_items.sale_id > sales.id
+sale_items.barcode_id > barcodes.id
+sale_items.tax_rate_id > tax_rates.id
+receipts.sale_id - sales.id
+insurance_claims.sale_id - sales.id
+insurance_claims.insurance_provider_id > insurance_providers.id
+insurance_product_coverage.insurance_provider_id > insurance_providers.id
+insurance_product_coverage.product_id > products.id
+
+sales_forecasts.branch_id > branches.id
+sales_forecasts.product_variant_id > product_variants.id
+dashboard_reports.branch_id > branches.id
+support_tickets.branch_id > branches.id
+support_tickets.raised_by > users.id

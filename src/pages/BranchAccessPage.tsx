@@ -1,7 +1,8 @@
 import { useState } from "react"
 import { Mail, Lock, AlertCircle, Loader2, CheckCircle2 } from "lucide-react"
-import { signInToBranch, sendBranchPasswordReset, type BranchAccess } from "../lib/auth"
+import { signInToBranch, sendBranchPasswordReset, NO_BRANCH_PROFILE, type BranchAccess } from "../lib/auth"
 import { errorMessage as errorText } from "../lib/supabase"
+import { useTranslation } from "../lib/i18n"
 import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell"
 import MarketingHome from "./MarketingHome"
 import loginImg from "../assets/products.jpg"
@@ -21,6 +22,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // where the password gets set. Returning sign-ins use that password.
 
 function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => void; onHome: () => void }) {
+  const { t, tNode } = useTranslation()
   const [mode, setMode] = useState<"login" | "forgot" | "forgot-sent">("login")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -30,8 +32,8 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     const target = email.trim().toLowerCase()
-    if (!EMAIL_PATTERN.test(target)) { setError("Enter the email address your branch was activated with."); return }
-    if (!password) { setError("Enter your password."); return }
+    if (!EMAIL_PATTERN.test(target)) { setError(t("auth.errorEmailRequired")); return }
+    if (!password) { setError(t("auth.errorPasswordRequired")); return }
 
     setBusy(true)
     setError(null)
@@ -39,7 +41,11 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
       const access = await signInToBranch(target, password)
       onAccess(access)
     } catch (reason) {
-      setError(errorText(reason, "That email and password combination was not accepted."))
+      setError(
+        reason instanceof Error && reason.message === NO_BRANCH_PROFILE
+          ? t("auth.errorNoBranchProfile")
+          : errorText(reason, t("auth.errorBadCredentials"))
+      )
     } finally {
       setBusy(false)
     }
@@ -48,7 +54,7 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
   async function submitForgot(event: React.FormEvent) {
     event.preventDefault()
     const target = email.trim().toLowerCase()
-    if (!EMAIL_PATTERN.test(target)) { setError("Enter the email address your branch was activated with."); return }
+    if (!EMAIL_PATTERN.test(target)) { setError(t("auth.errorEmailRequired")); return }
 
     setBusy(true)
     setError(null)
@@ -60,21 +66,19 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
       await sendBranchPasswordReset(target, redirectTo)
       setMode("forgot-sent")
     } catch (reason) {
-      setError(errorText(reason, "Could not send a reset link right now. Please try again."))
+      setError(errorText(reason, t("auth.errorResetSendFailed")))
     } finally {
       setBusy(false)
     }
   }
 
-  const eyebrow = mode === "login" ? "Branch sign-in" : "Reset password"
-  const tagline = mode === "login"
-    ? "Sign in to your branch dashboard — live stock, barcodes and sales in one place."
-    : "We'll email you a link to choose a new password."
+  const eyebrow = mode === "login" ? t("auth.eyebrowSignIn") : t("auth.eyebrowReset")
+  const tagline = mode === "login" ? t("auth.taglineSignIn") : t("auth.taglineReset")
 
   return (
     <AuthShell
       image={loginImg}
-      imageAlt="Pharmacist using a digital stock management system with full pharmacy shelves visible"
+      imageAlt={t("auth.loginImageAlt")}
       eyebrow={eyebrow}
       tagline={tagline}
       onBack={onHome}
@@ -85,22 +89,22 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(30,95,168,0.1)" }}>
               <Lock className="w-6 h-6" style={{ color: "#1e5fa8" }} />
             </div>
-            <h1 className="text-2xl font-extrabold" style={authCardHeading}>Branch sign-in</h1>
+            <h1 className="text-2xl font-extrabold" style={authCardHeading}>{t("auth.signInTitle")}</h1>
             <p className="text-sm mt-2 mb-7" style={authBody}>
-              Sign in with the email and password you set when your branch was activated.
+              {t("auth.signInSubtitle")}
             </p>
 
             <form onSubmit={submit} noValidate className="space-y-4">
               <div>
                 <label htmlFor="branch-email" className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>
-                  Email address
+                  {t("auth.emailLabel")}
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#9ca3af" }} />
                   <input
                     id="branch-email" type="email" autoComplete="email" autoFocus
                     value={email} onChange={e => { setEmail(e.target.value); setError(null) }}
-                    placeholder="branch@yourpharmacy.com" disabled={busy}
+                    placeholder={t("auth.emailPlaceholder")} disabled={busy}
                     style={{ ...authInput, paddingLeft: 38, borderColor: error ? "#fca5a5" : "#e2e8f0" }}
                   />
                 </div>
@@ -109,17 +113,17 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label htmlFor="branch-password" className="text-xs font-semibold" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>
-                    Password
+                    {t("auth.passwordLabel")}
                   </label>
                   <button type="button" onClick={() => { setMode("forgot"); setError(null) }}
                     className="text-xs font-semibold" style={{ color: "var(--primary)", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-                    Forgot password?
+                    {t("auth.forgotLink")}
                   </button>
                 </div>
                 <PasswordInput
                   id="branch-password" autoComplete="current-password"
                   value={password} onChange={e => { setPassword(e.target.value); setError(null) }}
-                  placeholder="••••••••" disabled={busy}
+                  placeholder={t("auth.passwordPlaceholder")} disabled={busy}
                   leftIcon={<Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#9ca3af" }} />}
                   style={{ ...authInput, paddingLeft: 38, borderColor: error ? "#fca5a5" : "#e2e8f0" }}
                 />
@@ -135,14 +139,14 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
               <button type="submit" disabled={busy}
                 className="flex items-center justify-center gap-2"
                 style={{ ...authPrimaryButton, opacity: busy ? 0.7 : 1 }}>
-                {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Signing in…</> : "Sign in"}
+                {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("auth.signingIn")}</> : t("auth.signInButton")}
               </button>
             </form>
 
             <p className="text-sm mt-6 text-center" style={authBody}>
-              No account yet?{" "}
+              {t("auth.noAccount")}{" "}
               <a href={REGISTER_URL} style={{ color: "#1e5fa8", fontWeight: 700, textDecoration: "none" }}>
-                Register your pharmacy ↗
+                {t("auth.registerLink")}
               </a>
             </p>
           </>
@@ -153,22 +157,22 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(30,95,168,0.1)" }}>
               <Mail className="w-6 h-6" style={{ color: "var(--primary)" }} />
             </div>
-            <h1 className="text-2xl font-extrabold" style={authCardHeading}>Reset your password</h1>
+            <h1 className="text-2xl font-extrabold" style={authCardHeading}>{t("auth.forgotTitle")}</h1>
             <p className="text-sm mt-2 mb-7" style={authBody}>
-              Enter your branch email and we'll send you a link to choose a new password.
+              {t("auth.forgotSubtitle")}
             </p>
 
             <form onSubmit={submitForgot} noValidate className="space-y-4">
               <div>
                 <label htmlFor="forgot-email" className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>
-                  Email address
+                  {t("auth.emailLabel")}
                 </label>
                 <div className="relative">
                   <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: "#9ca3af" }} />
                   <input
                     id="forgot-email" type="email" autoComplete="email" autoFocus
                     value={email} onChange={e => { setEmail(e.target.value); setError(null) }}
-                    placeholder="branch@yourpharmacy.com" disabled={busy}
+                    placeholder={t("auth.emailPlaceholder")} disabled={busy}
                     style={{ ...authInput, paddingLeft: 38, borderColor: error ? "#fca5a5" : "#e2e8f0" }}
                   />
                 </div>
@@ -184,11 +188,11 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
               <button type="submit" disabled={busy}
                 className="flex items-center justify-center gap-2"
                 style={{ ...authPrimaryButton, opacity: busy ? 0.7 : 1 }}>
-                {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : "Send reset link"}
+                {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> {t("auth.sending")}</> : t("auth.sendResetLink")}
               </button>
               <button type="button" onClick={() => { setMode("login"); setError(null) }}
                 className="w-full text-sm font-semibold text-center" style={{ color: "#6b7280", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-                ← Back to sign in
+                ← {t("auth.backToSignIn")}
               </button>
             </form>
           </>
@@ -199,14 +203,15 @@ function LoginView({ onAccess, onHome }: { onAccess: (access: BranchAccess) => v
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(30,95,168,0.1)" }}>
               <CheckCircle2 className="w-7 h-7" style={{ color: "#1e5fa8" }} />
             </div>
-            <h1 className="text-xl font-extrabold" style={authCardHeading}>Check your email</h1>
+            <h1 className="text-xl font-extrabold" style={authCardHeading}>{t("auth.checkEmailTitle")}</h1>
             <p className="text-sm mt-2" style={authBody}>
-              If <span className="font-semibold" style={{ color: "#0f172a" }}>{email.trim().toLowerCase()}</span> is an
-              activated branch account, a reset link is on its way.
+              {tNode("auth.checkEmailBody", {
+                email: <span className="font-semibold" style={{ color: "#0f172a" }}>{email.trim().toLowerCase()}</span>,
+              })}
             </p>
             <button type="button" onClick={() => { setMode("login"); setError(null) }}
               className="text-sm font-semibold mt-6" style={{ color: "var(--primary)", background: "none", border: 0, cursor: "pointer", fontFamily: "var(--font-body)" }}>
-              ← Back to sign in
+              ← {t("auth.backToSignIn")}
             </button>
           </div>
         )}

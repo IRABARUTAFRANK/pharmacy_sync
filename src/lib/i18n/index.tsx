@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, Fragment, type ReactNode } from "react";
 import en, { type TranslationKey } from "./en";
 import rw from "./rw";
 import fr from "./fr";
@@ -49,10 +49,29 @@ function interpolate(template: string, vars?: Vars): string {
   return template.replace(/\{(\w+)\}/g, (match, key) => (key in vars ? String(vars[key]) : match));
 }
 
+// Node-valued interpolation. Several public-flow sentences emphasise a value
+// inside the sentence ("we'll email <b>{email}</b> an activation link"), and
+// splitting those into prefix/suffix keys would hard-code English word order
+// -- Kinyarwanda and French put the same value in a different position. This
+// keeps the whole sentence as one translatable key while still letting the
+// caller render {email} as its own styled node.
+type NodeVars = Record<string, ReactNode>;
+
+function interpolateNodes(template: string, vars: NodeVars): ReactNode {
+  const parts = template.split(/(\{\w+\})/g);
+  return parts.map((part, i) => {
+    const name = /^\{(\w+)\}$/.exec(part)?.[1];
+    const value = name && name in vars ? vars[name] : part;
+    return <Fragment key={i}>{value}</Fragment>;
+  });
+}
+
 interface I18nContextValue {
   lang: Lang;
   setLang: (lang: Lang) => void;
   t: (key: TranslationKey, vars?: Vars) => string;
+  /** Like `t`, but each {placeholder} may be any ReactNode (e.g. a <span> with emphasis). */
+  tNode: (key: TranslationKey, vars: NodeVars) => ReactNode;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -75,7 +94,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     [lang]
   );
 
-  return <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>;
+  const tNode = useCallback(
+    (key: TranslationKey, vars: NodeVars) =>
+      interpolateNodes(dictionaries[lang][key] ?? dictionaries.en[key], vars),
+    [lang]
+  );
+
+  return <I18nContext.Provider value={{ lang, setLang, t, tNode }}>{children}</I18nContext.Provider>;
 }
 
 export function useTranslation(): I18nContextValue {

@@ -1,4 +1,5 @@
 import { supabase } from "./supabase"
+import { supabaseAdmin } from "./supabaseAdmin"
 import { listTaxRates, type TaxRate } from "./products"
 import type { PaymentMethod } from "./branch"
 
@@ -13,13 +14,17 @@ export interface InsuranceProvider {
   name: string
   defaultCoveragePercentage: number
   contactInfo: string | null
+  /** Insurers are businesses, so they carry a TIN. Snapshotted onto each sale
+   *  they cover, so a later change here never rewrites an issued receipt. */
+  tin: string | null
 }
 
 export async function loadInsuranceProviders(): Promise<InsuranceProvider[]> {
-  const { data, error } = await supabase.from("insurance_providers").select("id, name, default_coverage_percentage, contact_info").order("name")
+  const { data, error } = await supabase.from("insurance_providers").select("id, name, default_coverage_percentage, contact_info, tin").order("name")
   if (error) raise(error, "Could not load insurance providers.")
   return (data ?? []).map(row => ({
-    id: row.id, name: row.name, defaultCoveragePercentage: Number(row.default_coverage_percentage), contactInfo: row.contact_info,
+    id: row.id, name: row.name, defaultCoveragePercentage: Number(row.default_coverage_percentage),
+    contactInfo: row.contact_info, tin: row.tin ?? null,
   }))
 }
 
@@ -121,17 +126,17 @@ export async function loadCoverageOverridesWithNames(providerId: string): Promis
 
 // ── Admin: manage providers and per-product overrides ──────────────────────
 
-export async function adminCreateInsuranceProvider(name: string, defaultCoveragePercentage: number, contactInfo?: string): Promise<string> {
-  const { data, error } = await supabase.rpc("admin_create_insurance_provider", {
-    p_name: name, p_default_coverage_percentage: defaultCoveragePercentage, p_contact_info: contactInfo || null,
+export async function adminCreateInsuranceProvider(name: string, defaultCoveragePercentage: number, contactInfo?: string, tin?: string): Promise<string> {
+  const { data, error } = await supabaseAdmin.rpc("admin_create_insurance_provider", {
+    p_name: name, p_default_coverage_percentage: defaultCoveragePercentage, p_contact_info: contactInfo || null, p_tin: tin || null,
   })
   if (error) raise(error, "Could not create this insurance provider.")
   return data as string
 }
 
-export async function adminUpdateInsuranceProvider(providerId: string, name: string, defaultCoveragePercentage: number, contactInfo?: string): Promise<void> {
-  const { error } = await supabase.rpc("admin_update_insurance_provider", {
-    p_provider_id: providerId, p_name: name, p_default_coverage_percentage: defaultCoveragePercentage, p_contact_info: contactInfo || null,
+export async function adminUpdateInsuranceProvider(providerId: string, name: string, defaultCoveragePercentage: number, contactInfo?: string, tin?: string): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("admin_update_insurance_provider", {
+    p_provider_id: providerId, p_name: name, p_default_coverage_percentage: defaultCoveragePercentage, p_contact_info: contactInfo || null, p_tin: tin || null,
   })
   if (error) raise(error, "Could not update this insurance provider.")
 }
@@ -139,12 +144,12 @@ export async function adminUpdateInsuranceProvider(providerId: string, name: str
 // pass 0 to mark a product as not covered at all — still a real override row,
 // not a special case (matches the table's own design).
 export async function adminSetInsuranceCoverage(providerId: string, productId: string, coveragePercentage: number): Promise<void> {
-  const { error } = await supabase.rpc("admin_set_insurance_coverage", { p_provider_id: providerId, p_product_id: productId, p_coverage_percentage: coveragePercentage })
+  const { error } = await supabaseAdmin.rpc("admin_set_insurance_coverage", { p_provider_id: providerId, p_product_id: productId, p_coverage_percentage: coveragePercentage })
   if (error) raise(error, "Could not set coverage for this product.")
 }
 
 export async function adminClearInsuranceCoverage(providerId: string, productId: string): Promise<void> {
-  const { error } = await supabase.rpc("admin_clear_insurance_coverage", { p_provider_id: providerId, p_product_id: productId })
+  const { error } = await supabaseAdmin.rpc("admin_clear_insurance_coverage", { p_provider_id: providerId, p_product_id: productId })
   if (error) raise(error, "Could not clear this product's coverage override.")
 }
 

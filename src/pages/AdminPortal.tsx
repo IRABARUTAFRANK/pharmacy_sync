@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { usePagedList, LoadMoreButton } from "../lib/pagination";
 import {
   LayoutDashboard, CheckSquare, Building2, ShieldAlert, Ticket,
   Phone, Mail, MapPin, Clock, AlertTriangle, CheckCircle2, XCircle,
@@ -12,6 +13,11 @@ import {
   denyPharmacyApplication,
   isSuperAdminSession,
   listPharmacyApplications,
+  adminUpdateBranchDetails,
+  expireStaleApplications,
+  applicationDaysLeft,
+  listDeletedBranches,
+  type DeletedBranchRecord,
   markPharmacyCalled,
   requestAdminOtp,
   requestPharmacyOtp,
@@ -441,7 +447,8 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
   const [detail, setDetail] = useState<BranchRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BranchRecord | null>(null);
 
-  const shown = filter === "all" ? branches : branches.filter((b) => b.status === filter);
+  const filtered = filter === "all" ? branches : branches.filter((b) => b.status === filter);
+  const { visible: shown, hasMore, showMore, shown: shownCount, total } = usePagedList(filtered, [filter]);
   const opts: (BranchStatus | "all")[] = ["all","pending","otp_sent","active","locked","denied"];
 
   // A full in-page view, not a popup — the eye icon drills into it the same
@@ -453,14 +460,15 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
       <BranchDetailView
         branch={detail}
         onBack={() => setDetail(null)}
-        onDelete={() => { setDeleteTarget(detail); setDetail(null); }}
+        onDelete={() => setDeleteTarget(detail)}
+        onSaved={() => { setDetail(null); onChange(); }}
       >
         {deleteTarget && (
           <DeleteBranchModal
             branch={deleteTarget}
             adminEmail={adminEmail}
             onClose={() => setDeleteTarget(null)}
-            onDeleted={() => { setDeleteTarget(null); onChange(); }}
+            onDeleted={() => { setDeleteTarget(null); setDetail(null); onChange(); }}
           />
         )}
       </BranchDetailView>
@@ -478,6 +486,7 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
         <h2 className="text-xl font-bold text-slate-800">{t("admin.branchDirectory")}</h2>
         <p className="text-xs text-slate-400 mt-0.5">{t("admin.branchesRegistered", { count: branches.length })}</p>
       </div>
+
 
       <div className="flex gap-2 flex-wrap">
         {opts.map((s) => (
@@ -507,7 +516,10 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
               {shown.map((b) => (
                 <tr key={b.id} onClick={() => setDetail(b)} className="hover:bg-blue-50/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3 font-mono text-slate-400">{b.applicationCode ?? b.id.slice(0, 8)}</td>
-                  <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{b.pharmacyName}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                    {b.pharmacyName}
+                    <ExpiryWarning branch={b} />
+                  </td>
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{b.location.split(",")[0]}</td>
                   <td className="px-4 py-3 font-mono text-slate-500">{b.phone}</td>
                   <td className="px-4 py-3 font-mono text-blue-700 font-semibold">{b.branchCode ?? "—"}</td>
@@ -526,11 +538,91 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
               ))}
             </tbody>
           </table>
-          {shown.length === 0 && (
+          {filtered.length === 0 && (
             <p className="text-center py-10 text-xs text-slate-400">{t("admin.noBranchesWithStatus", { filter: filter === "all" ? t("admin.statusAll") : t(statusLabelKey(filter)) })}</p>
           )}
         </div>
+        <LoadMoreButton hasMore={hasMore} shown={shownCount} total={total} onClick={showMore} />
       </div>
+
+      <DeletedBranchesPanel />
+    </div>
+  );
+}
+
+// Log left behind by admin_delete_branch() -- who/what/when, not a way to
+// bring the branch back (its actual data really is gone). Collapsed and
+// lazily fetched: an admin who never deletes anything should never pay for
+// this query on every visit to the branches tab.
+function DeletedBranchesPanel() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<DeletedBranchRecord[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && rows === null) {
+      setLoading(true);
+      setError("");
+      try {
+        setRows(await listDeletedBranches());
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : t("admin.deletedBranchesLoadError"));
+      } finally {
+        setLoading(false);
+      }
+    }
+  }
+
+  const all = rows ?? [];
+  const { visible: paged, hasMore, showMore, shown, total } = usePagedList(all, []);
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <button onClick={() => void toggle()}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors">
+        <span className="text-sm font-semibold text-slate-600">{t("admin.deletedBranchesTitle")}</span>
+        <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+      {open && (
+        <div className="border-t border-slate-100">
+          {error && <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs px-4 py-2">{error}</div>}
+          {loading ? (
+            <p className="text-center py-8 text-xs text-slate-400">{t("admin.loading")}</p>
+          ) : all.length === 0 ? (
+            <p className="text-center py-8 text-xs text-slate-400">{t("admin.deletedBranchesEmpty")}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    {[t("admin.colPharmacy"), t("admin.colEmail"), t("admin.colPhone"), t("admin.colBranchCode"), t("admin.deletedBranchesReasonCol"), t("admin.deletedBranchesByCol"), t("admin.deletedBranchesWhenCol")].map((h) => (
+                      <th key={h} className="text-left px-4 py-2.5 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {paged.map((r) => (
+                    <tr key={r.id}>
+                      <td className="px-4 py-2.5 font-semibold text-slate-700 whitespace-nowrap">{r.pharmacyName}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{r.email ?? "—"}</td>
+                      <td className="px-4 py-2.5 font-mono text-slate-500">{r.phone ?? "—"}</td>
+                      <td className="px-4 py-2.5 font-mono text-slate-500">{r.branchCode ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-500 max-w-xs truncate">{r.reason ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-500">{r.deletedByEmail ?? "—"}</td>
+                      <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap">{fmt(r.deletedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <LoadMoreButton hasMore={hasMore} shown={shown} total={total} onClick={showMore} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -538,13 +630,85 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
 // Full-page branch detail — replaces the directory table in place (same nav
 // tab, same scroll container) with a smooth fade/slide-up entrance, instead
 // of interrupting the page with a popup.
+// How long a pending registration has before it is deleted. Silent until
+// there are two days left, then it counts down -- an approval queue that
+// nags from day one is one people learn to ignore.
+function ExpiryWarning({ branch }: { branch: BranchRecord }) {
+  const { t } = useTranslation();
+  if (branch.status !== "pending") return null;
+  const daysLeft = applicationDaysLeft(branch.submittedAt);
+  if (daysLeft > 2) return null;
+  const urgent = daysLeft <= 1;
+  return (
+    <span className={`ml-2 inline-block text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+      urgent ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"
+    }`}>
+      {daysLeft <= 0 ? t("admin.expiryToday") : t("admin.expiryDaysLeft", { count: daysLeft })}
+    </span>
+  );
+}
+
+function EditBranchModal({ branch, onClose, onSaved }: {
+  branch: BranchRecord; onClose: () => void; onSaved: () => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(branch.pharmacyName);
+  const [phone, setPhone] = useState(branch.phone);
+  const [email, setEmail] = useState(branch.email);
+  const [address, setAddress] = useState(branch.location);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) { setError(t("admin.editBranchNameRequired")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminUpdateBranchDetails(branch.branchId!, { name, phone, email, address });
+      onSaved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("admin.editBranchSaveError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors";
+  const label = "text-xs font-semibold text-slate-600 block mb-1";
+
+  return (
+    <Modal title={t("admin.editBranchTitle", { pharmacy: branch.pharmacyName })} onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-400">{t("admin.editBranchIntro")}</p>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <div><label className={label}>{t("admin.fieldPharmacyName")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={field} /></div>
+        <div><label className={label}>{t("admin.fieldPhone")}</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} className={field} /></div>
+        <div><label className={label}>{t("admin.fieldEmail")}</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={field} /></div>
+        <div><label className={label}>{t("admin.fieldLocation")}</label>
+          <input value={address} onChange={(e) => setAddress(e.target.value)} className={field} /></div>
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void submit()} disabled={busy}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+            {busy ? t("admin.saving") : t("admin.saveChanges")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function BranchDetailView({
-  branch, onBack, onDelete, children,
+  branch, onBack, onDelete, onSaved, children,
 }: {
-  branch: BranchRecord; onBack: () => void; onDelete: () => void; children: React.ReactNode;
+  branch: BranchRecord; onBack: () => void; onDelete: () => void; onSaved: () => void; children: React.ReactNode;
 }) {
   const { t } = useTranslation();
   const [resending, setResending] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [resendResult, setResendResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   async function resend() {
@@ -575,7 +739,19 @@ function BranchDetailView({
           </div>
           <p className="text-xs text-slate-400 mt-1 font-mono">{branch.applicationCode ?? branch.id}</p>
         </div>
+        {/* Only once a branch row actually exists -- a pending application has
+            no branch to edit yet, it is still just a form someone submitted. */}
+        {branch.branchId && (
+          <button onClick={() => setEditing(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700 transition-colors">
+            {t("admin.editBranchDetails")}
+          </button>
+        )}
       </div>
+
+      {editing && branch.branchId && (
+        <EditBranchModal branch={branch} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); onSaved(); }} />
+      )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
@@ -652,6 +828,7 @@ function DeleteBranchModal({
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState<"warn" | "email" | "otp">("warn");
+  const [reason, setReason] = useState("");
   const [email, setEmail] = useState(adminEmail);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
@@ -678,7 +855,7 @@ function DeleteBranchModal({
     setError("");
     try {
       await verifyAdminOtp(email.trim(), token);
-      await deleteBranch(branch.branchId!);
+      await deleteBranch(branch.branchId!, reason);
       onDeleted();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("admin.couldNotDelete"));
@@ -706,6 +883,14 @@ function DeleteBranchModal({
           <p className="text-xs text-slate-500">
             {t("admin.deleteWarnNote")}
           </p>
+          <div>
+            <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.deleteReasonLabel")}</label>
+            <textarea
+              value={reason} onChange={(e) => setReason(e.target.value)} rows={2}
+              placeholder={t("admin.deleteReasonPlaceholder")}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-red-400 focus:ring-1 focus:ring-red-200 transition-colors resize-none"
+            />
+          </div>
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 py-2.5 rounded-lg text-xs font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
               {t("admin.cancel")}
@@ -722,7 +907,7 @@ function DeleteBranchModal({
           <p className="text-xs text-slate-500">{t("admin.reenterEmailPrompt")}</p>
           <input
             type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
-            placeholder="you@pharmsync.rw"
+            placeholder={t("admin.adminEmailPlaceholder")}
             className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-red-400 focus:ring-1 focus:ring-red-200 transition-colors"
           />
           {error && <p className="text-xs text-red-600">{error}</p>}
@@ -909,6 +1094,7 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
 
   const priorityOrder = { high: 0, medium: 1, low: 2 };
   const sorted = [...tickets].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+  const { visible: paged, hasMore, showMore, shown, total } = usePagedList(sorted, []);
 
   async function updateStatus(id: string, status: TicketStatus) {
     setUpdating(true);
@@ -951,7 +1137,7 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
       )}
 
       <div className="space-y-3">
-        {sorted.map((tk) => (
+        {paged.map((tk) => (
           <div key={tk.id} onClick={() => setDetail(tk)}
             className="bg-white rounded-xl border border-blue-100 shadow-sm p-4 cursor-pointer hover:border-blue-300 transition-colors">
             <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -977,6 +1163,7 @@ function TicketsView({ tickets, onChange }: { tickets: AdminTicketRow[]; onChang
             <p className="text-xs text-slate-400">{t("admin.noSupportTickets")}</p>
           </div>
         )}
+        <LoadMoreButton hasMore={hasMore} shown={shown} total={total} onClick={showMore} />
       </div>
 
       {detail && (
@@ -1097,7 +1284,7 @@ function AddProductModal({ taxRates, onClose, onCreated }: { taxRates: TaxRate[]
         {error && <p className="text-xs text-red-600">{error}</p>}
         <div>
           <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.productName")}</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Amoxicillin"
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("admin.productSearchExample")}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -1233,7 +1420,8 @@ function ProductsView() {
   }
 
   const needle = query.trim().toLowerCase();
-  const shown = products.filter((p) => !needle || p.name.toLowerCase().includes(needle) || (p.genericName ?? "").toLowerCase().includes(needle));
+  const filtered = products.filter((p) => !needle || p.name.toLowerCase().includes(needle) || (p.genericName ?? "").toLowerCase().includes(needle));
+  const { visible: shown, hasMore, showMore, shown: shownCount, total } = usePagedList(filtered, [needle]);
 
   return (
     <div className="space-y-6">
@@ -1296,10 +1484,11 @@ function ProductsView() {
               ))}
             </tbody>
           </table>
-          {!loading && shown.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <p className="text-center py-10 text-xs text-slate-400">{t("admin.noProductsFound")}</p>
           )}
         </div>
+        <LoadMoreButton hasMore={hasMore} shown={shownCount} total={total} onClick={showMore} />
       </div>
 
       {showAdd && (
@@ -1402,7 +1591,8 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const needle = query.trim().toLowerCase();
-  const shown = categories.filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.branch_name.toLowerCase().includes(needle));
+  const filtered = categories.filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.branch_name.toLowerCase().includes(needle));
+  const { visible: shown, hasMore, showMore, shown: shownCount, total } = usePagedList(filtered, [needle]);
   const activeBranches = branches.filter((b) => b.branchId).map((b) => ({ id: b.branchId!, name: b.pharmacyName }));
 
   return (
@@ -1443,10 +1633,11 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
               ))}
             </tbody>
           </table>
-          {!loading && shown.length === 0 && (
+          {!loading && filtered.length === 0 && (
             <p className="text-center py-10 text-xs text-slate-400">{t("admin.noCategoriesFound")}</p>
           )}
         </div>
+        <LoadMoreButton hasMore={hasMore} shown={shownCount} total={total} onClick={showMore} />
       </div>
 
       {showAdd && (
@@ -1468,51 +1659,59 @@ function ProviderFormModal({ provider, onClose, onSaved }: {
   const [name, setName] = useState(provider?.name ?? "");
   const [rate, setRate] = useState(provider ? String(provider.defaultCoveragePercentage) : "");
   const [contact, setContact] = useState(provider?.contactInfo ?? "");
+  const [tin, setTin] = useState(provider?.tin ?? "");
+  const { t } = useTranslation();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     const parsed = Number(rate);
-    if (!name.trim()) { setError("Provider name is required."); return; }
-    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) { setError("Default coverage must be between 0 and 100."); return; }
+    if (!name.trim()) { setError(t("admin.insNameRequired")); return; }
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) { setError(t("admin.insCoverageRange")); return; }
     setBusy(true);
     setError("");
     try {
-      if (provider) await adminUpdateInsuranceProvider(provider.id, name.trim(), parsed, contact.trim());
-      else await adminCreateInsuranceProvider(name.trim(), parsed, contact.trim());
+      if (provider) await adminUpdateInsuranceProvider(provider.id, name.trim(), parsed, contact.trim(), tin.trim());
+      else await adminCreateInsuranceProvider(name.trim(), parsed, contact.trim(), tin.trim());
       onSaved();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not save this insurance provider.");
+      setError(reason instanceof Error ? reason.message : t("admin.insSaveError"));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Modal title={provider ? "Edit Insurance Provider" : "Add Insurance Provider"} onClose={onClose}>
+    <Modal title={provider ? t("admin.insEditTitle") : t("admin.insAddTitle")} onClose={onClose}>
       <div className="space-y-3">
         {error && <p className="text-xs text-red-600">{error}</p>}
         <div>
-          <label className="text-xs font-semibold text-slate-600 block mb-1">Provider Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. RSSB, MMI, Radiant"
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.insProviderName")}</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("admin.insProviderNamePlaceholder")}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-600 block mb-1">Default Coverage Applied to All Medicines (%)</label>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.insTinLabel")}</label>
+          <input value={tin} onChange={(e) => setTin(e.target.value)} placeholder={t("admin.insTinPlaceholder")}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
+          <p className="text-[11px] text-slate-400 mt-1">{t("admin.insTinHint")}</p>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.insDefaultCoverageLabel")}</label>
           <input type="number" min="0" max="100" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-600 block mb-1">Contact Info (optional)</label>
+          <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.insContactLabel")}</label>
           <input value={contact} onChange={(e) => setContact(e.target.value)}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
           <button onClick={() => void submit()} disabled={busy}
             className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
             {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-            {provider ? "Save Changes" : "Add Provider"}
+            {provider ? t("admin.insSaveChanges") : t("admin.insAddButton")}
           </button>
         </div>
       </div>
@@ -1521,6 +1720,7 @@ function ProviderFormModal({ provider, onClose, onSaved }: {
 }
 
 function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvider; onClose: () => void }) {
+  const { t } = useTranslation();
   const [overrides, setOverrides] = useState<CoverageOverrideRow[]>([]);
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1580,15 +1780,15 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
   }
 
   return (
-    <Modal title={`Coverage — ${provider.name}`} onClose={onClose}>
+    <Modal title={t("admin.insCoverageTitle", { provider: provider.name })} onClose={onClose}>
       <div className="space-y-4 max-h-[65vh] overflow-y-auto">
-        <p className="text-xs text-slate-500">Default coverage is <strong>{provider.defaultCoveragePercentage}%</strong> for every product. Add a row below only for a product that should differ — including 0% for "not covered at all".</p>
+        <p className="text-xs text-slate-500">{t("admin.insCoverageIntro", { percent: provider.defaultCoveragePercentage })}</p>
         {error && <p className="text-xs text-red-600">{error}</p>}
 
         {loading ? (
-          <p className="text-xs text-slate-400">Loading…</p>
+          <p className="text-xs text-slate-400">{t("admin.insCoverageLoading")}</p>
         ) : overrides.length === 0 ? (
-          <p className="text-xs text-slate-400">No exceptions yet — every product uses the default.</p>
+          <p className="text-xs text-slate-400">{t("admin.insCoverageNone")}</p>
         ) : (
           <div className="space-y-1.5">
             {overrides.map((o) => (
@@ -1596,9 +1796,9 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
                 <span className="text-sm text-slate-700">{o.productName}</span>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-xs font-bold ${o.coveragePercentage === 0 ? "text-red-600" : "text-blue-700"}`}>
-                    {o.coveragePercentage === 0 ? "Not covered" : `${o.coveragePercentage}%`}
+                    {o.coveragePercentage === 0 ? t("admin.insNotCovered") : `${o.coveragePercentage}%`}
                   </span>
-                  <button onClick={() => void clearOverride(o.productId)} disabled={busy} title="Revert to default"
+                  <button onClick={() => void clearOverride(o.productId)} disabled={busy} title={t("admin.insRevertToDefault")}
                     className="text-slate-400 hover:text-red-600 transition-colors disabled:opacity-50">
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -1609,10 +1809,10 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
         )}
 
         <div className="border-t border-slate-100 pt-3 space-y-2">
-          <label className="text-xs font-semibold text-slate-600 block">Add a Product Override</label>
+          <label className="text-xs font-semibold text-slate-600 block">{t("admin.insAddOverride")}</label>
           <input value={pickedProductId ? products.find((p) => p.id === pickedProductId)?.name ?? "" : productQuery}
             onChange={(e) => { setProductQuery(e.target.value); setPickedProductId(""); }}
-            placeholder="Search a product…"
+            placeholder={t("admin.insSearchProduct")}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
           {!pickedProductId && productQuery.trim() && (
             <div className="border border-slate-100 rounded-lg max-h-32 overflow-y-auto">
@@ -1622,18 +1822,18 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
                   {p.name}
                 </button>
               ))}
-              {candidates.length === 0 && <p className="px-3 py-1.5 text-xs text-slate-400">No matching product.</p>}
+              {candidates.length === 0 && <p className="px-3 py-1.5 text-xs text-slate-400">{t("admin.insNoProductMatch")}</p>}
             </div>
           )}
           {pickedProductId && (
             <div className="flex items-center gap-2">
               <input type="number" min="0" max="100" step="0.01" value={pct} onChange={(e) => setPct(e.target.value)}
-                placeholder="Coverage %" className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
-              <button onClick={() => setPct("0")} className="text-xs font-semibold text-red-600 hover:underline">Not covered</button>
+                placeholder={t("admin.insCoveragePercent")} className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
+              <button onClick={() => setPct("0")} className="text-xs font-semibold text-red-600 hover:underline">{t("admin.insNotCovered")}</button>
               <div className="flex-1" />
               <button onClick={() => void saveOverride(pickedProductId, Number(pct))} disabled={busy || pct.trim() === "" || !Number.isFinite(Number(pct))}
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
-                {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} Save
+                {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />} {t("admin.insSave")}
               </button>
             </div>
           )}
@@ -1644,6 +1844,7 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
 }
 
 function InsuranceView() {
+  const { t } = useTranslation();
   const [providers, setProviders] = useState<InsuranceProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1657,24 +1858,25 @@ function InsuranceView() {
     try {
       setProviders(await loadInsuranceProviders());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load insurance providers.");
+      setError(reason instanceof Error ? reason.message : t("admin.insLoadError"));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  const { visible: pagedProviders, hasMore, showMore, shown, total } = usePagedList(providers, []);
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Insurance Providers</h2>
-          <p className="text-xs text-slate-400 mt-0.5">{providers.length} provider{providers.length === 1 ? "" : "s"}</p>
+          <h2 className="text-xl font-bold text-slate-800">{t("admin.insHeading")}</h2>
+          <p className="text-xs text-slate-400 mt-0.5">{t("admin.insProviderCount", { count: providers.length })}</p>
         </div>
         <button onClick={() => setShowAdd(true)}
           className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus className="w-3.5 h-3.5" /> Add Provider
+          <Plus className="w-3.5 h-3.5" /> {t("admin.insAddButton")}
         </button>
       </div>
 
@@ -1685,21 +1887,22 @@ function InsuranceView() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                {["Provider", "Default Coverage", "Contact", ""].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                {([["admin.insColProvider", 0], ["admin.insColTin", 1], ["admin.insColDefaultCoverage", 2], ["admin.insColContact", 3], [null, 4]] as const).map(([key, i]) => (
+                  <th key={i} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{key ? t(key) : ""}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {providers.map((p) => (
+              {pagedProviders.map((p) => (
                 <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-4 py-3 font-semibold text-slate-700">{p.name}</td>
+                  <td className="px-4 py-3 text-slate-500 font-mono">{p.tin || "—"}</td>
                   <td className="px-4 py-3 text-slate-500">{p.defaultCoveragePercentage}%</td>
                   <td className="px-4 py-3 text-slate-500">{p.contactInfo || "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => setManaging(p)} className="text-xs font-semibold text-blue-700 hover:underline">Manage Coverage</button>
-                      <button onClick={() => setEditing(p)} className="text-xs font-semibold text-slate-500 hover:underline">Edit</button>
+                      <button onClick={() => setManaging(p)} className="text-xs font-semibold text-blue-700 hover:underline">{t("admin.insManageCoverage")}</button>
+                      <button onClick={() => setEditing(p)} className="text-xs font-semibold text-slate-500 hover:underline">{t("admin.insEdit")}</button>
                     </div>
                   </td>
                 </tr>
@@ -1707,9 +1910,10 @@ function InsuranceView() {
             </tbody>
           </table>
           {!loading && providers.length === 0 && (
-            <p className="text-center py-10 text-xs text-slate-400">No insurance providers yet — add one to start covering sales.</p>
+            <p className="text-center py-10 text-xs text-slate-400">{t("admin.insEmpty")}</p>
           )}
         </div>
+        <LoadMoreButton hasMore={hasMore} shown={shown} total={total} onClick={showMore} />
       </div>
 
       {showAdd && <ProviderFormModal onClose={() => setShowAdd(false)} onSaved={() => { setShowAdd(false); void refresh(); }} />}
@@ -1875,7 +2079,8 @@ function ProductRequestsView() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const pending = requests.filter((r) => r.status === "pending");
-  const resolved = requests.filter((r) => r.status !== "pending");
+  const resolvedAll = requests.filter((r) => r.status !== "pending");
+  const { visible: resolved, hasMore: hasMoreResolved, showMore: showMoreResolved, shown: shownResolved, total: totalResolved } = usePagedList(resolvedAll, []);
 
   return (
     <div className="space-y-6">
@@ -1922,7 +2127,7 @@ function ProductRequestsView() {
         </div>
       )}
 
-      {resolved.length > 0 && (
+      {resolvedAll.length > 0 && (
         <div>
           <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-3">{t("admin.processed")}</p>
           <div className="space-y-2">
@@ -1940,6 +2145,7 @@ function ProductRequestsView() {
               </div>
             ))}
           </div>
+          <LoadMoreButton hasMore={hasMoreResolved} shown={shownResolved} total={totalResolved} onClick={showMoreResolved} />
         </div>
       )}
 
@@ -2035,7 +2241,7 @@ function AdminAuthGate({ onAuthed }: { onAuthed: (email: string) => void }) {
           <div className="space-y-3">
             <input
               type="email" value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
-              placeholder="you@pharmsync.rw"
+              placeholder={t("admin.adminEmailPlaceholder")}
               className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors"
             />
             {error && <p className="text-xs text-red-600">{error}</p>}
@@ -2103,13 +2309,20 @@ export default function AdminPortal() {
     void isSuperAdminSession().then((ok) => { setAuthed(ok); setAuthChecked(true); });
   }, []);
 
+  const [expiredCount, setExpiredCount] = useState(0);
+
   const refresh = useCallback(async () => {
     try {
+      // Applications nobody approved inside 7 days are deleted server-side.
+      // Swept before the list is read so the console never shows a row that
+      // has already aged out.
+      const expired = await expireStaleApplications().catch(() => 0);
       const [apps, ticketRows, requestRows] = await Promise.all([
         listPharmacyApplications(),
         adminListSupportTickets(),
         adminListProductRequests(),
       ]);
+      setExpiredCount(expired);
       setBranches(apps);
       setTickets(ticketRows);
       setPendingRequestCount(requestRows.filter((r) => r.status === "pending").length);
@@ -2247,6 +2460,11 @@ export default function AdminPortal() {
           <div key={nav} className="animate-fade-in">
             {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
             {nav === "approvals" && <Approvals branches={branches} onChange={refresh} />}
+            {expiredCount > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 mb-4">
+                {t("admin.expiredSwept", { count: expiredCount })}
+              </div>
+            )}
             {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
             {nav === "products"  && <ProductsView />}
             {nav === "categories" && <CategoriesView branches={branches} />}

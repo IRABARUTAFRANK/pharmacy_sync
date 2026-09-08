@@ -5,10 +5,10 @@ import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { useGlobalSearch } from "../lib/search"
 import { packagingSummary } from "../lib/barcodes"
-import { loadInventoryDataset, upsertReorderPoint, type InventoryDataset, type InventoryRow } from "../lib/inventory"
+import { loadInventoryDataset, upsertStockLevels, type InventoryDataset, type InventoryRow } from "../lib/inventory"
 import { errorMessage } from "../lib/supabase"
 
-export function ReorderPointModal({ row, onClose, onSaved }: { row: InventoryRow; onClose: () => void; onSaved: () => void }) {
+export function StockLevelsModal({ row, onClose, onSaved }: { row: InventoryRow; onClose: () => void; onSaved: () => void }) {
   const { t } = useTranslation()
   const [minQuantity, setMinQuantity] = useState(String(row.min_quantity))
   const [maxQuantity, setMaxQuantity] = useState(row.max_quantity != null ? String(row.max_quantity) : "")
@@ -17,42 +17,42 @@ export function ReorderPointModal({ row, onClose, onSaved }: { row: InventoryRow
 
   async function save() {
     const min = Number.parseInt(minQuantity, 10)
-    if (!Number.isFinite(min) || min < 0) { setError(t("inventoryPage.reorderMinInvalid")); return }
+    if (!Number.isFinite(min) || min < 0) { setError(t("inventoryPage.stockLevelMinInvalid")); return }
     const max = maxQuantity.trim() ? Number.parseInt(maxQuantity, 10) : null
-    if (max != null && (!Number.isFinite(max) || max < min)) { setError(t("inventoryPage.reorderMaxInvalid")); return }
+    if (max != null && (!Number.isFinite(max) || max < min)) { setError(t("inventoryPage.stockLevelMaxInvalid")); return }
     setBusy(true)
     setError(null)
     try {
-      await upsertReorderPoint(row.product_id, row.branch_id, min, max)
+      await upsertStockLevels(row.product_id, row.branch_id, min, max)
       onSaved()
     } catch (reason) {
-      setError(errorMessage(reason, t("inventoryPage.reorderSaveError")))
+      setError(errorMessage(reason, t("inventoryPage.stockLevelsSaveError")))
     } finally {
       setBusy(false)
     }
   }
 
-  return <Modal title={t("inventoryPage.reorderModalTitle", { product: row.name })} onClose={onClose} width={420}>
+  return <Modal title={t("inventoryPage.stockLevelsModalTitle", { product: row.name })} onClose={onClose} width={420}>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>
-        {t("inventoryPage.reorderExplainer")}
+        {t("inventoryPage.stockLevelsExplainer")}
       </p>
       {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
-          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.reorderMin")}</label>
+          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.stockLevelMin")}</label>
           <input type="number" min="0" value={minQuantity} onChange={e => setMinQuantity(e.target.value)}
             style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box" }} />
         </div>
         <div>
-          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.reorderMax")}</label>
+          <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("inventoryPage.stockLevelMax")}</label>
           <input type="number" min="0" value={maxQuantity} onChange={e => setMaxQuantity(e.target.value)}
             style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box" }} />
         </div>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <Btn variant="ghost" onClick={onClose}>{t("inventoryPage.cancel")}</Btn>
-        <Btn variant="primary" onClick={() => void save()}>{busy ? t("inventoryPage.saving") : t("inventoryPage.saveReorderPoint")}</Btn>
+        <Btn variant="primary" onClick={() => void save()}>{busy ? t("inventoryPage.saving") : t("inventoryPage.saveStockLevels")}</Btn>
       </div>
     </div>
   </Modal>
@@ -68,6 +68,7 @@ export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "
     low: { label: t("inventoryPage.statusLow"), color: "#d97706", background: "#fef3c7" },
     zero: { label: t("inventoryPage.statusZero"), color: "#dc2626", background: "#fef2f2" },
     expiry: { label: t("inventoryPage.statusExpiry"), color: "#9333ea", background: "#f5f3ff" },
+    over: { label: t("inventoryPage.statusOver"), color: "#0369a1", background: "#e0f2fe" },
   }
   // Not a real stock_status value -- "low", "zero", and "expiry" combined,
   // matching the same three counts the sidebar's "N need attention" figure
@@ -117,7 +118,10 @@ export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "
   useEffect(() => { void refresh() }, [refresh])
 
   const filtered = useMemo(() => dataset.rows.filter(row => {
-    const matchesStatus = status === "all" || (status === "attention" ? row.stock_status !== "ok" : row.stock_status === status)
+    // "attention" is low + out of stock + expiring, matching attentionCount
+    // below and the sidebar figure. Overstock is money tied up rather than a
+    // shortage, so it stays its own tile and out of this roll-up.
+    const matchesStatus = status === "all" || (status === "attention" ? row.stock_status === "low" || row.stock_status === "zero" || row.stock_status === "expiry" : row.stock_status === status)
     const text = `${row.name} ${row.generic_name ?? ""} ${row.batch_number} ${row.supplier_name}`.toLowerCase()
     return matchesStatus && text.includes(query.toLowerCase())
   }), [dataset.rows, query, status])
@@ -129,7 +133,7 @@ export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "
     {error && <div style={{ background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 14px', fontSize: 12 }}>
       {t("inventoryPage.loadErrorPrefix")}: {error}. {t("inventoryPage.loadErrorHint")}
     </div>}
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
       <button onClick={() => selectStatus("attention")} className="animate-fade-up" style={{ textAlign: 'left', border: `1.5px solid ${status === "attention" ? attentionMeta.color : "var(--border)"}`, background: status === "attention" ? attentionMeta.background : "#fff", borderRadius: 10, padding: '12px 16px', cursor: 'pointer', fontFamily: 'inherit' }}>
         <div style={{ fontSize: 22, color: attentionMeta.color, fontWeight: 800 }}>{loading ? "—" : attentionCount}</div><div style={{ fontSize: 11, fontWeight: 600 }}>{attentionMeta.label}</div>
       </button>
@@ -160,6 +164,11 @@ export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "
                   <div style={{ fontSize: 9, color: 'var(--ink-faint)', fontWeight: 400 }}>
                     {packagingSummary(row.unit, dataset.barcodes.filter(b => b.stock_batch_id === row.batch_id && b.barcode_type === 'box').length, dataset.barcodes.filter(b => b.stock_batch_id === row.batch_id && b.barcode_type === 'pack').length, dataset.barcodes.find(b => b.stock_batch_id === row.batch_id && b.barcode_type === 'pack')?.pieces_per_pack ?? 0, t)}
                   </div>
+                  <div style={{ fontSize: 9, color: 'var(--ink-faint)', fontWeight: 400, marginTop: 2 }}>
+                    {row.max_quantity != null
+                      ? t("inventoryPage.levelsHint", { min: row.min_quantity, max: row.max_quantity })
+                      : t("inventoryPage.levelsHintNoMax", { min: row.min_quantity })}
+                  </div>
                 </td>
                 <td style={{ padding: '10px', color: 'var(--ink-muted)' }}>{fmtRWFExact(row.cost_price)}</td>
                 <td style={{ padding: '10px', fontWeight: 600 }}>{fmtRWFExact(row.selling_price)}</td>
@@ -170,7 +179,7 @@ export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "
                 <td style={{ padding: '10px' }}>
                   <button onClick={() => setReorderTarget(row)}
                     style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
-                    {t("inventoryPage.reorderPointAction")}
+                    {t("inventoryPage.stockLevelsAction")}
                   </button>
                 </td>
               </tr>
@@ -182,7 +191,7 @@ export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "
     </Card>
     </div>
     {reorderTarget && (
-      <ReorderPointModal row={reorderTarget} onClose={() => setReorderTarget(null)} onSaved={() => { setReorderTarget(null); void refresh() }} />
+      <StockLevelsModal row={reorderTarget} onClose={() => setReorderTarget(null)} onSaved={() => { setReorderTarget(null); void refresh() }} />
     )}
   </div>
 }

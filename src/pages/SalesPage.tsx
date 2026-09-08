@@ -4,7 +4,7 @@ import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 import { Btn, CenterAlert, ChartTooltip, Logo, Modal, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
-import { findPatientByIdentifier, upsertPatient, type PatientGender } from "../lib/patients"
+import { listBranchPatients, upsertPatient, type PatientGender, type PatientListRow } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
 import { useScanner } from "../lib/scanner"
 import {
@@ -323,35 +323,68 @@ function PatientStep({ draft, onChange, onClear, resolvedId }: {
   resolvedId: string | null
 }) {
   const { t } = useTranslation()
-  const [searching, setSearching] = useState(false)
-  const [notFound, setNotFound] = useState(false)
   // Explicit choice instead of an implicit "type something to reveal the
   // fields" flow -- a cashier who wants to record a patient gets the name/
   // gender/age fields immediately, not after guessing they need to type in
   // the search box first.
   const [mode, setMode] = useState<"walkin" | "record">(draft.identifier || draft.fullName ? "record" : "walkin")
 
-  async function search() {
-    const identifier = draft.identifier.trim()
-    if (!identifier) return
-    setSearching(true)
-    setNotFound(false)
-    try {
-      const found = await findPatientByIdentifier(identifier)
-      if (found) {
-        onChange({ fullName: found.fullName, gender: found.gender ?? "", age: found.age != null ? String(found.age) : "", identifier: found.tinOrPhone })
-      } else {
-        setNotFound(true)
-      }
-    } finally {
-      setSearching(false)
-    }
+  // The branch's patients, loaded once when this step is first opened, so
+  // typing filters an in-memory list instead of firing a request per
+  // keystroke. A branch's patient list is small enough for this, and it is
+  // what makes matches appear as you type rather than only after pressing a
+  // button.
+  const [roster, setRoster] = useState<PatientListRow[] | null>(null)
+  const [loadingRoster, setLoadingRoster] = useState(false)
+  // The lookup box is deliberately its own field, separate from draft.identifier
+  // (the actual "phone number or TIN" the patient gets saved under). The two
+  // used to share one value so a phone typed here pre-filled the field below --
+  // but that meant searching by NAME silently wrote that name into the phone/TIN
+  // field too. Typing here now only searches; picking a result is still the one
+  // and only thing that fills the fields below.
+  const [query, setQuery] = useState("")
+  const [picked, setPicked] = useState(false)
+  useEffect(() => {
+    if (mode !== "record" || roster || loadingRoster) return
+    setLoadingRoster(true)
+    void listBranchPatients()
+      .then(setRoster)
+      .catch(() => setRoster([]))
+      .finally(() => setLoadingRoster(false))
+  }, [mode, roster, loadingRoster])
+
+  // Name, phone or TIN -- all three match the same box, so a cashier who only
+  // knows the patient's name is not stuck.
+  const needle = query.trim().toLowerCase()
+  const matches = needle && !picked
+    ? (roster ?? []).filter(p =>
+        p.fullName.toLowerCase().includes(needle)
+        || p.phone.toLowerCase().includes(needle)
+        || (p.tin ?? "").toLowerCase().includes(needle)
+      ).slice(0, 6)
+    : []
+  // Only claim "no match" once the list is actually loaded, otherwise the
+  // hint flashes on every first keystroke while the fetch is in flight.
+  const noMatches = !!needle && !picked && roster !== null && matches.length === 0
+
+  function choose(p: PatientListRow) {
+    onChange({
+      fullName: p.fullName,
+      gender: p.gender ?? "",
+      age: p.age != null ? String(p.age) : "",
+      // Prefer the phone as the working identifier, but fall back to the TIN
+      // for a patient who was only ever recorded under one.
+      identifier: p.phone || p.tin || "",
+    })
+    setQuery(p.fullName)
+    setPicked(true)
   }
 
   function chooseWalkin() {
     setMode("walkin")
     onClear()
-    setNotFound(false)
+    setQuery("")
+    setPicked(false)
   }
 
   const inputStyle = { width: "100%", padding: "8px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 12, boxSizing: "border-box" as const }
@@ -371,28 +404,68 @@ function PatientStep({ draft, onChange, onClear, resolvedId }: {
     </div>
     {mode === "record" && (
       <>
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <div style={{ position: "relative", marginBottom: 10 }}>
           <input
-            value={draft.identifier}
-            onChange={e => onChange({ ...draft, identifier: e.target.value })}
-            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void search() } }}
+            value={query}
+            onChange={e => { setQuery(e.target.value); setPicked(false) }}
+            onKeyDown={e => { if (e.key === "Enter" && matches[0]) { e.preventDefault(); choose(matches[0]) } }}
             placeholder={t("salesPage.patientSearchPlaceholder")}
             style={inputStyle}
           />
-          <Btn variant="secondary" small onClick={() => void search()}>{searching ? t("salesPage.patientSearching") : t("salesPage.patientFind")}</Btn>
+          {matches.length > 0 && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 30,
+              background: "#fff", border: "1px solid var(--border)", borderRadius: 8,
+              boxShadow: "0 10px 28px rgba(15,23,42,0.14)", overflow: "hidden",
+            }}>
+              {matches.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => choose(p)}
+                  style={{
+                    display: "block", width: "100%", textAlign: "left", padding: "8px 10px",
+                    border: "none", background: "none", cursor: "pointer", fontFamily: "inherit",
+                    borderBottom: "1px solid var(--bg-alt)",
+                  }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "var(--bg)" }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "none" }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{p.fullName}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-muted)", fontFamily: "var(--font-mono)" }}>
+                    {p.tin ? `${p.phone} · TIN ${p.tin}` : p.phone}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-        {notFound && <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--ink-muted)" }}>{t("salesPage.patientNotFoundHint")}</p>}
+        {loadingRoster && <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--ink-muted)" }}>{t("salesPage.patientSearching")}</p>}
+        {noMatches && <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--ink-muted)" }}>{t("salesPage.patientNotFoundHint")}</p>}
         {resolvedId && <p style={{ margin: "0 0 10px", fontSize: 11, color: "#16a34a" }}>{t("salesPage.patientFoundHint")}</p>}
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: 8 }}>
           <input value={draft.fullName} onChange={e => onChange({ ...draft, fullName: e.target.value })} placeholder={t("salesPage.patientFullName")} style={inputStyle} />
           <select value={draft.gender} onChange={e => onChange({ ...draft, gender: e.target.value as PatientGender | "" })} style={{ ...inputStyle, background: "var(--surface)" }}>
-            <option value="">{t("salesPage.patientGenderUnspecified")}</option>
+            <option value="">{t("salesPage.patientGenderRequired")}</option>
             <option value="male">{t("patients.genderMale")}</option>
             <option value="female">{t("patients.genderFemale")}</option>
             <option value="other">{t("patients.genderOther")}</option>
           </select>
           <input type="number" min="0" value={draft.age} onChange={e => onChange({ ...draft, age: e.target.value })} placeholder={t("salesPage.patientAge")} style={inputStyle} />
         </div>
+        {/* The identifier the patient is filed under. Either a phone number
+            or a TIN is accepted -- the lookup above matches both -- so a
+            patient with no TIN is never blocked. Filled automatically when a
+            search result above is picked; typed by hand for a new patient. */}
+        <input
+          value={draft.identifier}
+          onChange={e => onChange({ ...draft, identifier: e.target.value })}
+          placeholder={t("salesPage.patientIdentifier")}
+          style={{ ...inputStyle, marginTop: 8 }}
+        />
+        <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--ink-faint)", lineHeight: 1.5 }}>
+          {t("salesPage.patientRequiredHint")}
+        </p>
       </>
     )}
   </div>
@@ -643,16 +716,24 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
     setCompleting(true)
     setError("")
     try {
-      // Optional: only actually recorded if the cashier gave both a name and
-      // a phone/TIN. A sale is never blocked on this -- self-pay/anonymous
-      // stays a one-click checkout.
+      // A walk-in with nothing filled in stays a one-click checkout. But the
+      // moment the cashier starts recording someone, name, gender and the
+      // phone/TIN identifier are all required -- a half-filled patient record
+      // is worse than none, since it can never be matched again on a later visit.
       let patientId: string | null = null
-      if (patientDraft.fullName.trim() && patientDraft.identifier.trim()) {
+      const recordingPatient = !!(patientDraft.fullName.trim() || patientDraft.identifier.trim())
+      if (recordingPatient) {
+        if (!patientDraft.fullName.trim() || !patientDraft.gender || !patientDraft.identifier.trim()) {
+          setError(t("salesPage.patientIncomplete"))
+          setCompleting(false)
+          return
+        }
         patientId = await upsertPatient(
           patientDraft.fullName.trim(),
-          patientDraft.gender || null,
+          patientDraft.gender,
           patientDraft.age.trim() ? Number.parseInt(patientDraft.age, 10) : null,
           patientDraft.identifier.trim(),
+          null,
         )
       }
       const result = await completeSale({

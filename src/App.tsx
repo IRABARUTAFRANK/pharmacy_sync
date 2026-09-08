@@ -18,6 +18,7 @@ import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
 import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
+import { GuidedTour, hasCompletedTour, markTourComplete } from './lib/tour'
 
 // Code-split every page behind the sidebar (and the admin/branch/reset
 // top-level routes) so the first load only ships what's needed to sign in --
@@ -237,7 +238,7 @@ function SearchNavDropdown({ matches, needle, highlight, onSelect }: {
 
 // ─── User Menu ────────────────────────────────────────────────────────────────
 
-function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: BranchAccess; role: Role; onRoleChange: (r: Role) => void; onSignOut: () => void; onClose: () => void }) {
+function UserMenu({ access, role, onRoleChange, onSignOut, onClose, onReplayTour }: { access: BranchAccess; role: Role; onRoleChange: (r: Role) => void; onSignOut: () => void; onClose: () => void; onReplayTour: () => void }) {
   const { t } = useTranslation()
   const [activeTheme, setActiveTheme] = useState(getSavedThemeId())
   return (
@@ -289,6 +290,7 @@ function UserMenu({ access, role, onRoleChange, onSignOut, onClose }: { access: 
         ))}
       </div>
       <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)' }}>
+        <button onClick={() => { onClose(); onReplayTour() }} style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: 'none', color: 'var(--ink-mid)', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{t('shell.replayTour')}</button>
         <button onClick={onSignOut} style={{ width: '100%', textAlign: 'left', padding: '8px 10px', borderRadius: 7, border: 'none', background: 'none', color: '#dc2626', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{t('shell.signOut')}</button>
       </div>
     </div>
@@ -390,6 +392,18 @@ export default function App() {
   const [dateRange, setDateRange]   = useState<DateRangeOption>('thisMonth')
   // Sidebar defaults to collapsed (hover-to-expand); this only "pins" it open.
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  // First-run walkthrough. Opens for anyone who has not finished it yet --
+  // not just brand-new accounts, so existing users who never saw it still get
+  // it once. Deliberately not gated on "is this a new signup".
+  const [tourOpen, setTourOpen] = useState(false)
+  // Held until the "Today so far" fetch settles: that card renders async, and
+  // the tour resolves its steps once, so opening earlier would drop that step
+  // as "not on screen". A seller, whose fetch legitimately fails, settles too.
+  const [snapshotSettled, setSnapshotSettled] = useState(false)
+  useEffect(() => {
+    if (access && snapshotSettled && !hasCompletedTour(access.userId)) setTourOpen(true)
+  }, [access, snapshotSettled])
   const [showNotif, setShowNotif]   = useState(false)
   const [notifSnapshot, setNotifSnapshot] = useState<LiveAlert[]>([])
   const [showUser, setShowUser]     = useState(false)
@@ -451,6 +465,7 @@ export default function App() {
 
   const refreshTodaySnapshot = useCallback(async () => {
     try { setTodaySnapshot(await loadBranchSnapshot()) } catch { setTodaySnapshot(null) }
+    finally { setSnapshotSettled(true) }
   }, [])
 
   useEffect(() => { if (access) void refreshTodaySnapshot() }, [access, refreshTodaySnapshot])
@@ -628,12 +643,25 @@ export default function App() {
       {/* Hover-to-expand by default; the collapse/expand button in the top
           bar sets `pinned`, which locks it open regardless of hover -- for a
           large monitor, or anyone who'd rather not re-hover constantly. */}
+      {/* Drawer backdrop -- phone only (CSS hides it above 640px). Tapping it
+          closes the sidebar, the behaviour every drawer on a phone has;
+          without it the drawer just sat over the dashboard with no way out
+          except finding the hamburger again. */}
+      <div
+        className={`app-drawer-backdrop${sidebarOpen ? ' is-open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
       <Sidebar
-        className="app-chrome"
-        pinned={sidebarOpen}
+        className={`app-chrome app-sidebar${sidebarOpen ? ' sidebar-open' : ''}`}
+        dataTour="sidebar"
+        /* The tour explains the nav items, so the sidebar has to stay open
+           for the whole walkthrough rather than collapsing on mouse-out. */
+        pinned={sidebarOpen || tourOpen}
         items={visibleNav.map(item => ({ id: item.id, icon: item.icon, badge: navBadge(item.id) }))}
         activeId={page}
-        onSelect={setPage}
+        onSelect={id => { setPage(id); if (window.matchMedia('(max-width: 640px)').matches) setSidebarOpen(false) }}
         getLabel={id => t(`nav.${id}` as TranslationKey)}
         onItemHover={prefetchPage}
         header={expanded => (
@@ -663,7 +691,7 @@ export default function App() {
                 failed, which is expected for a seller (ai_branch_snapshot()
                 is owner/manager-only) rather than an error worth surfacing. */}
             {todaySnapshot && (
-              <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
+              <div data-tour="today-snapshot" style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
                 <div style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <button
                     onClick={() => setPage('overview')}
@@ -699,8 +727,18 @@ export default function App() {
                 after them there risked being squeezed past the app-shell's
                 overflow:hidden and never rendering at all. The sidebar has its
                 own space that isn't competing with anything else. */}
-            <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
-              <LanguageSwitcher />
+            <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div data-tour="language"><LanguageSwitcher /></div>
+              <div data-tour="connection" style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8,
+                background: isOnline ? '#f0fdf4' : '#fef3c7',
+                border: `1px solid ${isOnline ? '#86efac' : '#fcd34d'}`,
+              }}>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#16a34a' : '#d97706', flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? '#16a34a' : '#d97706', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {isOnline ? t('shell.online') : pendingSync > 0 ? t('shell.offlineQueued', { count: pendingSync }) : t('shell.offline')}
+                </span>
+              </div>
             </div>
           </>
         )}
@@ -739,13 +777,14 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Top Bar */}
-        <header className="app-chrome" style={{
+        <header className="app-chrome app-topbar" style={{
           height: 60, background: 'var(--surface)', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0,
         }}>
           {/* Pins the sidebar expanded, overriding hover-to-collapse (Sidebar.tsx's `pinned` prop) --
               not a plain show/hide toggle anymore, so it's visually "on" while pinned. */}
           <button
+            data-tour="pin-sidebar"
             onClick={() => setSidebarOpen(o => !o)}
             title={sidebarOpen ? t('shell.unpinSidebar') : t('shell.pinSidebar')}
             style={{
@@ -769,7 +808,7 @@ export default function App() {
               narrows the sidebar sections that match live; Enter or a click
               jumps straight there. The typed term also still reaches every
               page's own filter (src/lib/search.tsx) for pages that have one. */}
-          <div style={{ position: 'relative', width: 280, flexShrink: 1, minWidth: 160 }}>
+          <div data-tour="search" style={{ position: 'relative', width: 280, flexShrink: 1, minWidth: 160 }}>
             <span style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: 'var(--ink-faint)', pointerEvents: 'none' }}>🔍</span>
             <input
               value={search}
@@ -796,7 +835,7 @@ export default function App() {
           </div>
 
           {/* Date filter */}
-          <select value={dateRange} onChange={e => setDateRange(e.target.value as DateRangeOption)} style={{
+          <select data-tour="date-range" value={dateRange} onChange={e => setDateRange(e.target.value as DateRangeOption)} style={{
             padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
             fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
             cursor: 'pointer', outline: 'none', flexShrink: 0,
@@ -804,7 +843,7 @@ export default function App() {
             {DATE_RANGE_OPTIONS.map(opt => <option key={opt} value={opt}>{t(dateRangeLabelKey[opt])}</option>)}
           </select>
 
-          <div title={t('shell.branchScopedNotice')} style={{
+          <div data-tour="branch" title={t('shell.branchScopedNotice')} style={{
             padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
             fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
             fontWeight: 600, flexShrink: 0,
@@ -813,21 +852,28 @@ export default function App() {
             {access.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{access.branchCode}</span>}
           </div>
 
-          {/* Offline indicator */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', borderRadius: 20,
-            background: isOnline ? '#f0fdf4' : '#fef3c7',
-            border: `1px solid ${isOnline ? '#86efac' : '#fcd34d'}`,
-            flexShrink: 0,
-          }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#16a34a' : '#d97706', flexShrink: 0 }} />
-            <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? '#16a34a' : '#d97706', whiteSpace: 'nowrap' }}>
-              {isOnline ? t('shell.online') : pendingSync > 0 ? t('shell.offlineQueued', { count: pendingSync }) : t('shell.offline')}
-            </span>
-          </div>
+          {/* Walkthrough. This slot used to hold the online pill; the
+              connection state moved into the sidebar (topContent above) so
+              an offline cashier can still see it -- losing that entirely
+              would matter on a POS that keeps working without a network. */}
+          <button
+            data-tour="walkthrough"
+            onClick={() => setTourOpen(true)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 8,
+              border: '1px solid var(--border)', background: 'none', cursor: 'pointer',
+              fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--ink-mid)',
+              flexShrink: 0, whiteSpace: 'nowrap', transition: 'background 0.14s',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+          >
+            <span aria-hidden="true">🧭</span>
+            <span className="hide-sm">{t('shell.walkthrough')}</span>
+          </button>
 
           {/* Notifications */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div data-tour="notifications" style={{ position: 'relative', flexShrink: 0 }}>
             <button onClick={toggleNotif} style={{
               width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
               background: showNotif ? 'var(--bg)' : 'none', cursor: 'pointer',
@@ -857,7 +903,7 @@ export default function App() {
 
           {/* User avatar -- the pharmacy's own uploaded logo once one exists,
               same as the sidebar footer's copy of this same button. */}
-          <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div data-tour="account" style={{ position: 'relative', flexShrink: 0 }}>
             <button onClick={() => { setShowUser(u => !u); setShowNotif(false) }} style={{
               width: 34, height: 34, borderRadius: '50%', background: pharmacyLogoUrl ? '#fff' : currentRole.color,
               color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
@@ -866,12 +912,13 @@ export default function App() {
             }}>
               {pharmacyLogoUrl ? <img src={pharmacyLogoUrl} alt="" width={34} height={34} style={{ objectFit: 'cover' }} /> : currentRole.abbr}
             </button>
-            {showUser && <UserMenu access={access} role={role} onRoleChange={() => undefined} onSignOut={() => { void handleSignOut() }} onClose={() => setShowUser(false)} />}
+            {showUser && <UserMenu access={access} role={role} onRoleChange={() => undefined} onSignOut={() => { void handleSignOut() }} onClose={() => setShowUser(false)} onReplayTour={() => setTourOpen(true)} />}
           </div>
         </header>
 
         {/* Page content */}
         <main
+          data-tour="main"
           className="app-main"
           style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}
           onClick={closeMenus}
@@ -891,6 +938,10 @@ export default function App() {
           element exists so that composition happens somewhere even when the
           user isn't looking at Sales. tabIndex={-1} keeps it out of normal
           Tab navigation; it is never visible and never intercepts a click. */}
+      {tourOpen && (
+        <GuidedTour onFinish={() => { markTourComplete(access.userId); setTourOpen(false) }} />
+      )}
+
       {scannerEnabled && (
         <input
           ref={scannerCatcher.inputRef}

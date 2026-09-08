@@ -34,11 +34,13 @@ export interface SidebarProps {
   topContent?: (expanded: boolean) => ReactNode
   footer?: (expanded: boolean) => ReactNode
   className?: string
+  /** Marks the <aside> for the guided tour's spotlight (lib/tour.tsx). */
+  dataTour?: string
 }
 
 export function Sidebar({
   items, activeId, onSelect, getLabel, onItemHover, pinned = false,
-  collapsedWidth = 60, expandedWidth = 240, header, topContent, footer, className,
+  collapsedWidth = 60, expandedWidth = 240, header, topContent, footer, className, dataTour,
 }: SidebarProps) {
   const [hovering, setHovering] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -48,6 +50,7 @@ export function Sidebar({
   return (
     <aside
       className={className}
+      data-tour={dataTour}
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
       onFocus={() => setFocused(true)}

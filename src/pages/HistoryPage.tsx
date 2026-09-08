@@ -5,6 +5,7 @@ import type { ReportSection } from "../lib/export"
 import { useTranslation } from "../lib/i18n"
 import { HISTORY_CATEGORIES, loadBranchHistory, type HistoryCategory, type HistoryEvent } from "../lib/history"
 import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
+import { usePagedList, LoadMoreButton } from "../lib/pagination"
 
 // One icon + one color per real event source -- every category here maps to
 // an actual table this branch writes to (see list_branch_history() in the
@@ -56,6 +57,122 @@ const STATUS_STYLE: Record<string, { color: string; bg: string }> = {
 }
 const DEFAULT_STATUS_STYLE = { color: "#64748b", bg: "#f1f5f9" }
 
+type TFn = ReturnType<typeof useTranslation>["t"]
+
+// Every status/adjustment-type value the schema can actually produce for a
+// given category already has a real, reviewed translation somewhere else in
+// the app (the Barcode Manager, Insurance, Support, Alerts, and Stock
+// Adjustment pages each show a subset of these same enum values) -- this
+// reuses those existing keys instead of re-translating the same words a
+// second time under a new "history.*" name.
+const STATUS_LABEL_KEY: Partial<Record<HistoryCategory, Record<string, any>>> = {
+  product_request: { pending: "admin.statusPending", approved: "admin.statusApproved", rejected: "admin.statusDenied" },
+  insurance_claim: { submitted: "insurancePage.statusSubmitted", approved: "insurancePage.statusApproved", paid: "insurancePage.statusPaid", rejected: "insurancePage.statusRejected" },
+  stock_adjustment: { damage: "stockAdjustment.typeDamage", loss: "stockAdjustment.typeLoss", correction: "stockAdjustment.typeCorrection", return: "stockAdjustment.typeReturn", expired_writeoff: "stockAdjustment.typeExpiredWriteoff", recalled: "stockAdjustment.typeRecalled" },
+  barcode_created: { active: "barcode.statusActive", sold_out: "barcode.statusSoldOut", expired: "barcode.statusExpired", recalled: "barcode.statusRecalled", damaged: "barcode.statusDamaged" },
+  support_ticket: { open: "helpPage.statusOpen", in_progress: "helpPage.statusInProgress", resolved: "helpPage.statusResolved", closed: "helpPage.statusClosed" },
+  notification: { read: "alertsPage.read", unread: "alertsPage.unread" },
+}
+
+function translateStatus(t: TFn, category: HistoryCategory, status: string | null): string | null {
+  if (!status) return null
+  const key = STATUS_LABEL_KEY[category]?.[status]
+  return key ? t(key) : status.replace(/_/g, " ")
+}
+
+// notifications.source_type reuses the exact same values (and the same
+// translated labels) as the Alerts page's own filter chips.
+const NOTIFICATION_SOURCE_KEY: Record<string, any> = {
+  batch_recall: "alerts.source.batchRecall",
+  stock_adjustment: "alerts.source.stockAdjustment",
+  product_request_approved: "alerts.source.productRequestApproved",
+  product_request_rejected: "alerts.source.productRequestRejected",
+  out_of_stock: "alerts.source.outOfStock",
+  license_expiring: "alerts.source.licenseExpiring",
+}
+
+// Builds the displayed title/description from the RAW facts
+// list_branch_history() returns (see history.ts) -- this is where the
+// English-only text problem actually got fixed: previously these sentences
+// were pre-formatted in SQL and never changed with the viewer's language.
+function eventText(event: HistoryEvent, t: TFn): { title: string; description: string } {
+  const m = event.meta ?? {}
+  switch (event.category) {
+    case "sale":
+      return {
+        title: t("history.title.sale", { receipt: m.receiptNumber ?? "" }),
+        description: m.patientName
+          ? t("history.desc.saleItemsWithPatient", { count: m.itemCount ?? 0, patient: m.patientName })
+          : t("history.desc.saleItems", { count: m.itemCount ?? 0 }),
+      }
+    case "stock_adjustment": {
+      const typeLabel = translateStatus(t, "stock_adjustment", event.status) ?? ""
+      return {
+        title: t("history.title.stockAdjustment", { type: typeLabel }),
+        description: m.reason
+          ? t("history.desc.stockAdjustmentQtyWithReason", { qty: m.quantity ?? 0, product: m.productName ?? "", reason: m.reason })
+          : t("history.desc.stockAdjustmentQty", { qty: m.quantity ?? 0, product: m.productName ?? "" }),
+      }
+    }
+    case "stock_batch":
+      return {
+        title: t("history.title.stockBatch", { product: m.productName ?? "" }),
+        description: t("history.desc.stockBatchReceived", { batch: m.batchNumber ?? "", qty: m.quantityReceived ?? 0 }),
+      }
+    case "insurance_claim":
+      return {
+        title: t("history.title.insuranceClaim", { provider: m.providerName ?? "" }),
+        description: t("history.desc.insuranceCoverage", { pct: m.coveragePercentage ?? 0 }),
+      }
+    case "patient":
+      return {
+        title: t("history.title.patientRegistered", { name: m.patientName ?? "" }),
+        description: m.tinOrPhone ?? "",
+      }
+    case "product_request":
+      return {
+        title: t("history.title.productRequestSubmitted"),
+        description: m.message ?? "",
+      }
+    case "staff":
+      return {
+        title: t("history.title.staffCreated", { name: m.staffName ?? "" }),
+        description: m.email ?? "",
+      }
+    case "batch_recall":
+      return {
+        title: t("history.title.batchRecall", { product: m.productName ?? "", batch: m.batchNumber ?? "" }),
+        description: t("history.desc.batchRecallInfo", {
+          manufacturer: m.manufacturerName ?? t("history.desc.unknownManufacturer"),
+          reason: m.reason ?? "",
+        }),
+      }
+    case "barcode_created": {
+      const typeLabel = m.barcodeType === "box" ? t("history.barcodeType.box") : t("history.barcodeType.pack")
+      const sourceLabel = m.codeSource === "manufacturer" ? t("history.codeSource.manufacturer") : t("history.codeSource.generated")
+      return {
+        title: t("history.title.barcodeCreated", { type: typeLabel }),
+        description: t("history.desc.barcodeInfo", { code: m.code ?? "", source: sourceLabel, status: translateStatus(t, "barcode_created", event.status) ?? "" }),
+      }
+    }
+    case "notification": {
+      const sourceKey = NOTIFICATION_SOURCE_KEY[m.sourceType as string] ?? "alerts.source.notification"
+      return {
+        title: t("history.title.notification", { source: t(sourceKey) }),
+        description: m.message ?? "",
+      }
+    }
+    case "support_ticket":
+      return {
+        title: m.subject ?? "",
+        description: t("history.desc.supportTicketRaisedBy", {
+          name: event.actorName ?? t("history.desc.unknownActor"),
+          status: translateStatus(t, "support_ticket", event.status) ?? "",
+        }),
+      }
+  }
+}
+
 function Tag({ label, color, bg }: { label: string; color: string; bg: string }) {
   return (
     <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, color, background: bg, borderRadius: 6, padding: "3px 8px", whiteSpace: "nowrap" }}>
@@ -67,7 +184,8 @@ function Tag({ label, color, bg }: { label: string; color: string; bg: string })
 function EventCard({ event }: { event: HistoryEvent }) {
   const { t } = useTranslation()
   const meta = CATEGORY_META[event.category]
-  const statusLabel = event.status ? event.status.replace(/_/g, " ") : null
+  const { title, description } = eventText(event, t)
+  const statusLabel = translateStatus(t, event.category, event.status)
   const statusStyle = event.status ? (STATUS_STYLE[event.status] ?? DEFAULT_STATUS_STYLE) : null
 
   return (
@@ -76,12 +194,12 @@ function EventCard({ event }: { event: HistoryEvent }) {
         {meta.icon}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{event.title}</div>
-        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 2 }}>{event.description}</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{title}</div>
+        <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 2 }}>{description}</div>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 8 }}>
           <Tag label={t(`history.category.${event.category}` as any)} color={meta.color} bg={`${meta.color}1A`} />
           {statusLabel && statusStyle && <Tag label={statusLabel} color={statusStyle.color} bg={statusStyle.bg} />}
-          {event.actorName && <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>by {event.actorName}</span>}
+          {event.actorName && <span style={{ fontSize: 11, color: "var(--ink-faint)" }}>{t("history.byActor", { name: event.actorName })}</span>}
         </div>
       </div>
       <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -95,6 +213,7 @@ function EventCard({ event }: { event: HistoryEvent }) {
 }
 
 function TimelineView({ groups }: { groups: { dateKey: string; dateLabel: string; events: HistoryEvent[] }[] }) {
+  const { t } = useTranslation()
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
       {groups.map(group => (
@@ -102,7 +221,7 @@ function TimelineView({ groups }: { groups: { dateKey: string; dateLabel: string
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", letterSpacing: "0.04em", whiteSpace: "nowrap" }}>{group.dateLabel}</span>
             <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            <span style={{ fontSize: 11, color: "var(--ink-faint)", whiteSpace: "nowrap" }}>{group.events.length} events</span>
+            <span style={{ fontSize: 11, color: "var(--ink-faint)", whiteSpace: "nowrap" }}>{t("history.rowCount", { count: group.events.length })}</span>
           </div>
           <div style={{ position: "relative", paddingLeft: 22 }}>
             <div style={{ position: "absolute", left: 4, top: 8, bottom: 8, width: 2, background: "var(--border)" }} />
@@ -141,17 +260,19 @@ function TableView({ events }: { events: HistoryEvent[] }) {
           <tbody>
             {events.map((e, i) => {
               const meta = CATEGORY_META[e.category]
+              const { title, description } = eventText(e, t)
+              const statusLabel = translateStatus(t, e.category, e.status)
               const statusStyle = e.status ? (STATUS_STYLE[e.status] ?? DEFAULT_STATUS_STYLE) : null
               return (
                 <tr key={i} style={{ borderBottom: "1px solid var(--bg-alt)" }}>
                   <td style={{ padding: "9px 12px", color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{new Date(e.eventAt).toLocaleString()}</td>
                   <td style={{ padding: "9px 12px" }}><Tag label={t(`history.category.${e.category}` as any)} color={meta.color} bg={`${meta.color}1A`} /></td>
                   <td style={{ padding: "9px 12px", maxWidth: 420 }}>
-                    <div style={{ fontWeight: 600, color: "var(--ink)" }}>{e.title}</div>
-                    <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>{e.description}</div>
+                    <div style={{ fontWeight: 600, color: "var(--ink)" }}>{title}</div>
+                    <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>{description}</div>
                   </td>
                   <td style={{ padding: "9px 12px" }}>
-                    {e.status && statusStyle ? <Tag label={e.status.replace(/_/g, " ")} color={statusStyle.color} bg={statusStyle.bg} /> : <span style={{ color: "var(--ink-faint)" }}>—</span>}
+                    {statusLabel && statusStyle ? <Tag label={statusLabel} color={statusStyle.color} bg={statusStyle.bg} /> : <span style={{ color: "var(--ink-faint)" }}>—</span>}
                   </td>
                   <td style={{ padding: "9px 12px", fontWeight: 700, color: "var(--ink)", whiteSpace: "nowrap" }}>{e.amount === null ? "—" : fmtRWFExact(e.amount)}</td>
                   <td style={{ padding: "9px 12px", color: "var(--ink-muted)" }}>{e.actorName ?? "—"}</td>
@@ -213,15 +334,24 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    return events.filter(e =>
-      (activeCategory === "all" || e.category === activeCategory) &&
-      (!needle || `${e.title} ${e.description} ${e.actorName ?? ""}`.toLowerCase().includes(needle)),
-    )
-  }, [events, activeCategory, query])
+    return events.filter(e => {
+      if (activeCategory !== "all" && e.category !== activeCategory) return false
+      if (!needle) return true
+      const { title, description } = eventText(e, t)
+      return `${title} ${description} ${e.actorName ?? ""}`.toLowerCase().includes(needle)
+    })
+  }, [events, activeCategory, query, t])
+
+  // Already newest-first: list_branch_history() orders by event_at desc, and
+  // nothing here re-sorts it. Paginated BEFORE grouping into days, so
+  // "load more" reveals whole additional days at a time rather than
+  // truncating mid-day. The export below still uses the full filtered
+  // list, never just what happens to be on screen.
+  const { visible: pagedFiltered, hasMore, showMore, shown, total } = usePagedList(filtered, [activeCategory, query])
 
   const groups = useMemo(() => {
     const map = new Map<string, { dateKey: string; dateLabel: string; events: HistoryEvent[] }>()
-    for (const e of filtered) {
+    for (const e of pagedFiltered) {
       const d = new Date(e.eventAt)
       const dateKey = d.toDateString()
       if (!map.has(dateKey)) {
@@ -234,15 +364,18 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
       map.get(dateKey)!.events.push(e)
     }
     return Array.from(map.values())
-  }, [filtered])
+  }, [pagedFiltered])
 
   const historySection: ReportSection = {
     title: t("page.history"),
-    headers: ["Date & Time", "Category", "Event", "Description", "Status", "Amount", "By"],
-    rows: filtered.map(e => [
-      new Date(e.eventAt).toLocaleString(), t(`history.category.${e.category}` as any), e.title, e.description,
-      e.status ?? "", e.amount === null ? "" : Math.round(e.amount), e.actorName ?? "",
-    ]),
+    headers: [t("history.colDate"), t("history.colCategory"), t("history.colEvent"), t("history.colStatus"), t("history.colAmount"), t("history.colBy")],
+    rows: filtered.map(e => {
+      const { title, description } = eventText(e, t)
+      return [
+        new Date(e.eventAt).toLocaleString(), t(`history.category.${e.category}` as any), `${title} — ${description}`,
+        translateStatus(t, e.category, e.status) ?? "", e.amount === null ? "" : Math.round(e.amount), e.actorName ?? "",
+      ]
+    }),
   }
 
   return (
@@ -339,9 +472,15 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
       ) : filtered.length === 0 ? (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{events.length === 0 ? t("history.empty") : t("history.emptyFiltered")}</div>
       ) : view === "timeline" ? (
-        <TimelineView groups={groups} />
+        <>
+          <TimelineView groups={groups} />
+          <LoadMoreButton hasMore={hasMore} shown={shown} total={total} onClick={showMore} />
+        </>
       ) : (
-        <TableView events={filtered} />
+        <>
+          <TableView events={pagedFiltered} />
+          <LoadMoreButton hasMore={hasMore} shown={shown} total={total} onClick={showMore} />
+        </>
       )}
 
       {showExportModal && (

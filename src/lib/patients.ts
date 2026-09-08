@@ -7,7 +7,13 @@ export interface Patient {
   fullName: string
   gender: PatientGender | null
   age: number | null
+  /** The per-branch identity key. Equals `phone` for anything recorded since
+   *  phone and TIN were split apart; older rows may hold whichever single
+   *  value was captured at the time. */
   tinOrPhone: string
+  phone: string
+  /** Businesses and insured patients have one; most walk-ins do not. */
+  tin: string | null
 }
 
 export interface PatientListRow extends Patient {
@@ -23,15 +29,26 @@ export async function findPatientByIdentifier(identifier: string): Promise<Patie
   if (error) throw error
   const row = (data ?? [])[0]
   if (!row) return null
-  return { id: row.id, fullName: row.full_name, gender: row.gender, age: row.age, tinOrPhone: row.tin_or_phone }
+  return {
+    id: row.id, fullName: row.full_name, gender: row.gender, age: row.age,
+    tinOrPhone: row.tin_or_phone, phone: row.phone ?? row.tin_or_phone, tin: row.tin ?? null,
+  }
 }
 
-// Insert-or-update on (branch, tin_or_phone) -- this is both "register a new
-// patient" and "found them, just change what's different," the same RPC
-// either way.
-export async function upsertPatient(fullName: string, gender: PatientGender | null, age: number | null, tinOrPhone: string): Promise<string> {
+// Insert-or-update keyed on the phone number within the branch -- this is
+// both "register a new patient" and "found them, just change what's
+// different," the same RPC either way. A blank TIN never wipes one already on
+// file (the RPC coalesces), so a visit that doesn't retype it is harmless.
+export async function upsertPatient(
+  fullName: string,
+  gender: PatientGender | null,
+  age: number | null,
+  phone: string,
+  tin?: string | null
+): Promise<string> {
   const { data, error } = await supabase.rpc("upsert_patient", {
-    p_full_name: fullName, p_gender: gender, p_age: age, p_tin_or_phone: tinOrPhone,
+    p_full_name: fullName, p_gender: gender, p_age: age,
+    p_phone: phone, p_tin: tin?.trim() || null,
   })
   if (error) throw error
   return data as string
@@ -41,7 +58,8 @@ export async function listBranchPatients(): Promise<PatientListRow[]> {
   const { data, error } = await supabase.rpc("list_branch_patients")
   if (error) throw error
   return ((data ?? []) as any[]).map(row => ({
-    id: row.id, fullName: row.full_name, gender: row.gender, age: row.age, tinOrPhone: row.tin_or_phone,
+    id: row.id, fullName: row.full_name, gender: row.gender, age: row.age,
+    tinOrPhone: row.tin_or_phone, phone: row.phone ?? row.tin_or_phone, tin: row.tin ?? null,
     visitCount: Number(row.visit_count), lastVisitAt: row.last_visit_at, lifetimeSpend: Number(row.lifetime_spend),
   }))
 }

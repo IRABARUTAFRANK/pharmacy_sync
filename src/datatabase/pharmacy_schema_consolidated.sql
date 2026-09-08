@@ -3737,6 +3737,16 @@ alter table public.sales add column if not exists patient_id uuid references pub
 -- The pharmacy's own tax ID, shown on every printed invoice from here on.
 alter table public.branches add column if not exists tin varchar(20);
 
+-- Dropped first, unconditionally: the 2026-09-07_patient_and_insurer_tin.sql
+-- migration widens this function (adds phone/tin to its returned columns),
+-- and `create or replace` cannot narrow an OUT-parameter row shape back to
+-- this one -- only DROP can. Without this, re-running this file against a
+-- database that has had that migration applied fails with "cannot change
+-- return type of existing function". Same guard already used for
+-- lookup_barcode()/admin_list_product_requests()/get_my_branch_details()
+-- above. Re-apply the dated migrations after this file, as always.
+drop function if exists public.find_patient_by_identifier(text);
+
 create or replace function public.find_patient_by_identifier(p_identifier text)
 returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text)
 language sql
@@ -3786,6 +3796,9 @@ $$;
 -- Branch-scoped roster for the Patients page: each patient plus their most
 -- recent visit and lifetime spend, computed from sales rather than stored
 -- redundantly so it can never drift from the real sale history.
+-- Dropped first for the same reason as find_patient_by_identifier() above.
+drop function if exists public.list_branch_patients();
+
 create or replace function public.list_branch_patients()
 returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text, visit_count integer, last_visit_at timestamptz, lifetime_spend numeric)
 language sql
@@ -5206,9 +5219,11 @@ grant execute on function public.list_branch_discounts() to authenticated;
 -- a seller calling this RPC directly gets the same "Only the branch owner..."
 -- rejection adjust_stock()/update_branch_details() already use for their own
 -- owner/manager-only actions.
+drop function if exists public.list_branch_history(timestamptz, timestamptz);
+
 create or replace function public.list_branch_history(p_from timestamptz default null, p_to timestamptz default null)
 returns table(
-  event_at timestamptz, category text, title text, description text, amount numeric, actor_name text, status text
+  event_at timestamptz, category text, amount numeric, actor_name text, status text, meta jsonb
 )
 language plpgsql
 security definer
@@ -5224,10 +5239,12 @@ begin
     raise exception 'Only the branch owner may view the full history';
   end if;
 
+  -- title/description text is NOT built here -- it's built client-side from
+  -- this raw meta data, so the History page can render it in the viewer's
+  -- chosen language (see src/pages/HistoryPage.tsx eventText()).
   return query
-  select s.sold_at, 'sale'::text, format('Sale — %s', r.receipt_number)::text,
-    format('%s item%s%s', si.cnt, case when si.cnt = 1 then '' else 's' end, case when p.full_name is not null then ' · ' || p.full_name else '' end),
-    s.total_amount, u1.full_name::text, null::text
+  select s.sold_at, 'sale'::text, s.total_amount, u1.full_name::text, null::text,
+    jsonb_build_object('receiptNumber', r.receipt_number, 'itemCount', si.cnt, 'patientName', p.full_name)
   from public.sales s
   join public.receipts r on r.sale_id = s.id
   left join public.patients p on p.id = s.patient_id
@@ -5237,10 +5254,8 @@ begin
 
   union all
 
-  select sa.adjusted_at, 'stock_adjustment'::text,
-    format('Stock adjustment — %s', replace(sa.adjustment_type, '_', ' '))::text,
-    format('Qty %s%s%s%s', sa.quantity, ' · ', concat_ws(' ', pr1.name, pv1.dosage), case when sa.reason is not null then ' — ' || sa.reason else '' end),
-    null::numeric, u2.full_name::text, sa.adjustment_type::text
+  select sa.adjusted_at, 'stock_adjustment'::text, null::numeric, u2.full_name::text, sa.adjustment_type::text,
+    jsonb_build_object('quantity', sa.quantity, 'productName', concat_ws(' ', pr1.name, pv1.dosage), 'reason', sa.reason)
   from public.stock_adjustments sa
   join public.stock_batches sb1 on sb1.id = sa.stock_batch_id
   join public.product_variants pv1 on pv1.id = sb1.product_variant_id
@@ -5250,10 +5265,8 @@ begin
 
   union all
 
-  select sb3.received_at, 'stock_batch'::text,
-    format('Stock logged — %s', concat_ws(' ', pr3.name, pv3.dosage))::text,
-    format('Batch %s · %s units received', sb3.batch_number, sb3.quantity_received),
-    (sb3.quantity_received * sb3.cost_price), u7.full_name::text, null::text
+  select sb3.received_at, 'stock_batch'::text, (sb3.quantity_received * sb3.cost_price), u7.full_name::text, null::text,
+    jsonb_build_object('productName', concat_ws(' ', pr3.name, pv3.dosage), 'batchNumber', sb3.batch_number, 'quantityReceived', sb3.quantity_received)
   from public.stock_batches sb3
   join public.product_variants pv3 on pv3.id = sb3.product_variant_id
   join public.products pr3 on pr3.id = pv3.product_id
@@ -5262,8 +5275,8 @@ begin
 
   union all
 
-  select ic.submitted_at, 'insurance_claim'::text, format('Insurance claim — %s', ip.name)::text,
-    format('%s%% coverage', ic.coverage_percentage_applied), ic.claim_amount, null::text, ic.status::text
+  select ic.submitted_at, 'insurance_claim'::text, ic.claim_amount, null::text, ic.status::text,
+    jsonb_build_object('providerName', ip.name, 'coveragePercentage', ic.coverage_percentage_applied)
   from public.insurance_claims ic
   join public.sales s2 on s2.id = ic.sale_id
   join public.insurance_providers ip on ip.id = ic.insurance_provider_id
@@ -5271,31 +5284,31 @@ begin
 
   union all
 
-  select pt.created_at, 'patient'::text, format('Patient registered — %s', pt.full_name)::text,
-    coalesce(pt.tin_or_phone, '')::text, null::numeric, u4.full_name::text, null::text
+  select pt.created_at, 'patient'::text, null::numeric, u4.full_name::text, null::text,
+    jsonb_build_object('patientName', pt.full_name, 'tinOrPhone', pt.tin_or_phone)
   from public.patients pt
   left join public.users u4 on u4.id = pt.created_by
   where pt.branch_id = v_branch and (p_from is null or pt.created_at >= p_from) and (p_to is null or pt.created_at <= p_to)
 
   union all
 
-  select pq.created_at, 'product_request'::text, 'Product request submitted'::text,
-    left(pq.message, 140), null::numeric, u5.full_name::text, pq.status::text
+  select pq.created_at, 'product_request'::text, null::numeric, u5.full_name::text, pq.status::text,
+    jsonb_build_object('message', left(pq.message, 140))
   from public.product_requests pq
   left join public.users u5 on u5.id = pq.requested_by
   where pq.branch_id = v_branch and (p_from is null or pq.created_at >= p_from) and (p_to is null or pq.created_at <= p_to)
 
   union all
 
-  select us.created_at, 'staff'::text, format('Seller account created — %s', us.full_name)::text,
-    us.email::text, null::numeric, null::text, null::text
+  select us.created_at, 'staff'::text, null::numeric, null::text, null::text,
+    jsonb_build_object('staffName', us.full_name, 'email', us.email)
   from public.users us
   where us.branch_id = v_branch and us.role = 'seller' and (p_from is null or us.created_at >= p_from) and (p_to is null or us.created_at <= p_to)
 
   union all
 
-  select br.recalled_at, 'batch_recall'::text, format('RECALL — %s Batch %s', concat_ws(' ', pr2.name, pv2.dosage), br.batch_number)::text,
-    format('%s · %s', coalesce(br.manufacturer_name, 'Unknown manufacturer'), br.reason), null::numeric, u6.full_name::text, 'recalled'::text
+  select br.recalled_at, 'batch_recall'::text, null::numeric, u6.full_name::text, 'recalled'::text,
+    jsonb_build_object('productName', concat_ws(' ', pr2.name, pv2.dosage), 'batchNumber', br.batch_number, 'manufacturerName', br.manufacturer_name, 'reason', br.reason)
   from public.batch_recalls br
   join public.product_variants pv2 on pv2.id = br.product_variant_id
   join public.products pr2 on pr2.id = pv2.product_id
@@ -5307,23 +5320,23 @@ begin
 
   union all
 
-  select b.created_at, 'barcode_created'::text, format('Barcode created — %s', upper(b.barcode_type))::text,
-    format('%s · %s · %s', b.code, replace(b.code_source, '_', ' '), b.status), null::numeric, null::text, b.status::text
+  select b.created_at, 'barcode_created'::text, null::numeric, null::text, b.status::text,
+    jsonb_build_object('barcodeType', b.barcode_type, 'code', b.code, 'codeSource', b.code_source)
   from public.barcodes b
   join public.stock_batches sb4 on sb4.id = b.stock_batch_id
   where sb4.branch_id = v_branch and (p_from is null or b.created_at >= p_from) and (p_to is null or b.created_at <= p_to)
 
   union all
 
-  select n.created_at, 'notification'::text, format('Notification — %s', replace(n.source_type, '_', ' '))::text,
-    n.message, null::numeric, null::text, (case when n.is_read then 'read' else 'unread' end)::text
+  select n.created_at, 'notification'::text, null::numeric, null::text, (case when n.is_read then 'read' else 'unread' end)::text,
+    jsonb_build_object('sourceType', n.source_type, 'message', n.message)
   from public.notifications n
   where n.branch_id = v_branch and (p_from is null or n.created_at >= p_from) and (p_to is null or n.created_at <= p_to)
 
   union all
 
-  select st.created_at, 'support_ticket'::text, st.subject::text,
-    format('Raised by %s · Status: %s', coalesce(u8.full_name, 'Unknown'), replace(st.status, '_', ' ')), null::numeric, u8.full_name::text, st.status::text
+  select st.created_at, 'support_ticket'::text, null::numeric, u8.full_name::text, st.status::text,
+    jsonb_build_object('subject', st.subject)
   from public.support_tickets st
   left join public.users u8 on u8.id = st.raised_by
   where st.branch_id = v_branch and (p_from is null or st.created_at >= p_from) and (p_to is null or st.created_at <= p_to)

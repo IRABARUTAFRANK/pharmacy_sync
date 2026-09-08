@@ -3,6 +3,7 @@ import { Lock, AlertCircle, Loader2, CheckCircle2, RefreshCw } from "lucide-reac
 import { updatePassword } from "../lib/auth";
 import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell";
 import loginImg from "../assets/products.jpg";
+import { useTranslation } from "../lib/i18n";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -32,6 +33,7 @@ function linkError(): string | null {
 // normal home/login flow; this form only has to assume that session already
 // exists and call updatePassword() on it.
 export default function ResetPassword() {
+  const { t } = useTranslation();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -41,8 +43,8 @@ export default function ResetPassword() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < MIN_PASSWORD_LENGTH) { setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`); return; }
-    if (password !== confirmPassword) { setError("Passwords do not match"); return; }
+    if (password.length < MIN_PASSWORD_LENGTH) { setError(t("auth.errorPasswordTooShort", { count: MIN_PASSWORD_LENGTH })); return; }
+    if (password !== confirmPassword) { setError(t("auth.errorPasswordMismatch")); return; }
     setError("");
     setBusy(true);
     try {
@@ -53,7 +55,7 @@ export default function ResetPassword() {
       // their dashboard — no separate "log in again" step needed.
       setTimeout(() => { window.location.hash = ""; }, 1400);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not set your password. Request a new reset link and try again.");
+      setError(reason instanceof Error ? reason.message : t("resetPassword.errorSetFailed"));
     } finally {
       setBusy(false);
     }
@@ -62,9 +64,9 @@ export default function ResetPassword() {
   return (
     <AuthShell
       image={loginImg}
-      imageAlt="Pharmacist using a digital stock management system with full pharmacy shelves visible"
-      eyebrow={expiredMessage ? "Link expired" : "Reset password"}
-      tagline={expiredMessage ? "Request a new reset link to continue." : "Choose a new password to get back into your branch dashboard."}
+      imageAlt={t("auth.loginImageAlt")}
+      eyebrow={expiredMessage ? t("resetPassword.eyebrowExpired") : t("auth.eyebrowReset")}
+      tagline={expiredMessage ? t("resetPassword.taglineExpired") : t("resetPassword.tagline")}
       onBack={() => { window.location.hash = ""; }}
     >
       <div className="rounded-2xl p-8" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
@@ -73,12 +75,12 @@ export default function ResetPassword() {
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "#fef2f2" }}>
               <AlertCircle className="w-7 h-7" style={{ color: "#dc2626" }} />
             </div>
-            <h1 className="text-xl font-extrabold" style={authCardHeading}>This link no longer works</h1>
+            <h1 className="text-xl font-extrabold" style={authCardHeading}>{t("resetPassword.expiredTitle")}</h1>
             <p className="text-sm mt-2" style={authBody}>{expiredMessage}.</p>
-            <p className="text-sm mt-1" style={authBody}>Reset links are one-time use and expire after a few hours — request a fresh one to continue.</p>
+            <p className="text-sm mt-1" style={authBody}>{t("resetPassword.expiredBody")}</p>
             <button type="button" onClick={() => { window.location.hash = ""; }}
               className="flex items-center justify-center gap-2 mx-auto mt-6" style={{ ...authPrimaryButton, width: "auto", padding: "12px 24px" }}>
-              <RefreshCw className="w-4 h-4" /> Back to sign in
+              <RefreshCw className="w-4 h-4" /> {t("auth.backToSignIn")}
             </button>
           </div>
         ) : done ? (
@@ -86,33 +88,33 @@ export default function ResetPassword() {
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(30,95,168,0.1)" }}>
               <CheckCircle2 className="w-7 h-7" style={{ color: "#1e5fa8" }} />
             </div>
-            <h1 className="text-xl font-extrabold" style={authCardHeading}>Password updated</h1>
-            <p className="text-sm mt-2" style={authBody}>Taking you to your dashboard…</p>
+            <h1 className="text-xl font-extrabold" style={authCardHeading}>{t("resetPassword.doneTitle")}</h1>
+            <p className="text-sm mt-2" style={authBody}>{t("resetPassword.doneBody")}</p>
           </div>
         ) : (
           <>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6" style={{ background: "rgba(30,95,168,0.1)" }}>
               <Lock className="w-6 h-6" style={{ color: "var(--primary)" }} />
             </div>
-            <h1 className="text-2xl font-extrabold" style={authCardHeading}>Set a new password</h1>
-            <p className="text-sm mt-2 mb-7" style={authBody}>This resets the password for the account this link was emailed to.</p>
+            <h1 className="text-2xl font-extrabold" style={authCardHeading}>{t("resetPassword.title")}</h1>
+            <p className="text-sm mt-2 mb-7" style={authBody}>{t("resetPassword.subtitle")}</p>
 
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>New password</label>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>{t("resetPassword.newPasswordLabel")}</label>
                 <PasswordInput
                   autoFocus autoComplete="new-password"
                   value={password} onChange={e => { setPassword(e.target.value); setError(""); }}
-                  placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                  placeholder={t("auth.passwordMinPlaceholder", { count: MIN_PASSWORD_LENGTH })}
                   style={authInput}
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>Confirm new password</label>
+                <label className="text-xs font-semibold block mb-1.5" style={{ color: "#374151", fontFamily: "var(--font-body)" }}>{t("resetPassword.confirmPasswordLabel")}</label>
                 <PasswordInput
                   autoComplete="new-password"
                   value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setError(""); }}
-                  placeholder="Re-enter your password"
+                  placeholder={t("auth.confirmPasswordPlaceholder")}
                   style={authInput}
                 />
               </div>
@@ -125,7 +127,7 @@ export default function ResetPassword() {
               )}
 
               <button type="submit" disabled={busy} className="flex items-center justify-center gap-2" style={{ ...authPrimaryButton, opacity: busy ? 0.7 : 1 }}>
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Set new password"}
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : t("resetPassword.submitButton")}
               </button>
             </form>
           </>

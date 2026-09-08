@@ -1,4 +1,5 @@
 import { supabase } from "./supabase"
+import { supabaseAdmin } from "./supabaseAdmin"
 
 // Products and their tax rates are super-admin managed only -- branches can
 // no longer create a product inline while receiving stock (see
@@ -65,7 +66,7 @@ export interface AdminProduct {
 // with a single null-variant row). Grouped here by product_id for the
 // Products & Tax console.
 export async function adminListProducts(): Promise<AdminProduct[]> {
-  const { data, error } = await supabase.rpc("admin_list_products")
+  const { data, error } = await supabaseAdmin.rpc("admin_list_products")
   if (error) raise(error)
   const rows = (data ?? []) as AdminProductRow[]
   const byProduct = new Map<string, AdminProduct>()
@@ -96,7 +97,7 @@ export async function adminCreateProduct(input: {
   taxRateId: string
   variants: ProductVariantInput[]
 }): Promise<string> {
-  const { data, error } = await supabase.rpc("admin_create_product", {
+  const { data, error } = await supabaseAdmin.rpc("admin_create_product", {
     p_name: input.name,
     p_generic_name: input.genericName ?? null,
     p_product_type: input.productType,
@@ -108,12 +109,12 @@ export async function adminCreateProduct(input: {
 }
 
 export async function adminSetProductTax(productId: string, taxRateId: string): Promise<void> {
-  const { error } = await supabase.rpc("admin_set_product_tax", { p_product_id: productId, p_tax_rate_id: taxRateId })
+  const { error } = await supabaseAdmin.rpc("admin_set_product_tax", { p_product_id: productId, p_tax_rate_id: taxRateId })
   if (error) raise(error)
 }
 
 export async function adminCreateTaxRate(name: string, ratePercentage: number): Promise<string> {
-  const { data, error } = await supabase.rpc("admin_create_tax_rate", { p_name: name, p_rate_percentage: ratePercentage })
+  const { data, error } = await supabaseAdmin.rpc("admin_create_tax_rate", { p_name: name, p_rate_percentage: ratePercentage })
   if (error) raise(error)
   return data as string
 }
@@ -134,7 +135,7 @@ export interface AdminCategoryRow {
 }
 
 export async function adminListCategories(): Promise<AdminCategoryRow[]> {
-  const { data, error } = await supabase.rpc("admin_list_categories")
+  const { data, error } = await supabaseAdmin.rpc("admin_list_categories")
   if (error) raise(error)
   return (data ?? []) as AdminCategoryRow[]
 }
@@ -142,7 +143,7 @@ export async function adminListCategories(): Promise<AdminCategoryRow[]> {
 // branchId omitted/null => created for every branch that doesn't already
 // have it. Returns how many branches actually got a new row.
 export async function adminCreateCategory(name: string, description: string, branchId?: string | null): Promise<number> {
-  const { data, error } = await supabase.rpc("admin_create_category", {
+  const { data, error } = await supabaseAdmin.rpc("admin_create_category", {
     p_name: name,
     p_description: description || null,
     p_branch_id: branchId ?? null,
@@ -212,7 +213,7 @@ export interface AdminProductRequestRow extends ProductRequestRow {
 }
 
 export async function adminListProductRequests(): Promise<AdminProductRequestRow[]> {
-  const { data, error } = await supabase.rpc("admin_list_product_requests")
+  const { data, error } = await supabaseAdmin.rpc("admin_list_product_requests")
   if (error) raise(error)
   return (data ?? []) as AdminProductRequestRow[]
 }
@@ -225,7 +226,7 @@ export async function adminApproveProductRequest(input: {
   taxRateId: string
   variants: ProductVariantInput[]
 }): Promise<{ productId: string; variantId: string }> {
-  const { data, error } = await supabase.rpc("admin_approve_product_request", {
+  const { data, error } = await supabaseAdmin.rpc("admin_approve_product_request", {
     p_request_id: input.requestId,
     p_product_name: input.productName,
     p_generic_name: input.genericName ?? null,
@@ -239,6 +240,6 @@ export async function adminApproveProductRequest(input: {
 }
 
 export async function adminRejectProductRequest(requestId: string, reason: string): Promise<void> {
-  const { error } = await supabase.rpc("admin_reject_product_request", { p_request_id: requestId, p_reason: reason })
+  const { error } = await supabaseAdmin.rpc("admin_reject_product_request", { p_request_id: requestId, p_reason: reason })
   if (error) raise(error)
 }

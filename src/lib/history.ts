@@ -19,8 +19,6 @@ export const HISTORY_CATEGORIES: HistoryCategory[] = [
 export interface HistoryEvent {
   eventAt: string
   category: HistoryCategory
-  title: string
-  description: string
   amount: number | null
   actorName: string | null
   // Real where the category has one (claim status, adjustment type, barcode
@@ -28,6 +26,12 @@ export interface HistoryEvent {
   // information (every sale row is equally "completed" -- there's no
   // pending/refunded concept in this schema).
   status: string | null
+  // Raw, per-category facts (product name, receipt number, quantity...) --
+  // NOT pre-formatted text. list_branch_history() deliberately stops short
+  // of building an English sentence server-side; HistoryPage's eventText()
+  // builds the displayed title/description from this in whichever language
+  // the viewer has chosen.
+  meta: Record<string, any>
 }
 
 function raise(error: { message: string } | null, fallback: string): never {
@@ -38,8 +42,8 @@ export async function loadBranchHistory(from?: string, to?: string): Promise<His
   const { data, error } = await supabase.rpc("list_branch_history", { p_from: from ?? null, p_to: to ?? null })
   if (error) raise(error, "Could not load branch history.")
   return (data ?? []).map((row: any) => ({
-    eventAt: row.event_at, category: row.category as HistoryCategory, title: row.title,
-    description: row.description, amount: row.amount === null ? null : Number(row.amount), actorName: row.actor_name,
-    status: row.status ?? null,
+    eventAt: row.event_at, category: row.category as HistoryCategory,
+    amount: row.amount === null ? null : Number(row.amount), actorName: row.actor_name,
+    status: row.status ?? null, meta: row.meta ?? {},
   }))
 }

@@ -1,0 +1,546 @@
+// ============================================================================
+// PharmSync — FULL system ERD (Eraser.io), existing schema + proposed feature
+// ============================================================================
+// STATUS: diagram only, nothing here is applied or wired into the app.
+// Paste this file's contents into eraser.io (or open with the Eraser VS Code
+// extension) to render it.
+//
+// This supersedes the earlier, partial version of this file: that version
+// showed only the 5 new proposal tables plus 4 existing tables abbreviated
+// for context. This version shows EVERY table currently live in the
+// database (31 of them, extracted and cross-checked directly against
+// pharmacy_schema_consolidated.sql plus every dated migration already
+// applied on top of it -- not transcribed from memory) PLUS the 4 new
+// tables proposed in the companion file:
+//
+//   src/datatabase/PROPOSAL_multi_branch_organizations.sql
+//
+// COLOR LEGEND:
+//   gray   existing table, completely unchanged by the multi-branch proposal
+//   amber  existing table that the proposal adds ONE column/value to
+//          (branches gains organization_id; barcodes' status gains the
+//          'in_transit' value -- both additive, both nullable/optional)
+//   blue   brand new table -- only exists if the proposal is approved
+//
+// Sections below follow the SAME grouping the SQL schema itself uses
+// (CORE/CATALOG, STOCK/BARCODE, SALES/INSURANCE, ANALYTICS/OPS, ONBOARDING),
+// plus one final new section for the proposed organization layer.
+//
+// Two tables have a COMPOSITE primary key that Eraser's per-column "pk" tag
+// cannot express on its own (a single column can be tagged pk, not two
+// together) -- both are called out with a comment where they occur:
+// branch_product_categorization (branch_id, product_id) and
+// insurance_product_coverage (insurance_provider_id, product_id).
+// ============================================================================
+
+
+// ── A. CORE / CATALOG ────────────────────────────────────────────────────
+
+branches [icon: home, color: amber] {
+  id uuid pk
+  name varchar
+  address text
+  phone varchar
+  created_at timestamp
+  email varchar
+  branch_code varchar
+  activation_code varchar
+  status varchar // pending | otp_sent | active | locked | denied
+  called_at timestamp
+  locked_at timestamp
+  failed_logins integer
+  denied_reason text
+  tin varchar // this branch's OWN independent TIN, today
+  logo_path text
+  bank_account_number varchar
+  bank_account_name varchar
+  momo_pay_number varchar
+  out_of_stock_reminder_hours integer
+  website varchar
+  license_number varchar
+  license_expiry_date date
+  ebm_device_serial varchar
+  default_language varchar
+  receipt_number_prefix varchar
+  pos_cash_enabled boolean
+  pos_mtn_momo_enabled boolean
+  pos_airtel_money_enabled boolean
+  pos_card_enabled boolean
+  pos_insurance_enabled boolean
+  pos_default_payment_method varchar
+  pos_require_patient_name boolean
+  pos_allow_discounts boolean
+  pos_show_patient_history boolean
+  organization_id uuid fk // NEW, nullable -> pharmacy_organizations.id
+}
+
+users [icon: user, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  full_name varchar
+  email varchar unique
+  role varchar // owner | manager | pharmacist | staff | seller
+  is_active boolean
+  created_at timestamp
+}
+
+branch_settings [icon: settings, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  setting_key varchar
+  setting_value text
+  updated_by uuid fk
+  updated_at timestamp
+}
+
+tax_rates [icon: percent, color: gray] {
+  id uuid pk
+  name varchar unique
+  rate_percentage decimal
+}
+
+product_categories [icon: tag, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  name varchar
+  description text
+  created_at timestamp
+}
+
+products [icon: package, color: gray] {
+  id uuid pk
+  tax_rate_id uuid fk
+  product_type varchar // medicine | supply | other
+  name varchar
+  generic_name varchar
+  description text
+}
+
+product_variants [icon: layers, color: gray] {
+  id uuid pk
+  product_id uuid fk
+  dosage varchar
+  form varchar
+  unit varchar
+  created_at timestamp
+}
+
+reorder_points [icon: sliders, color: gray] {
+  id uuid pk
+  product_id uuid fk
+  branch_id uuid fk
+  min_quantity integer
+  max_quantity integer
+}
+
+branch_product_categorization [icon: link, color: gray] {
+  // composite pk: (branch_id, product_id)
+  branch_id uuid fk // -> branches.id
+  product_id uuid fk
+  category_id uuid fk // composite fk together with branch_id ->
+                       // product_categories.(id, branch_id)
+}
+
+
+// ── B. STOCK / BARCODE ───────────────────────────────────────────────────
+
+suppliers [icon: truck, color: gray] {
+  id uuid pk
+  supplier_name varchar
+  contact varchar
+  location varchar
+  created_at timestamp
+  branch_id uuid fk // nullable -- null = legacy shared supplier row
+}
+
+stock_deliveries [icon: package, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  supplier_id uuid fk
+  delivery_code varchar
+  received_by uuid fk
+  received_at timestamp
+  notes text
+  created_at timestamp
+}
+
+stock_batches [icon: box, color: gray] {
+  id uuid pk
+  product_variant_id uuid fk
+  branch_id uuid fk
+  supplier_id uuid fk
+  manufacturer_name varchar
+  delivery_code varchar
+  logged_by uuid fk
+  batch_number varchar
+  expiry_date date
+  cost_price decimal
+  selling_price decimal
+  quantity_received integer
+  received_at timestamp
+  delivery_id uuid fk
+}
+
+barcodes [icon: tag, color: amber] {
+  id uuid pk
+  stock_batch_id uuid fk
+  parent_barcode_id uuid fk // self-reference: pack -> its parent box
+  barcode_type varchar // box | pack
+  code varchar unique // the printed, scanned label -- never changes
+  code_source varchar // manufacturer | generated
+  child_count integer
+  pieces_per_pack integer
+  quantity_available integer
+  status varchar // active | sold_out | expired | recalled | damaged |
+                  // in_transit (NEW value, proposal-only)
+  created_at timestamp
+}
+
+batch_recalls [icon: alert-triangle, color: gray] {
+  id uuid pk
+  product_variant_id uuid fk
+  batch_number varchar
+  manufacturer_name varchar
+  reason text
+  recalled_by uuid fk
+  recalled_at timestamp
+  // system-wide -- NOT scoped to one branch, visible to every branch that
+  // ever received the same real-world lot
+}
+
+stock_adjustments [icon: edit, color: gray] {
+  id uuid pk
+  stock_batch_id uuid fk
+  barcode_id uuid fk
+  adjustment_type varchar // damage | loss | correction | return |
+                           // expired_writeoff | recalled
+  quantity integer
+  reason text
+  performed_by uuid fk
+  adjusted_at timestamp
+}
+
+notifications [icon: bell, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  source_type varchar // batch_recall | stock_adjustment |
+                       // product_request_approved | product_request_rejected
+                       // | out_of_stock | license_expiring
+  source_id uuid // polymorphic -- points at a row in whichever table
+                  // source_type names, not a real FK
+  message text
+  is_read boolean
+  created_at timestamp
+}
+
+
+// ── C. SALES / INSURANCE ─────────────────────────────────────────────────
+
+discounts [icon: percent, color: gray] {
+  id uuid pk
+  name varchar
+  discount_type varchar // percentage | fixed
+  value decimal
+  valid_from date
+  valid_to date
+  branch_id uuid fk // nullable -- null = a genuinely global discount
+}
+
+insurance_providers [icon: shield, color: gray] {
+  id uuid pk
+  name varchar unique
+  contact_info text
+  default_coverage_percentage decimal
+  tin varchar // the INSURER's own TIN, recorded on every sale it covers
+}
+
+insurance_product_coverage [icon: shield, color: gray] {
+  // composite pk: (insurance_provider_id, product_id)
+  // A row here IS the "differs from the provider's default" flag --
+  // no separate boolean column needed.
+  insurance_provider_id uuid fk
+  product_id uuid fk
+  coverage_percentage decimal
+}
+
+patients [icon: user-plus, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  full_name varchar
+  gender varchar // male | female | other
+  age integer
+  tin_or_phone varchar // legacy combined identity key
+  created_by uuid fk
+  created_at timestamp
+  updated_at timestamp
+  phone varchar // the working identity going forward
+  tin varchar // optional -- businesses/insured patients have one
+}
+
+sales [icon: shopping-cart, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  cashier_id uuid fk
+  discount_id uuid fk
+  total_amount decimal
+  sold_at timestamp
+  patient_id uuid fk // nullable -- a walk-in sale is legitimate
+  payment_method varchar // cash | mtn_momo | airtel_money | card
+  patient_phone varchar // snapshot at sale time, not a live join
+  patient_tin varchar // snapshot at sale time
+  insurer_tin varchar // snapshot at sale time
+}
+
+sale_items [icon: list, color: gray] {
+  id uuid pk
+  sale_id uuid fk
+  barcode_id uuid fk
+  tax_rate_id uuid fk
+  quantity integer
+  unit_price decimal
+  subtotal decimal // net, tax-exclusive base
+  insurance_covered_amount decimal // this LINE's own covered portion
+}
+
+receipts [icon: file-text, color: gray] {
+  id uuid pk
+  sale_id uuid fk unique
+  receipt_number varchar unique
+  issued_at timestamp
+}
+
+insurance_claims [icon: shield, color: gray] {
+  id uuid pk
+  sale_id uuid fk unique
+  insurance_provider_id uuid fk
+  coverage_percentage_applied decimal // snapshotted, sale-level blended rate
+  claim_amount decimal
+  status varchar // submitted | approved | rejected | paid
+  submitted_at timestamp
+}
+
+
+// ── D. ANALYTICS / OPS ───────────────────────────────────────────────────
+
+sales_forecasts [icon: trending-up, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  product_variant_id uuid fk
+  forecast_period varchar
+  predicted_quantity integer
+  generated_at timestamp
+}
+
+dashboard_reports [icon: bar-chart, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  report_type varchar
+  data json
+  generated_at timestamp
+}
+
+support_tickets [icon: message-circle, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  raised_by uuid fk
+  subject varchar
+  description text
+  status varchar // open | in_progress | resolved | closed
+  created_at timestamp
+  priority varchar // low | medium | high
+}
+
+
+// ── E. ONBOARDING ────────────────────────────────────────────────────────
+
+branch_directory [icon: book, color: gray] {
+  branch_id uuid pk fk // publicly readable before sign-in: id + name only
+  display_name varchar
+}
+
+branch_applications [icon: file-plus, color: gray] {
+  id uuid pk
+  application_code varchar unique
+  pharmacy_name varchar
+  phone varchar
+  email varchar
+  location text
+  status varchar // pending | otp_sent | active | denied
+  called_at timestamp
+  denied_reason text
+  branch_id uuid fk // nullable -- null once the branch behind it is deleted
+  submitted_at timestamp
+  otp_sent_at timestamp // anchors the 3-hour activation window
+}
+
+product_requests [icon: help-circle, color: gray] {
+  id uuid pk
+  branch_id uuid fk
+  requested_by uuid fk
+  message text // free-text description, plus an optional photo
+  image_path text
+  status varchar // pending | approved | rejected
+  resolved_product_id uuid fk
+  resolved_variant_id uuid fk
+  resolved_by uuid fk
+  resolved_at timestamp
+  rejection_reason text
+  created_at timestamp
+}
+
+deleted_branches_log [icon: trash-2, color: gray] {
+  id uuid pk
+  branch_id uuid // NOT a live FK -- the branch it refers to no longer exists
+  pharmacy_name varchar
+  phone varchar
+  email varchar
+  branch_code varchar
+  location text
+  reason text
+  deleted_by_email text
+  deleted_at timestamp
+}
+
+
+// ── F. NEW — Multi-branch organizations (proposed) ──────────────────────
+
+pharmacy_organizations [icon: briefcase, color: blue] {
+  id uuid pk
+  legal_name varchar
+  trade_name varchar
+  tin varchar // the COMPANY-level RRA TIN
+  status varchar // active | suspended
+  created_at timestamp
+}
+
+organization_members [icon: users, color: blue] {
+  id uuid pk
+  organization_id uuid fk
+  user_id uuid fk // an EXISTING branch user -- their home branch is unchanged
+  role varchar // org_owner | org_manager
+  created_at timestamp
+}
+
+stock_transfers [icon: truck, color: blue] {
+  id uuid pk
+  organization_id uuid fk
+  from_branch_id uuid fk
+  to_branch_id uuid fk
+  status varchar // pending -> approved -> in_transit -> received
+                 //          \-> rejected / cancelled (pre-dispatch only)
+  requested_by uuid fk
+  approved_by uuid fk
+  requested_at timestamp
+  approved_at timestamp
+  dispatched_at timestamp
+  received_at timestamp
+  notes varchar
+  rejection_reason varchar
+}
+
+stock_transfer_items [icon: package, color: blue] {
+  id uuid pk
+  transfer_id uuid fk
+  stock_batch_id uuid fk // the WHOLE batch, never a partial split of one
+}
+
+
+// ── Relationships — A. Core / Catalog ────────────────────────────────────
+
+pharmacy_organizations.id < branches.organization_id
+branches.id < users.branch_id
+branches.id < branch_settings.branch_id
+users.id < branch_settings.updated_by
+products.id < product_variants.product_id
+tax_rates.id < products.tax_rate_id
+products.id < reorder_points.product_id
+branches.id < reorder_points.branch_id
+branches.id < product_categories.branch_id
+branches.id < branch_product_categorization.branch_id
+products.id < branch_product_categorization.product_id
+product_categories.id < branch_product_categorization.category_id
+
+// ── Relationships — B. Stock / Barcode ───────────────────────────────────
+
+branches.id < suppliers.branch_id
+branches.id < stock_deliveries.branch_id
+suppliers.id < stock_deliveries.supplier_id
+users.id < stock_deliveries.received_by
+product_variants.id < stock_batches.product_variant_id
+branches.id < stock_batches.branch_id
+suppliers.id < stock_batches.supplier_id
+users.id < stock_batches.logged_by
+stock_deliveries.id < stock_batches.delivery_id
+stock_batches.id < barcodes.stock_batch_id
+barcodes.id < barcodes.parent_barcode_id
+product_variants.id < batch_recalls.product_variant_id
+users.id < batch_recalls.recalled_by
+stock_batches.id < stock_adjustments.stock_batch_id
+barcodes.id < stock_adjustments.barcode_id
+users.id < stock_adjustments.performed_by
+branches.id < notifications.branch_id
+
+// ── Relationships — C. Sales / Insurance ─────────────────────────────────
+
+branches.id < discounts.branch_id
+products.id < insurance_product_coverage.product_id
+insurance_providers.id < insurance_product_coverage.insurance_provider_id
+branches.id < patients.branch_id
+users.id < patients.created_by
+branches.id < sales.branch_id
+users.id < sales.cashier_id
+discounts.id < sales.discount_id
+patients.id < sales.patient_id
+sales.id < sale_items.sale_id
+barcodes.id < sale_items.barcode_id
+tax_rates.id < sale_items.tax_rate_id
+sales.id < receipts.sale_id
+sales.id < insurance_claims.sale_id
+insurance_providers.id < insurance_claims.insurance_provider_id
+
+// ── Relationships — D. Analytics / Ops ───────────────────────────────────
+
+branches.id < sales_forecasts.branch_id
+product_variants.id < sales_forecasts.product_variant_id
+branches.id < dashboard_reports.branch_id
+branches.id < support_tickets.branch_id
+users.id < support_tickets.raised_by
+
+// ── Relationships — E. Onboarding ────────────────────────────────────────
+
+branches.id < branch_directory.branch_id
+branches.id < branch_applications.branch_id
+branches.id < product_requests.branch_id
+users.id < product_requests.requested_by
+products.id < product_requests.resolved_product_id
+product_variants.id < product_requests.resolved_variant_id
+users.id < product_requests.resolved_by
+
+// ── Relationships — F. NEW organization layer ────────────────────────────
+
+pharmacy_organizations.id < organization_members.organization_id
+users.id < organization_members.user_id
+pharmacy_organizations.id < stock_transfers.organization_id
+branches.id < stock_transfers.from_branch_id
+branches.id < stock_transfers.to_branch_id
+users.id < stock_transfers.requested_by
+users.id < stock_transfers.approved_by
+stock_transfers.id < stock_transfer_items.transfer_id
+stock_batches.id < stock_transfer_items.stock_batch_id
+
+
+// ── Notes ─────────────────────────────────────────────────────────────────
+// * deleted_branches_log.branch_id and notifications.source_id are the only
+//   two columns in the whole live schema that LOOK like they should be a
+//   foreign key but deliberately are not -- both are drawn without an arrow
+//   above. deleted_branches_log exists precisely because the branch it
+//   names no longer exists to reference; notifications.source_id is
+//   polymorphic (its meaning depends on source_type).
+// * Every arrow is a plain one-to-many, read as "one row on the left can be
+//   pointed at by many rows on the right." There is no many-to-many
+//   relationship anywhere in this schema, including the proposal.
+// * This diagram shows what CAN be connected to what. It says nothing about
+//   which of those connections a write is allowed to cross -- that is a row-
+//   level-security and RPC-scoping question, not a table-shape one, and is
+//   covered in full in the two companion .sql files, especially Section 6
+//   ("RECOMMENDATIONS AND OPEN QUESTIONS") of the proposal file.

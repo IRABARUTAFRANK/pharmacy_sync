@@ -1,4 +1,5 @@
 import { supabase } from "./supabase"
+import { supabaseAdmin } from "./supabaseAdmin"
 
 // Real support tickets (public.support_tickets), replacing the
 // localStorage-only mock that used to back AdminPortal.tsx's Tickets tab
@@ -43,12 +44,12 @@ export interface AdminTicketRow extends MyTicketRow {
 }
 
 export async function adminListSupportTickets(): Promise<AdminTicketRow[]> {
-  const { data, error } = await supabase.rpc("admin_list_support_tickets")
+  const { data, error } = await supabaseAdmin.rpc("admin_list_support_tickets")
   if (error) raise(error)
   return (data ?? []) as AdminTicketRow[]
 }
 
 export async function adminUpdateTicketStatus(ticketId: string, status: TicketStatus): Promise<void> {
-  const { error } = await supabase.rpc("admin_update_ticket_status", { p_ticket_id: ticketId, p_status: status })
+  const { error } = await supabaseAdmin.rpc("admin_update_ticket_status", { p_ticket_id: ticketId, p_status: status })
   if (error) raise(error)
 }
