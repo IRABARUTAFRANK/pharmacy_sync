@@ -534,6 +534,7 @@ const fr: Record<TranslationKey, string> = {
   "alerts.source.productRequestRejected": "Demande de produit refusée",
   "alerts.source.outOfStock": "Rupture de stock",
   "alerts.source.licenseExpiring": "Licence de la pharmacie",
+  "alerts.source.forecastCompleted": "Résultat de prévision",
   "alerts.source.notification": "Notification",
 
   // ── Alerts page ────────────────────────────────────────────────────────────
@@ -840,6 +841,10 @@ const fr: Record<TranslationKey, string> = {
   "salesPage.coverageLoadError": "Impossible de charger la couverture de cet assureur.",
   "salesPage.completeSaleError": "Impossible de finaliser cette vente.",
   "salesPage.saleCompletedNotice": "Vente finalisée et reçu enregistré.",
+  "salesPage.printPromptTitle": "Vente finalisée",
+  "salesPage.printPromptBody": "Le reçu a déjà été enregistré. Voulez-vous l'imprimer ?",
+  "salesPage.printPromptSkip": "Non, passer",
+  "salesPage.printPromptPrint": "Imprimer",
   "salesPage.receiptPrintButton": "Imprimer le reçu",
   "salesPage.receiptNewSale": "Nouvelle vente",
   "salesPage.receiptLabelReceipt": "Reçu",

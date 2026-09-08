@@ -15,7 +15,7 @@ import HistoryPage from './pages/HistoryPage'
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
-import { checkExpiredStock, checkLicenseExpiry, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 
@@ -438,6 +438,7 @@ export default function App() {
     try { await checkOutOfStockAlerts() } catch { /* ignore */ }
     try { await checkExpiredStock() } catch { /* ignore */ }
     try { await checkLicenseExpiry() } catch { /* ignore */ }
+    try { await checkForecastAccuracyNotifications() } catch { /* ignore */ }
     try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
   }, [])
 

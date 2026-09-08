@@ -33,6 +33,7 @@ export const ALERT_SOURCE_TITLE_KEYS: Record<string, TranslationKey> = {
   product_request_rejected: "alerts.source.productRequestRejected",
   out_of_stock: "alerts.source.outOfStock",
   license_expiring: "alerts.source.licenseExpiring",
+  forecast_completed: "alerts.source.forecastCompleted",
 }
 
 const SEVERITY: Record<string, AlertSeverity> = {
@@ -42,6 +43,7 @@ const SEVERITY: Record<string, AlertSeverity> = {
   product_request_rejected: "warning",
   out_of_stock: "critical",
   license_expiring: "critical",
+  forecast_completed: "info",
 }
 
 interface NotificationRow {
@@ -109,5 +111,15 @@ export async function checkExpiredStock(): Promise<void> {
 // if no expiry date has been set.
 export async function checkLicenseExpiry(): Promise<void> {
   const { error } = await supabase.rpc("check_license_expiry")
+  if (error) throw error
+}
+
+// Once a saved forecast's (see saveSalesForecastSnapshot() in lib/analytics.ts)
+// entire predicted horizon has actually elapsed, this surfaces a
+// notification comparing what it predicted against what really sold --
+// same idempotent one-shot-per-snapshot shape as the checks above (guarded
+// by sales_forecast_snapshots.notified_at instead of a read/cooldown check).
+export async function checkForecastAccuracyNotifications(): Promise<void> {
+  const { error } = await supabase.rpc("check_forecast_accuracy_notifications")
   if (error) throw error
 }

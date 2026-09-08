@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import QRCode from "qrcode"
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Btn, CenterAlert, ChartTooltip, Logo, SectionHeader } from "../components"
+import { Btn, CenterAlert, ChartTooltip, Logo, Modal, SectionHeader } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { findPatientByIdentifier, upsertPatient, type PatientGender } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
-import { downloadReceiptPdf } from "../lib/receiptPdf"
 import { useScanner } from "../lib/scanner"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, listSaleHistory, loadCoverageOverrides, loadInsuranceProviders,
@@ -132,10 +131,6 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
     return () => { cancelled = true }
   }, [data.saleId])
 
-  const handleDownloadPdf = () => {
-    void downloadReceiptPdf(data, { printSize, qrDataUrl, isEbmRegistered, t })
-  }
-
   const printSizePicker = (
     <div style={{ marginBottom: 10 }}>
       <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
@@ -165,7 +160,6 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
     <div className="no-print" style={{ marginBottom: 14 }}>
       {showSizePicker && printSizePicker}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <Btn variant="secondary" onClick={handleDownloadPdf}>⬇ {t("salesPage.receiptDownloadPdfButton")}</Btn>
         <Btn variant="primary" onClick={() => window.print()}>🖨 {t("salesPage.receiptPrintButton")}</Btn>
         {onClose && <Btn variant="ghost" onClick={onClose}>{closeLabel ?? t("salesPage.receiptNewSale")}</Btn>}
       </div>
@@ -445,6 +439,13 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [receipt, setReceipt] = useState<ReceiptData | null>(null)
+  // Sits between "sale completed" and actually showing the receipt: the
+  // cashier is asked print-or-not first (see the JSX below) rather than
+  // being dropped straight onto the full receipt page. The sale itself, and
+  // its stored receipt row, are already saved server-side by complete_sale()
+  // regardless of what's picked here -- this only decides whether a physical
+  // copy gets printed.
+  const [pendingReceipt, setPendingReceipt] = useState<ReceiptData | null>(null)
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(BLANK_PATIENT)
   const [snapshot, setSnapshot] = useState<PosDashboardSnapshot | null>(null)
   const [recentSales, setRecentSales] = useState<SaleHistoryRow[]>([])
@@ -512,7 +513,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
     setError("")
     try {
       const item = await scanBarcode(code, taxRates)
-      setPending({ item, mode: "whole", amount: "1" })
+      addScannedItem(item)
       setScanInput("")
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
@@ -539,7 +540,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
     setError("")
     try {
       const item = await scanBarcode(code, taxRates)
-      setPending({ item, mode: "whole", amount: "1" })
+      addScannedItem(item)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
     } finally {
@@ -600,6 +601,20 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
     setError("")
   }
 
+  // A pack-type barcode with only one piece inside has no real "whole pack
+  // vs. pieces" choice to make -- selling it whole and selling 1 piece are
+  // the same thing -- so it goes straight into the cart instead of opening
+  // the confirmation card. Cartons (barcodeType "box") always still show
+  // the card, since "whole carton vs. packs vs. pieces" is always a real
+  // choice there.
+  function addScannedItem(item: ScannedBarcode) {
+    if (item.barcodeType === "pack" && (item.piecesPerPack ?? 1) <= 1) {
+      setCart(current => [...current, { ...item, sellMode: "whole", quantity: 1, piecesSold: 1 }])
+      return
+    }
+    setPending({ item, mode: "whole", amount: "1" })
+  }
+
   function removeLine(barcodeId: string) {
     setCart(current => current.filter(item => item.barcodeId !== barcodeId))
   }
@@ -650,7 +665,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
         patientId,
       })
       const fullReceipt = await getSaleReceipt(result.saleId)
-      setReceipt(fullReceipt)
+      setPendingReceipt(fullReceipt)
       setCart([])
       setProviderId("")
       setPatientDraft(BLANK_PATIENT)
@@ -661,6 +676,25 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
     } finally {
       setCompleting(false)
     }
+  }
+
+  if (pendingReceipt) {
+    return (
+      <div>
+        <Modal title={t("salesPage.printPromptTitle")} onClose={() => setPendingReceipt(null)} width={420}>
+          <div style={{ padding: "8px 20px 24px", display: "flex", flexDirection: "column", gap: 18, alignItems: "center", textAlign: "center" }}>
+            <div style={{ fontSize: 40 }}>🧾</div>
+            <div style={{ fontSize: 13, color: "var(--ink-mid)" }}>{t("salesPage.printPromptBody")}</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="ghost" onClick={() => setPendingReceipt(null)}>{t("salesPage.printPromptSkip")}</Btn>
+              <Btn variant="primary" onClick={() => { setReceipt(pendingReceipt); setPendingReceipt(null) }}>
+                🖨 {t("salesPage.printPromptPrint")}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      </div>
+    )
   }
 
   if (receipt) {
@@ -675,6 +709,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
   return (
     <div className="animate-fade-in">
       {error && <CenterAlert key={error} message={error} />}
+      {notice && <CenterAlert key={notice} tone="success" message={notice} />}
       <SectionHeader title={t("page.sales")} subtitle={t("salesPage.subtitle")} />
 
       {snapshot && (
