@@ -258,14 +258,15 @@
   create index if not exists idx_sale_items_sale on public.sale_items(sale_id);
   create index if not exists idx_notifications_branch_unread on public.notifications(branch_id, is_read);
 
-  -- sale_items.barcode_id and sales.patient_id are both FKs with no index.
-  -- Deleting a barcode or patient forces a sequential scan of sale_items or
-  -- sales (respectively) per deleted row to check the foreign key -- fine at
-  -- small scale, but it hits Postgres's statement_timeout once either table
-  -- has a few hundred thousand rows (found via a large-scale load test, but
-  -- the same slowdown applies to any real branch after enough normal use).
+  -- sale_items.barcode_id is a FK with no index. Deleting a barcode forces a
+  -- sequential scan of sale_items per deleted row to check the foreign key --
+  -- fine at small scale, but it hits Postgres's statement_timeout once the
+  -- table has a few hundred thousand rows (found via a large-scale load
+  -- test, but the same slowdown applies to any real branch after enough
+  -- normal use). The matching index for sales.patient_id lives further down,
+  -- right after that column is added -- it doesn't exist yet at this point
+  -- in a from-scratch run of this file.
   create index if not exists idx_sale_items_barcode on public.sale_items(barcode_id);
-  create index if not exists idx_sales_patient on public.sales(patient_id);
 
   -- ============================================================================
   -- RLS HELPER FUNCTIONS
@@ -3745,6 +3746,11 @@ grant select, insert, update on public.patients to authenticated;
 -- cash sale with no name given is still a legitimate sale.
 alter table public.sales add column if not exists patient_id uuid references public.patients(id);
 
+-- Deleting a patient forces a sequential scan of sales per deleted row to
+-- check this new FK otherwise -- see the sale_items.barcode_id index earlier
+-- in this file for the same reasoning. Must come after the column above.
+create index if not exists idx_sales_patient on public.sales(patient_id);
+
 -- The pharmacy's own tax ID, shown on every printed invoice from here on.
 alter table public.branches add column if not exists tin varchar(20);
 
@@ -6846,3 +6852,1397 @@ $$;
 
 revoke all on function public.list_compliance_transactions(date, date, integer) from public, anon;
 grant execute on function public.list_compliance_transactions(date, date, integer) to authenticated;
+
+-- ============================================================================
+-- FOLDED-IN MIGRATIONS -- applied to production individually as dated files,
+-- never previously copied into this consolidated snapshot. Folded in on
+-- 2026-09-08 so a fresh project bootstrapped from this one file actually
+-- matches production, instead of silently missing these tables/functions.
+-- Order matters -- validated by applying them in exactly this sequence
+-- against a brand-new Supabase project with no errors.
+-- ============================================================================
+
+-- ── originally 2026-09-05_restock_recommendations.sql ────────────────────────
+
+-- ============================================================================
+-- VELOCITY-AWARE RESTOCK RECOMMENDATIONS
+-- ============================================================================
+-- The existing low-stock check (check_out_of_stock_alerts / ai_stock_status)
+-- only compares current stock against a manually-set reorder point
+-- (reorder_points.min_quantity) -- it has no idea which products are
+-- actually best-sellers or how fast they're moving. A product with a
+-- generous min_quantity that suddenly starts flying off the shelf gets no
+-- warning until it's already at zero.
+--
+-- This adds a second, independent signal: for each product, how many units
+-- per day it has actually been selling recently (last 30 days, requiring
+-- sales on at least 3 distinct days so a single one-off sale can't trigger
+-- it), divided into how many units are on hand right now. If that's 14 days
+-- or fewer, it's about to run out at the current pace -- regardless of
+-- whether anyone ever configured a reorder point for it.
+--
+-- Two functions, following the exact pattern of check_out_of_stock_alerts()
+-- and ai_top_products()/ai_sales_forecast() already in this schema:
+--
+--   1. check_restock_recommendations() -- security definer, callable by any
+--      authenticated branch user (same as check_out_of_stock_alerts /
+--      check_expired_stock), writes public.notifications rows. Meant to be
+--      polled every 30s from the client alongside those two, so it's the
+--      "repetitive" piece -- it runs on its own, no cron needed. Same
+--      anti-spam rule as check_out_of_stock_alerts: only re-fire once the
+--      previous notification for that product was read and is >24h old.
+--
+--   2. ai_restock_recommendations(...) -- read-only, owner/manager gated
+--      (assert_owner_or_manager, same as ai_top_products), parameterized,
+--      for the Analytics & Forecasting page's "Best Sellers at Risk" chart.
+--      No notifications written here.
+--
+-- Run this once in the Supabase SQL editor (or via the CLI) against the
+-- project's database. Safe to re-run: CREATE OR REPLACE.
+-- ============================================================================
+
+create or replace function public.check_restock_recommendations()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_created integer := 0;
+  rec record;
+  v_last record;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  for rec in
+    with recent_sales as (
+      select
+        pv.id as variant_id,
+        sum(si.quantity)::numeric / 30 as avg_daily_qty,
+        count(distinct date_trunc('day', s.sold_at)) as active_days
+      from public.sale_items si
+      join public.sales s on s.id = si.sale_id
+      join public.barcodes bc on bc.id = si.barcode_id
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      join public.product_variants pv on pv.id = sb.product_variant_id
+      where s.branch_id = v_branch and s.sold_at >= now() - interval '30 days'
+      group by pv.id
+      having count(distinct date_trunc('day', s.sold_at)) >= 3
+    ),
+    stock as (
+      select
+        pv.id as variant_id, p.name as product_name, pv.dosage,
+        coalesce(sum(bc.quantity_available * bc.pieces_per_pack) filter (where bc.barcode_type = 'pack'), 0)::integer as qty_available
+      from public.stock_batches sb
+      join public.product_variants pv on pv.id = sb.product_variant_id
+      join public.products p on p.id = pv.product_id
+      left join public.barcodes bc on bc.stock_batch_id = sb.id
+      where sb.branch_id = v_branch
+      group by pv.id, p.name, pv.dosage
+    )
+    select
+      rs.variant_id, st.product_name, st.dosage, rs.avg_daily_qty, st.qty_available,
+      (st.qty_available / rs.avg_daily_qty) as days_to_stockout
+    from recent_sales rs
+    join stock st on st.variant_id = rs.variant_id
+    where rs.avg_daily_qty > 0 and st.qty_available > 0
+      and st.qty_available / rs.avg_daily_qty <= 14
+  loop
+    select id, is_read, created_at into v_last
+      from public.notifications
+      where branch_id = v_branch and source_type = 'restock_recommendation' and source_id = rec.variant_id
+      order by created_at desc
+      limit 1;
+
+    if not found or (v_last.is_read and v_last.created_at < now() - interval '24 hours') then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (
+        v_branch, 'restock_recommendation', rec.variant_id,
+        format('%s is one of your best sellers (~%s/day) and will run out in about %s days at this pace -- restock soon.',
+          concat_ws(' ', rec.product_name, rec.dosage), round(rec.avg_daily_qty, 1), round(rec.days_to_stockout))
+      );
+      v_created := v_created + 1;
+    end if;
+  end loop;
+
+  return v_created;
+end;
+$$;
+
+revoke all on function public.check_restock_recommendations() from public;
+grant execute on function public.check_restock_recommendations() to authenticated;
+
+create or replace function public.ai_restock_recommendations(
+  p_days_history integer default 30,
+  p_horizon_days integer default 14,
+  p_limit integer default 10
+)
+returns table(
+  product_id uuid, product_name text, dosage text,
+  avg_daily_quantity numeric, quantity_available integer, days_to_stockout numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_days_history < 7 or p_days_history > 365 then raise exception 'days_history must be between 7 and 365'; end if;
+  if p_horizon_days < 1 or p_horizon_days > 90 then raise exception 'horizon_days must be between 1 and 90'; end if;
+  if p_limit < 1 or p_limit > 50 then raise exception 'limit must be between 1 and 50'; end if;
+
+  return query
+  with recent_sales as (
+    select
+      pv.product_id as product_id,
+      pv.id as variant_id,
+      sum(si.quantity)::numeric / p_days_history as avg_daily_qty,
+      sum(si.quantity) as total_qty,
+      count(distinct date_trunc('day', s.sold_at)) as active_days
+    from public.sale_items si
+    join public.sales s on s.id = si.sale_id
+    join public.barcodes bc on bc.id = si.barcode_id
+    join public.stock_batches sb on sb.id = bc.stock_batch_id
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    where s.branch_id = v_branch and s.sold_at >= now() - (p_days_history || ' days')::interval
+    group by pv.product_id, pv.id
+    having count(distinct date_trunc('day', s.sold_at)) >= 3
+  ),
+  stock as (
+    select
+      pv.id as variant_id, p.id as product_id, p.name as product_name, pv.dosage,
+      coalesce(sum(bc.quantity_available * bc.pieces_per_pack) filter (where bc.barcode_type = 'pack'), 0)::integer as qty_available
+    from public.stock_batches sb
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    left join public.barcodes bc on bc.stock_batch_id = sb.id
+    where sb.branch_id = v_branch
+    group by pv.id, p.id, p.name, pv.dosage
+  )
+  select
+    st.product_id, st.product_name::text, st.dosage::text,
+    round(rs.avg_daily_qty, 2), st.qty_available, round(st.qty_available / rs.avg_daily_qty, 1)
+  from recent_sales rs
+  join stock st on st.variant_id = rs.variant_id
+  where rs.avg_daily_qty > 0 and st.qty_available > 0
+    and st.qty_available / rs.avg_daily_qty <= p_horizon_days
+  order by rs.total_qty desc, (st.qty_available / rs.avg_daily_qty) asc
+  limit p_limit;
+end;
+$$;
+
+revoke all on function public.ai_restock_recommendations(integer, integer, integer) from public, anon;
+grant execute on function public.ai_restock_recommendations(integer, integer, integer) to authenticated;
+
+-- ── originally 2026-09-07_admin_branch_edit_and_application_expiry.sql ───────
+
+-- ============================================================================
+-- Super-admin branch editing + 7-day application expiry
+-- ============================================================================
+-- Run once. Idempotent -- safe to re-run.
+--
+--   1. admin_update_branch_details() -- the super admin can correct a
+--      pharmacy's own details when the pharmacy asks. update_branch_details()
+--      already exists but is owner-only (role = 'owner'), so nothing let an
+--      admin act on a request like "we moved, please change our address".
+--      Deliberately a separate function rather than widening the owner one:
+--      the owner edits THEIR branch (implicit, from their session), an admin
+--      edits ANY branch (explicit p_branch_id). Merging them would mean a
+--      function whose target depends on who is calling it.
+--
+--   2. admin_expire_stale_applications() -- a registration nobody has
+--      approved within 7 days is deleted. The admin console warns from day 5
+--      (two days left) and day 6 (one day left); those warnings are computed
+--      client-side from submitted_at, which admin_list_pharmacy_applications()
+--      already returns, so no new alerting table is needed.
+
+-- ── 1. Super admin edits a branch ───────────────────────────────────────────
+
+create or replace function public.admin_update_branch_details(
+  p_branch_id uuid,
+  p_name text default null, p_phone text default null, p_email text default null,
+  p_address text default null, p_tin text default null, p_website text default null,
+  p_license_number text default null, p_license_expiry_date date default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+
+  if not exists (select 1 from public.branches where id = p_branch_id) then
+    raise exception 'Branch not found';
+  end if;
+
+  update public.branches
+  set
+    -- name is not nullable, so a blank leaves it alone rather than nulling it.
+    name = coalesce(nullif(btrim(coalesce(p_name, '')), ''), name),
+    phone = coalesce(nullif(btrim(coalesce(p_phone, '')), ''), phone),
+    email = coalesce(nullif(btrim(coalesce(p_email, '')), ''), email),
+    address = coalesce(nullif(btrim(coalesce(p_address, '')), ''), address),
+    tin = coalesce(nullif(btrim(coalesce(p_tin, '')), ''), tin),
+    website = coalesce(nullif(btrim(coalesce(p_website, '')), ''), website),
+    license_number = coalesce(nullif(btrim(coalesce(p_license_number, '')), ''), license_number),
+    license_expiry_date = coalesce(p_license_expiry_date, license_expiry_date)
+  where id = p_branch_id;
+
+  -- The sign-in directory shows the branch name, so it has to follow a rename.
+  update public.branch_directory
+  set display_name = (select b.name from public.branches b where b.id = p_branch_id)
+  where branch_id = p_branch_id;
+end;
+$$;
+
+revoke all on function public.admin_update_branch_details(uuid, text, text, text, text, text, text, text, date) from public, anon;
+grant execute on function public.admin_update_branch_details(uuid, text, text, text, text, text, text, text, date) to authenticated;
+
+-- ── 2. Applications expire after 7 days without approval ────────────────────
+-- Only ever touches rows that are still 'pending' AND have no branch attached.
+-- An approved application has a branch row (and possibly a live account)
+-- behind it -- deleting that from a cleanup sweep would be destructive in a
+-- way nobody asked for. Denied ones are kept as history, same as elsewhere.
+--
+-- Returns how many were removed so the console can say so rather than having
+-- rows silently disappear between page loads.
+
+create or replace function public.admin_expire_stale_applications()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_deleted integer := 0;
+begin
+  perform public.assert_super_admin();
+
+  delete from public.branch_applications
+  where status = 'pending'
+    and branch_id is null
+    and submitted_at < now() - interval '7 days';
+
+  get diagnostics v_deleted = row_count;
+  return v_deleted;
+end;
+$$;
+
+revoke all on function public.admin_expire_stale_applications() from public, anon;
+grant execute on function public.admin_expire_stale_applications() to authenticated;
+
+-- ── originally 2026-09-07_branch_delete_fixes_and_archive.sql ────────────────
+
+-- ============================================================================
+-- admin_delete_branch(): fix missing cleanup, free the applicant's email,
+-- and keep a lightweight archive of what was deleted
+-- ============================================================================
+-- Run once. Idempotent -- safe to re-run.
+--
+-- Three real bugs in the original admin_delete_branch():
+--
+--   1. Three tables that reference branches(id) were never cleaned up:
+--      public.patients, public.discounts (branch-owned rows), and
+--      public.product_requests. None of those foreign keys are ON DELETE
+--      CASCADE, so `delete from public.branches where id = p_branch_id` at
+--      the end of the function raised a raw foreign-key-violation error --
+--      not our own friendly exception text -- for ANY branch that had ever
+--      registered a patient, created a discount, or filed a product
+--      request. In normal use that is nearly every real branch, so the
+--      delete-branch feature was effectively broken for production data.
+--
+--   2. The applicant's original branch_applications row was left with
+--      branch_id = null but its status untouched (typically 'active'), and
+--      submit_pharmacy_registration() refuses a new application from an
+--      email already on an application with status in
+--      ('pending','otp_sent','active'). Deleting a branch therefore
+--      permanently blocked that email from ever registering again --
+--      exactly the opposite of what deleting the branch should do. Fixed
+--      by moving that application to 'denied' (which the same check
+--      excludes, and which the unique index on open applications already
+--      treats as free to re-apply).
+--
+--   3. Nothing recorded that a deletion happened at all. Added
+--      public.deleted_branches_log: pharmacy name, phone, email, branch
+--      code and location as they stood at deletion time, who deleted it,
+--      when, and the optional reason they gave. This is a log, not a
+--      recovery mechanism -- the branch's actual data (sales, stock,
+--      barcodes, ...) is still genuinely gone; this is only the "who/what/
+--      when" record the super admin console's new "Deleted branches" panel
+--      reads from.
+--
+-- Pharmacy NAME reuse was checked too and is NOT a problem: branches.name
+-- has no unique constraint anywhere in this schema, so a fresh registration
+-- under the same pharmacy name a deleted branch used has always worked.
+
+-- ── 1. Archive table ─────────────────────────────────────────────────────
+
+create table if not exists public.deleted_branches_log (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null, -- not a live FK: the branch this refers to no longer exists
+  pharmacy_name varchar(150) not null,
+  phone varchar(30),
+  email varchar(150),
+  branch_code varchar(32),
+  location text,
+  reason text,
+  deleted_by_email text,
+  deleted_at timestamptz not null default now()
+);
+
+create index if not exists idx_deleted_branches_log_deleted_at on public.deleted_branches_log (deleted_at desc);
+
+alter table public.deleted_branches_log enable row level security;
+drop policy if exists "super admin only" on public.deleted_branches_log;
+create policy "super admin only" on public.deleted_branches_log
+for all to authenticated
+using (public.is_super_admin())
+with check (public.is_super_admin());
+
+-- Writes only ever happen inside admin_delete_branch() (security definer,
+-- runs as table owner), so no INSERT grant is needed for the client -- this
+-- is read-only from the browser's own perspective.
+grant select on public.deleted_branches_log to authenticated;
+
+-- ── 2. admin_delete_branch(): same behaviour, gains p_reason, fixes the ──
+--       three missing deletes, frees the applicant's email, logs the event
+
+-- p_reason is a new parameter with a default, which is still a different
+-- overload identity to Postgres -- the same "cannot silently widen a
+-- function's signature" rule documented throughout this schema. Dropped
+-- first so only one admin_delete_branch() ever exists.
+drop function if exists public.admin_delete_branch(uuid);
+
+create or replace function public.admin_delete_branch(p_branch_id uuid, p_reason text default null)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch public.branches%rowtype;
+  v_deleted_by_email text;
+begin
+  perform public.assert_super_admin();
+
+  select * into v_branch from public.branches where id = p_branch_id;
+  if v_branch.id is null then
+    raise exception 'Branch not found';
+  end if;
+
+  if exists (
+    select 1 from public.batch_recalls r
+    join public.users u on u.id = r.recalled_by
+    where u.branch_id = p_branch_id
+  ) then
+    raise exception 'This branch cannot be deleted: a user from this branch is recorded as having issued a system-wide batch recall, and that recall record must be kept. Contact support to reassign it first.';
+  end if;
+
+  select email into v_deleted_by_email from auth.users where id = (select auth.uid());
+
+  insert into public.deleted_branches_log (
+    branch_id, pharmacy_name, phone, email, branch_code, location, reason, deleted_by_email
+  ) values (
+    v_branch.id, v_branch.name, v_branch.phone, v_branch.email, v_branch.branch_code, v_branch.address,
+    nullif(btrim(coalesce(p_reason, '')), ''), v_deleted_by_email
+  );
+
+  delete from public.sale_items where sale_id in (select id from public.sales where branch_id = p_branch_id);
+  delete from public.receipts where sale_id in (select id from public.sales where branch_id = p_branch_id);
+  delete from public.insurance_claims where sale_id in (select id from public.sales where branch_id = p_branch_id);
+  delete from public.sales where branch_id = p_branch_id;
+
+  delete from public.stock_adjustments
+  where stock_batch_id in (select id from public.stock_batches where branch_id = p_branch_id)
+     or barcode_id in (
+       select bc.id from public.barcodes bc
+       join public.stock_batches sb on sb.id = bc.stock_batch_id
+       where sb.branch_id = p_branch_id
+     );
+
+  delete from public.barcodes
+  where stock_batch_id in (select id from public.stock_batches where branch_id = p_branch_id);
+
+  delete from public.stock_batches where branch_id = p_branch_id;
+  delete from public.stock_deliveries where branch_id = p_branch_id;
+
+  delete from public.reorder_points where branch_id = p_branch_id;
+  delete from public.branch_product_categorization where branch_id = p_branch_id;
+  delete from public.product_categories where branch_id = p_branch_id;
+
+  -- Previously missing: all three reference branches(id) with no ON DELETE
+  -- CASCADE, so any branch that had ever registered a patient, created a
+  -- discount, or filed a product request made the delete below fail with a
+  -- raw foreign-key-violation error instead of actually deleting the branch.
+  delete from public.patients where branch_id = p_branch_id;
+  delete from public.discounts where branch_id = p_branch_id;
+  delete from public.product_requests where branch_id = p_branch_id;
+
+  delete from public.notifications where branch_id = p_branch_id;
+  delete from public.sales_forecasts where branch_id = p_branch_id;
+  delete from public.dashboard_reports where branch_id = p_branch_id;
+  delete from public.support_tickets where branch_id = p_branch_id;
+  delete from public.branch_settings where branch_id = p_branch_id;
+  delete from public.suppliers where branch_id = p_branch_id;
+
+  -- Denied (not just unlinked): submit_pharmacy_registration() blocks a new
+  -- application from an email that already has one with status in
+  -- ('pending','otp_sent','active'). Leaving this row 'active' with no
+  -- branch behind it permanently locked that email out of ever registering
+  -- again, which is the opposite of what deleting the branch should do.
+  update public.branch_applications
+  set branch_id = null,
+      status = 'denied',
+      denied_reason = coalesce(nullif(btrim(coalesce(p_reason, '')), ''), 'Branch deleted by admin')
+  where branch_id = p_branch_id;
+
+  delete from public.branch_directory where branch_id = p_branch_id;
+  delete from public.users where branch_id = p_branch_id;
+  delete from public.branches where id = p_branch_id;
+end;
+$$;
+
+revoke all on function public.admin_delete_branch(uuid, text) from public;
+grant execute on function public.admin_delete_branch(uuid, text) to authenticated;
+
+-- ── 3. Read the archive from the console ────────────────────────────────
+
+create or replace function public.admin_list_deleted_branches()
+returns table(
+  id uuid, branch_id uuid, pharmacy_name text, phone text, email text,
+  branch_code text, location text, reason text, deleted_by_email text, deleted_at timestamptz
+)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  return query
+    select
+      l.id, l.branch_id, l.pharmacy_name::text, l.phone::text, l.email::text,
+      l.branch_code::text, l.location, l.reason, l.deleted_by_email::text, l.deleted_at
+    from public.deleted_branches_log l
+    order by l.deleted_at desc;
+end;
+$$;
+
+revoke all on function public.admin_list_deleted_branches() from public;
+grant execute on function public.admin_list_deleted_branches() to authenticated;
+
+-- ── originally 2026-09-07_patient_and_insurer_tin.sql ────────────────────────
+
+-- ============================================================================
+-- Patient phone + TIN, insurer TIN, and TIN snapshots on every sale
+-- ============================================================================
+-- Run this whole file once against the project (SQL editor or `supabase db
+-- execute`). It is idempotent -- every statement is add-if-missing or
+-- create-or-replace, so re-running it is safe.
+--
+-- What changes:
+--   1. patients gains `phone` and `tin` as separate columns. Until now a
+--      patient had ONE `tin_or_phone` field, so a patient who had both could
+--      only be recorded under one of them. `tin_or_phone` stays as the
+--      per-branch identity key (and is what `phone` is backfilled from), so
+--      nothing that already points at a patient breaks.
+--   2. insurance_providers gains `tin` -- insurers are businesses and have one.
+--   3. sales gains `patient_phone`, `patient_tin`, `insurer_tin`: values
+--      SNAPSHOT at the moment of sale. These are deliberately copies, not
+--      joins -- a provider or patient can change their TIN later, and an
+--      already-issued receipt must keep the number it was actually issued
+--      under.
+--
+-- The snapshots are filled by triggers rather than by editing complete_sale().
+-- complete_sale() is long, locks barcodes, and is the single path every sale
+-- goes through; extending it by hand risked breaking selling outright. The
+-- triggers below are additive and cannot fail a sale (see the exception
+-- guards).
+
+-- ── 1. Patients: phone and TIN as separate fields ───────────────────────────
+
+alter table public.patients add column if not exists phone varchar(50);
+alter table public.patients add column if not exists tin   varchar(50);
+
+-- Existing rows only ever had the one field. Treat it as the phone, which is
+-- what it is for the overwhelming majority of records, and leave tin null --
+-- the sales screen can fill a real TIN in on the patient's next visit.
+update public.patients
+set phone = tin_or_phone
+where phone is null;
+
+-- Search hits these three columns on every keystroke in the sales screen.
+create index if not exists patients_branch_phone_idx on public.patients (branch_id, phone);
+create index if not exists patients_branch_tin_idx   on public.patients (branch_id, tin);
+create index if not exists patients_branch_name_idx  on public.patients (branch_id, lower(full_name));
+
+-- ── 2. Insurance providers: TIN ─────────────────────────────────────────────
+
+alter table public.insurance_providers add column if not exists tin varchar(50);
+
+-- ── 3. Sales: TIN/phone snapshots ───────────────────────────────────────────
+
+alter table public.sales add column if not exists patient_phone varchar(50);
+alter table public.sales add column if not exists patient_tin   varchar(50);
+alter table public.sales add column if not exists insurer_tin   varchar(50);
+
+-- Stamp the patient's phone/TIN as they stand when the sale is written.
+create or replace function public.stamp_sale_patient_identifiers()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.patient_id is not null then
+    select p.phone, p.tin into new.patient_phone, new.patient_tin
+    from public.patients p
+    where p.id = new.patient_id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists sales_stamp_patient_identifiers on public.sales;
+create trigger sales_stamp_patient_identifiers
+before insert on public.sales
+for each row execute function public.stamp_sale_patient_identifiers();
+
+-- The insurer is not known at the moment the sales row is inserted --
+-- complete_sale() writes the claim afterwards -- so the insurer TIN is
+-- stamped from the claim instead.
+create or replace function public.stamp_sale_insurer_tin()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.sales s
+  set insurer_tin = ip.tin
+  from public.insurance_providers ip
+  where s.id = new.sale_id
+    and ip.id = new.insurance_provider_id;
+  return new;
+end;
+$$;
+
+drop trigger if exists insurance_claims_stamp_insurer_tin on public.insurance_claims;
+create trigger insurance_claims_stamp_insurer_tin
+after insert on public.insurance_claims
+for each row execute function public.stamp_sale_insurer_tin();
+
+-- ── 4. Patient RPCs ─────────────────────────────────────────────────────────
+
+-- Phone is the identity (it is what the cashier always has); TIN is optional
+-- and stored alongside. The old 4-argument signature is dropped so a stale
+-- client can't silently write a patient with no phone recorded.
+drop function if exists public.upsert_patient(text, text, integer, text);
+
+create or replace function public.upsert_patient(
+  p_full_name text, p_gender text, p_age integer, p_phone text, p_tin text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user   uuid := (select auth.uid());
+  v_branch uuid;
+  v_phone  text := nullif(btrim(coalesce(p_phone, '')), '');
+  v_tin    text := nullif(btrim(coalesce(p_tin, '')), '');
+  v_id     uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may record a patient'; end if;
+  if nullif(btrim(coalesce(p_full_name, '')), '') is null then raise exception 'A patient name is required'; end if;
+  if v_phone is null then raise exception 'A phone number is required'; end if;
+  if p_gender is not null and p_gender not in ('male','female','other') then raise exception 'Unknown gender'; end if;
+
+  insert into public.patients (branch_id, full_name, gender, age, tin_or_phone, phone, tin, created_by)
+  values (v_branch, btrim(p_full_name), p_gender, p_age, v_phone, v_phone, v_tin, v_user)
+  on conflict (branch_id, tin_or_phone)
+  do update set
+    full_name  = excluded.full_name,
+    gender     = excluded.gender,
+    age        = excluded.age,
+    phone      = excluded.phone,
+    -- Never blank an existing TIN just because this visit did not retype it.
+    tin        = coalesce(excluded.tin, public.patients.tin),
+    updated_at = now()
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.upsert_patient(text, text, integer, text, text) from public, anon;
+grant execute on function public.upsert_patient(text, text, integer, text, text) to authenticated;
+
+-- Matches phone OR TIN, so a patient found by either is the same record.
+--
+-- Dropped first, not just replaced: both this and list_branch_patients() keep
+-- their argument list but return extra columns, and Postgres refuses to change
+-- a function's return type through CREATE OR REPLACE ("cannot change return
+-- type of existing function").
+drop function if exists public.find_patient_by_identifier(text);
+
+create or replace function public.find_patient_by_identifier(p_identifier text)
+returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text, phone text, tin text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.id, p.full_name::text, p.gender::text, p.age,
+         p.tin_or_phone::text, p.phone::text, p.tin::text
+  from public.patients p
+  where p.branch_id = public.current_branch_id()
+    and (p.tin_or_phone = btrim(p_identifier)
+      or p.phone        = btrim(p_identifier)
+      or p.tin          = btrim(p_identifier))
+  limit 1
+$$;
+
+-- Re-granted because DROP FUNCTION above took the old grants with it.
+revoke all on function public.find_patient_by_identifier(text) from public, anon;
+grant execute on function public.find_patient_by_identifier(text) to authenticated;
+
+drop function if exists public.list_branch_patients();
+
+create or replace function public.list_branch_patients()
+returns table(
+  id uuid, full_name text, gender text, age integer, tin_or_phone text,
+  phone text, tin text, visit_count integer, last_visit_at timestamptz, lifetime_spend numeric
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    p.id, p.full_name::text, p.gender::text, p.age, p.tin_or_phone::text,
+    p.phone::text, p.tin::text,
+    count(s.id)::integer, max(s.sold_at), coalesce(sum(s.total_amount), 0)
+  from public.patients p
+  left join public.sales s on s.patient_id = p.id
+  where p.branch_id = public.current_branch_id()
+  group by p.id, p.full_name, p.gender, p.age, p.tin_or_phone, p.phone, p.tin
+  order by max(s.sold_at) desc nulls last, p.full_name
+$$;
+
+revoke all on function public.list_branch_patients() from public, anon;
+grant execute on function public.list_branch_patients() to authenticated;
+
+-- ── 5. Insurance provider RPCs ──────────────────────────────────────────────
+
+create or replace function public.admin_create_insurance_provider(
+  p_name text, p_default_coverage_percentage numeric, p_contact_info text default null, p_tin text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_id uuid;
+begin
+  perform public.assert_super_admin();
+  if nullif(btrim(p_name), '') is null then
+    raise exception 'Insurance provider name is required';
+  end if;
+  if p_default_coverage_percentage is null or p_default_coverage_percentage < 0 or p_default_coverage_percentage > 100 then
+    raise exception 'Default coverage percentage must be between 0 and 100';
+  end if;
+  insert into public.insurance_providers (name, default_coverage_percentage, contact_info, tin)
+  values (
+    btrim(p_name), p_default_coverage_percentage,
+    nullif(btrim(coalesce(p_contact_info, '')), ''),
+    nullif(btrim(coalesce(p_tin, '')), '')
+  )
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.admin_update_insurance_provider(
+  p_provider_id uuid, p_name text, p_default_coverage_percentage numeric,
+  p_contact_info text default null, p_tin text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  if p_default_coverage_percentage is null or p_default_coverage_percentage < 0 or p_default_coverage_percentage > 100 then
+    raise exception 'Default coverage percentage must be between 0 and 100';
+  end if;
+  update public.insurance_providers
+  set name = btrim(p_name),
+      default_coverage_percentage = p_default_coverage_percentage,
+      contact_info = nullif(btrim(coalesce(p_contact_info, '')), ''),
+      tin = nullif(btrim(coalesce(p_tin, '')), '')
+  where id = p_provider_id;
+  if not found then raise exception 'Insurance provider not found'; end if;
+end;
+$$;
+
+-- The old 3/4-argument signatures would otherwise still resolve and silently
+-- drop the TIN.
+drop function if exists public.admin_create_insurance_provider(text, numeric, text);
+drop function if exists public.admin_update_insurance_provider(uuid, text, numeric, text);
+
+revoke all on function public.admin_create_insurance_provider(text, numeric, text, text) from public, anon;
+grant execute on function public.admin_create_insurance_provider(text, numeric, text, text) to authenticated;
+
+revoke all on function public.admin_update_insurance_provider(uuid, text, numeric, text, text) from public, anon;
+grant execute on function public.admin_update_insurance_provider(uuid, text, numeric, text, text) to authenticated;
+
+-- ── 6. Backfill snapshots for sales already on record ───────────────────────
+-- Best-effort, so historical receipts show the numbers too where they are
+-- still derivable. Only fills rows that are still null.
+
+update public.sales s
+set patient_phone = p.phone, patient_tin = p.tin
+from public.patients p
+where s.patient_id = p.id
+  and s.patient_phone is null
+  and s.patient_tin is null;
+
+update public.sales s
+set insurer_tin = ip.tin
+from public.insurance_claims ic
+join public.insurance_providers ip on ip.id = ic.insurance_provider_id
+where ic.sale_id = s.id
+  and s.insurer_tin is null
+  and ip.tin is not null;
+
+-- ── originally 2026-09-07_public_receipt_lookup.sql ──────────────────────────
+
+-- ============================================================================
+-- PUBLIC RECEIPT LOOKUP (for the customer-facing "scan to view online" QR)
+-- ============================================================================
+-- Every printed sales receipt now carries a second QR code (independent of
+-- the existing RRA/EBM compliance QR in complete_sale()/getSaleReceipt()) that
+-- opens an unauthenticated web page showing that one receipt in full -- same
+-- content as the printed copy, including patient name/insurance if present.
+-- This was an explicit, informed product decision: the sale's UUID itself
+-- (122 bits of randomness, not practically guessable) is the only access
+-- control, the same trust model as physically handing someone a paper
+-- receipt. Do not add extra gating here that the product decision didn't ask
+-- for -- that would just be inconsistent with the "full receipt" promise.
+--
+-- Why a narrow RPC instead of an anon-readable RLS policy: getSaleReceipt()
+-- (src/lib/sales.ts) touches sales, receipts, sale_items, branches, users,
+-- barcodes, tax_rates, insurance_claims, insurance_providers, patients,
+-- stock_batches, product_variants and products. Granting `anon` any RLS
+-- policy on those tables -- even one scoped to "match this one id" -- opens
+-- a PostgREST table endpoint that can be queried directly with arbitrary
+-- filters (e.g. GET /rest/v1/sales?select=*), which would let anyone
+-- enumerate/list ALL sales, not just the one they already hold the link for.
+-- A single security-definer function taking exactly one p_sale_id uuid and
+-- returning only that one sale's assembled jsonb has no such surface: it
+-- can only ever be called with one id at a time and only ever returns that
+-- id's own data. No RLS changes are made to any underlying table by this
+-- migration.
+--
+-- Brute force: 122 bits of UUIDv4 randomness makes guessing a live sale id
+-- computationally infeasible; no additional rate limiting is implemented
+-- here (out of scope -- Postgres has no trivial built-in per-caller rate
+-- limit for a SECURITY DEFINER function; if this ever becomes a concern,
+-- handle it at the edge/CDN layer, not in this migration).
+--
+-- Run this once in the Supabase SQL editor (or via the CLI) against the
+-- project's database. Safe to re-run: CREATE OR REPLACE.
+-- ============================================================================
+
+create or replace function public.get_public_receipt(p_sale_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch_id uuid;
+  v_cashier_id uuid;
+  v_patient_id uuid;
+
+  v_receipt_number text;
+  v_issued_at timestamptz;
+
+  v_branch_name text;
+  v_branch_tin text;
+  v_branch_address text;
+  v_branch_phone text;
+  v_branch_logo_path text;
+  v_branch_bank_account_number text;
+  v_branch_bank_account_name text;
+  v_branch_momo_pay_number text;
+
+  v_cashier_name text;
+
+  v_patient_name text;
+  v_patient_gender text;
+  v_patient_age integer;
+  v_patient_contact text;
+
+  v_provider_id uuid;
+  v_provider_name text;
+
+  v_items jsonb;
+  v_subtotal numeric;
+  v_tax_total numeric;
+  v_insurance_total numeric;
+begin
+  -- No auth.uid()/branch check here on purpose -- p_sale_id is the only
+  -- filter, by design (see header comment above).
+  select s.branch_id, s.cashier_id, s.patient_id
+    into v_branch_id, v_cashier_id, v_patient_id
+    from public.sales s
+    where s.id = p_sale_id;
+
+  if not found then
+    return null; -- unknown sale id -- caller shows a "not found" state
+  end if;
+
+  select r.receipt_number, r.issued_at
+    into v_receipt_number, v_issued_at
+    from public.receipts r
+    where r.sale_id = p_sale_id;
+
+  if not found then
+    return null; -- sale exists but has no receipt row (shouldn't happen once complete_sale() has run) -- fail closed
+  end if;
+
+  select b.name, b.tin, b.address, b.phone, b.logo_path,
+         b.bank_account_number, b.bank_account_name, b.momo_pay_number
+    into v_branch_name, v_branch_tin, v_branch_address, v_branch_phone, v_branch_logo_path,
+         v_branch_bank_account_number, v_branch_bank_account_name, v_branch_momo_pay_number
+    from public.branches b
+    where b.id = v_branch_id;
+
+  select u.full_name into v_cashier_name
+    from public.users u
+    where u.id = v_cashier_id;
+
+  if v_patient_id is not null then
+    select p.full_name, p.gender, p.age, p.tin_or_phone
+      into v_patient_name, v_patient_gender, v_patient_age, v_patient_contact
+      from public.patients p
+      where p.id = v_patient_id;
+  end if;
+
+  select ic.insurance_provider_id into v_provider_id
+    from public.insurance_claims ic
+    where ic.sale_id = p_sale_id;
+
+  if v_provider_id is not null then
+    select ip.name into v_provider_name
+      from public.insurance_providers ip
+      where ip.id = v_provider_id;
+  end if;
+
+  -- Mirrors getSaleReceipt()'s per-item tax math exactly:
+  -- taxAmount = round(subtotal * rate_percentage) / 100 (subtotal is the
+  -- already-extracted pre-tax base -- see 2026-08-28_vat_inclusive_tax.sql).
+  select
+    coalesce(jsonb_agg(
+      jsonb_build_object(
+        'code', bc.code,
+        'productName', coalesce(pr.name, 'Unknown product'),
+        'dosage', pv.dosage,
+        'form', pv.form,
+        'quantity', si.quantity,
+        'unitPrice', si.unit_price,
+        'subtotal', si.subtotal,
+        'taxRatePercentage', tr.rate_percentage,
+        'taxAmount', round(si.subtotal * tr.rate_percentage) / 100,
+        'insuranceCovered', si.insurance_covered_amount,
+        'patientOwed', si.subtotal + round(si.subtotal * tr.rate_percentage) / 100 - si.insurance_covered_amount
+      )
+      order by si.id
+    ), '[]'::jsonb),
+    coalesce(sum(si.subtotal), 0),
+    coalesce(sum(round(si.subtotal * tr.rate_percentage) / 100), 0),
+    coalesce(sum(si.insurance_covered_amount), 0)
+    into v_items, v_subtotal, v_tax_total, v_insurance_total
+    from public.sale_items si
+    join public.barcodes bc on bc.id = si.barcode_id
+    join public.tax_rates tr on tr.id = si.tax_rate_id
+    join public.stock_batches sb on sb.id = bc.stock_batch_id
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products pr on pr.id = pv.product_id
+    where si.sale_id = p_sale_id;
+
+  return jsonb_build_object(
+    'saleId', p_sale_id,
+    'receiptNumber', v_receipt_number,
+    'issuedAt', v_issued_at,
+    'branchName', coalesce(v_branch_name, '—'),
+    'branchTin', v_branch_tin,
+    'branchAddress', v_branch_address,
+    'branchPhone', v_branch_phone,
+    -- Raw storage path, not a full URL -- get_public_receipt() has no idea
+    -- what the project's public URL is; the TS layer builds the URL the
+    -- exact same way getSaleReceipt() already does, via
+    -- supabase.storage.from('branch-logos').getPublicUrl(path).
+    'branchLogoPath', v_branch_logo_path,
+    'branchBankAccountNumber', v_branch_bank_account_number,
+    'branchBankAccountName', v_branch_bank_account_name,
+    'branchMomoPayNumber', v_branch_momo_pay_number,
+    'cashierName', coalesce(v_cashier_name, '—'),
+    'patientName', v_patient_name,
+    'patientGender', v_patient_gender,
+    'patientAge', v_patient_age,
+    'patientContact', v_patient_contact,
+    'insuranceProviderName', v_provider_name,
+    'items', v_items,
+    'subtotal', v_subtotal,
+    'taxTotal', v_tax_total,
+    'insuranceCoveredTotal', v_insurance_total,
+    'patientOwedTotal', v_subtotal + v_tax_total - v_insurance_total,
+    'grandTotal', v_subtotal + v_tax_total,
+    -- TODO: once complete_sale()/VSDC submission stores EBM fields on
+    -- public.receipts, select and return those columns here instead of
+    -- nulls, mirroring the same TODO in getSaleReceipt() (src/lib/sales.ts).
+    'ebmSdcId', null,
+    'ebmMrcNo', null,
+    'ebmReceiptSignature', null,
+    'ebmInvoiceNumber', null
+  );
+end;
+$$;
+
+revoke all on function public.get_public_receipt(uuid) from public;
+grant execute on function public.get_public_receipt(uuid) to anon, authenticated;
+
+-- ── originally 2026-09-07_sales_forecast_accuracy.sql ────────────────────────
+
+-- ============================================================================
+-- SALES FORECAST ACCURACY (predicted-vs-actual tracking)
+-- ============================================================================
+-- ai_sales_forecast_series() (2026-09-07_sales_forecast_series.sql) always
+-- computes a forecast fresh, relative to "now" -- once a forecasted period is
+-- in the past, the next run just folds it into real "actual" data. That's
+-- correct for the forecast itself, but it throws away what was PREDICTED at
+-- the time, so there's no way to later see "how close was this?".
+--
+-- This migration adds a small backing store (sales_forecast_snapshots) that
+-- remembers each forecast run's future points, and a read function
+-- (ai_sales_forecast_accuracy) that -- for a given historical date range --
+-- looks up the most recent prediction that was made *before* each period
+-- actually happened, so the Analytics chart can draw a third line: what we
+-- predicted, next to what the real "Actual Revenue" line turned out to be.
+--
+-- The table has RLS enabled with NO policies -- like every other reporting
+-- table in this app, it is never read or written directly by the client;
+-- both operations go through the two SECURITY DEFINER functions below,
+-- which enforce assert_owner_or_manager() + branch scoping themselves.
+--
+-- Snapshot cadence: an auto-running forecast (see AnalyticsPage.tsx, which
+-- re-runs on every product/category/history/horizon change) would otherwise
+-- write a near-identical row every few seconds while someone is just
+-- tweaking inputs. save_sales_forecast_snapshot() instead keeps at most one
+-- row per (branch, scope) per calendar day, updating it in place if one
+-- already exists for today -- so history accumulates one genuine snapshot
+-- per day, kept forever, without that noise.
+--
+-- Run this once in the Supabase SQL editor (or via the CLI) against the
+-- project's database. Safe to re-run: CREATE TABLE IF NOT EXISTS / CREATE OR
+-- REPLACE FUNCTION.
+-- ============================================================================
+
+create table if not exists public.sales_forecast_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  branch_id uuid not null references public.branches(id) on delete cascade,
+  product_id uuid references public.products(id) on delete cascade,
+  category_id uuid references public.product_categories(id) on delete cascade,
+  generated_at timestamptz not null default now(),
+  bucket text not null check (bucket in ('day','week','month')),
+  -- One element per future period this run predicted:
+  -- {"period_start": "2026-09-01", "predicted_revenue": 123, "predicted_quantity": 45, "lower_bound": 100, "upper_bound": 150}
+  points jsonb not null
+);
+
+create index if not exists idx_forecast_snapshots_scope on public.sales_forecast_snapshots (branch_id, product_id, category_id, generated_at desc);
+
+alter table public.sales_forecast_snapshots enable row level security;
+
+create or replace function public.save_sales_forecast_snapshot(
+  p_product_id uuid default null,
+  p_category_id uuid default null,
+  p_bucket text default 'month',
+  p_points jsonb default '[]'::jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_nil uuid := '00000000-0000-0000-0000-000000000000';
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_product_id is not null and p_category_id is not null then
+    raise exception 'Pass product_id or category_id, not both';
+  end if;
+  if p_bucket not in ('day','week','month') then raise exception 'bucket must be day, week or month'; end if;
+
+  update public.sales_forecast_snapshots
+  set generated_at = now(), bucket = p_bucket, points = p_points
+  where branch_id = v_branch
+    and coalesce(product_id, v_nil) = coalesce(p_product_id, v_nil)
+    and coalesce(category_id, v_nil) = coalesce(p_category_id, v_nil)
+    and generated_at::date = current_date;
+
+  if not found then
+    insert into public.sales_forecast_snapshots (branch_id, product_id, category_id, bucket, points)
+    values (v_branch, p_product_id, p_category_id, p_bucket, p_points);
+  end if;
+end;
+$$;
+
+create or replace function public.ai_sales_forecast_accuracy(
+  p_product_id uuid default null,
+  p_category_id uuid default null,
+  p_from date default null,
+  p_to date default null
+)
+returns table(period_start date, predicted_revenue numeric, predicted_quantity numeric, predicted_at timestamptz)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid := public.current_branch_id();
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_product_id is not null and p_category_id is not null then
+    raise exception 'Pass product_id or category_id, not both';
+  end if;
+
+  return query
+  with expanded as (
+    select
+      s.generated_at,
+      (pt->>'period_start')::date as period_start,
+      (pt->>'predicted_revenue')::numeric as predicted_revenue,
+      (pt->>'predicted_quantity')::numeric as predicted_quantity
+    from public.sales_forecast_snapshots s
+    cross join lateral jsonb_array_elements(s.points) as pt
+    where s.branch_id = v_branch
+      and ((p_product_id is null and s.product_id is null) or s.product_id = p_product_id)
+      and ((p_category_id is null and s.category_id is null) or s.category_id = p_category_id)
+      and (p_from is null or (pt->>'period_start')::date >= p_from)
+      and (p_to is null or (pt->>'period_start')::date <= p_to)
+  ),
+  -- Only predictions made before the period they predicted actually started
+  -- count as a real forecast of it; among those, the most recent one is the
+  -- most-informed guess available at the time, so that's what gets compared
+  -- against the real outcome.
+  ranked as (
+    select *, row_number() over (partition by period_start order by generated_at desc) as rn
+    from expanded
+    where generated_at::date < period_start
+  )
+  select period_start, predicted_revenue, predicted_quantity, generated_at as predicted_at
+  from ranked
+  where rn = 1
+  order by period_start;
+end;
+$$;
+
+revoke all on function public.save_sales_forecast_snapshot(uuid, uuid, text, jsonb) from public, anon;
+grant execute on function public.save_sales_forecast_snapshot(uuid, uuid, text, jsonb) to authenticated;
+revoke all on function public.ai_sales_forecast_accuracy(uuid, uuid, date, date) from public, anon;
+grant execute on function public.ai_sales_forecast_accuracy(uuid, uuid, date, date) to authenticated;
+
+-- ── originally 2026-09-07_sales_forecast_series.sql ──────────────────────────
+
+-- ============================================================================
+-- SALES FORECAST SERIES (for the Analytics page's forecast chart)
+-- ============================================================================
+-- ai_sales_forecast() (see pharmacy_schema_consolidated.sql) already returns
+-- a real linear-regression forecast, but only as a single lump-sum number
+-- for the whole horizon -- fine for the AI analyst's text answers, but not
+-- something you can plot. This function reuses the exact same regression
+-- (same daily x/y points, same regr_slope/regr_intercept) and instead
+-- returns one row per bucketed period (day/week/month), so the Analytics
+-- page can draw a real line chart: a solid "actual" line over history, a
+-- dashed "forecast" line over the horizon, and a shaded confidence band
+-- around the forecast.
+--
+-- ai_sales_forecast() itself is untouched -- it's also used by the AI
+-- analyst as a tool (see that function's own comment), and this migration
+-- must not change its existing contract.
+--
+-- Confidence band: the residual standard deviation of daily quantity around
+-- the fitted regression line (stddev_pop of actual - predicted, over the
+-- history window), scaled by sqrt(days in that future bucket) since daily
+-- residuals are treated as independent, times a z-score of ~1.28 for an
+-- (approximate, normal-theory) 80% two-sided interval -- matching the
+-- "Shaded area shows 80% confidence interval" caption on the chart.
+--
+-- Run this once in the Supabase SQL editor (or via the CLI) against the
+-- project's database. Safe to re-run: CREATE OR REPLACE.
+-- ============================================================================
+
+create or replace function public.ai_sales_forecast_series(
+  p_product_id uuid default null,
+  p_category_id uuid default null,
+  p_days_history integer default 90,
+  p_horizon_days integer default 30,
+  p_bucket text default null -- null = auto-pick from the total span (see below)
+)
+returns table(
+  period_start date, is_forecast boolean,
+  actual_revenue numeric, actual_quantity numeric,
+  forecast_revenue numeric, forecast_quantity numeric,
+  lower_bound numeric, upper_bound numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid := public.current_branch_id();
+  v_bucket text := p_bucket;
+begin
+  perform public.assert_owner_or_manager();
+  if v_branch is null then raise exception 'No active branch for this session'; end if;
+  if p_product_id is not null and p_category_id is not null then
+    raise exception 'Pass product_id or category_id, not both';
+  end if;
+  if p_days_history < 7 or p_days_history > 730 then raise exception 'days_history must be between 7 and 730'; end if;
+  if p_horizon_days < 1 or p_horizon_days > 365 then raise exception 'horizon_days must be between 1 and 365'; end if;
+
+  -- Auto-pick a bucket size that keeps the chart readable regardless of how
+  -- wide a window was requested, unless the caller pinned one explicitly.
+  if v_bucket is null then
+    v_bucket := case
+      when p_days_history + p_horizon_days <= 45 then 'day'
+      when p_days_history + p_horizon_days <= 180 then 'week'
+      else 'month'
+    end;
+  end if;
+  if v_bucket not in ('day','week','month') then raise exception 'bucket must be day, week or month'; end if;
+
+  return query
+  with daily as (
+    select
+      date_trunc('day', s.sold_at)::date as sale_day,
+      sum(si.quantity) as qty,
+      sum(si.unit_price * si.quantity) as revenue
+    from public.sale_items si
+    join public.sales s on s.id = si.sale_id
+    join public.barcodes bc on bc.id = si.barcode_id
+    join public.stock_batches sb on sb.id = bc.stock_batch_id
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    left join public.branch_product_categorization cat on cat.product_id = pv.product_id and cat.branch_id = v_branch
+    where s.branch_id = v_branch
+      and s.sold_at >= now() - (p_days_history || ' days')::interval
+      and (p_product_id is null or pv.product_id = p_product_id)
+      and (p_category_id is null or cat.category_id = p_category_id)
+    group by 1
+  ),
+  history_bounds as (
+    select min(sale_day) as start_day, max(sale_day) as end_day from daily
+  ),
+  numbered as (
+    select (d.sale_day - hb.start_day)::numeric as x, d.qty::numeric as y, d.revenue
+    from daily d cross join history_bounds hb
+  ),
+  stats as (
+    select
+      coalesce(regr_slope(y, x), 0)::numeric as slope,
+      coalesce(regr_intercept(y, x), avg(y), 0)::numeric as intercept,
+      coalesce(sum(revenue) / nullif(sum(y), 0), 0) as avg_unit_revenue,
+      coalesce(max(x), 0) as max_x
+    from numbered
+  ),
+  model as (
+    select stats.*, coalesce(stddev_pop(n.y - (stats.intercept + stats.slope * n.x)), 0) as resid_stddev
+    from numbered n cross join stats
+    group by stats.slope, stats.intercept, stats.avg_unit_revenue, stats.max_x
+  ),
+  actual_buckets as (
+    select date_trunc(v_bucket, sale_day)::date as period_start, sum(qty)::numeric as quantity, sum(revenue)::numeric as revenue
+    from daily
+    group by 1
+  ),
+  last_actual as (select max(period_start) as period_start from actual_buckets),
+  future_daily as (
+    select
+      (hb.end_day + gs.d) as future_day,
+      greatest(0, m.intercept + m.slope * (m.max_x + gs.d)) as proj_qty
+    from generate_series(1, p_horizon_days) as gs(d)
+    cross join history_bounds hb
+    cross join model m
+  ),
+  future_buckets as (
+    select date_trunc(v_bucket, future_day)::date as period_start, sum(proj_qty)::numeric as quantity, count(*)::numeric as n_days
+    from future_daily
+    group by 1
+  )
+  select * from (
+    -- Past/actual periods. The last actual period also carries a forecast
+    -- value equal to its own actual value -- a "bridge" point so the dashed
+    -- forecast line visually connects to the solid actual line with no gap,
+    -- the same way the reference chart's Aug point does.
+    select
+      ab.period_start, false as is_forecast,
+      round(ab.revenue, 2) as actual_revenue, round(ab.quantity, 2) as actual_quantity,
+      case when ab.period_start = la.period_start then round(ab.revenue, 2) end as forecast_revenue,
+      case when ab.period_start = la.period_start then round(ab.quantity, 2) end as forecast_quantity,
+      null::numeric as lower_bound, null::numeric as upper_bound
+    from actual_buckets ab cross join last_actual la
+    union all
+    -- Future/forecast periods, with an 80%-ish confidence band around each.
+    select
+      fb.period_start, true as is_forecast,
+      null::numeric, null::numeric,
+      round(fb.quantity * m.avg_unit_revenue, 2), round(fb.quantity, 2),
+      round(greatest(0, fb.quantity - 1.28 * m.resid_stddev * sqrt(fb.n_days)) * m.avg_unit_revenue, 2),
+      round((fb.quantity + 1.28 * m.resid_stddev * sqrt(fb.n_days)) * m.avg_unit_revenue, 2)
+    from future_buckets fb cross join model m
+  ) t
+  order by period_start;
+end;
+$$;
+
+revoke all on function public.ai_sales_forecast_series(uuid, uuid, integer, integer, text) from public, anon;
+grant execute on function public.ai_sales_forecast_series(uuid, uuid, integer, integer, text) to authenticated;
+
+-- ── originally 2026-09-07_forecast_completed_notifications.sql ───────────────
+
+-- ============================================================================
+-- FORECAST-COMPLETED NOTIFICATIONS
+-- ============================================================================
+-- Once every period a saved forecast (sales_forecast_snapshots, see
+-- 2026-09-07_sales_forecast_accuracy.sql) predicted has actually elapsed,
+-- surface it as a real notification -- same public.notifications table and
+-- check-then-insert idempotent pattern already used by
+-- check_out_of_stock_alerts()/check_expired_stock()/check_license_expiry()
+-- in lib/alerts.ts, not a separate notification system.
+--
+-- notified_at on the snapshot itself is the de-dup guard (mirroring how
+-- out-of-stock reuses "is_read + a cooldown" for ITS de-dup) -- once a
+-- snapshot has been notified about, it's never picked up again by this
+-- function, even though its points stay in the table forever for the
+-- accuracy chart (ai_sales_forecast_accuracy) to keep reading.
+--
+-- Run this once in the Supabase SQL editor (or via the CLI) against the
+-- project's database. Safe to re-run: ALTER ... ADD COLUMN IF NOT EXISTS /
+-- CREATE OR REPLACE FUNCTION.
+-- ============================================================================
+
+alter table public.sales_forecast_snapshots add column if not exists notified_at timestamptz;
+
+-- Widen the notifications source_type list once more (same incremental-ALTER
+-- pattern already used for out_of_stock, license_expiring, etc.).
+alter table public.notifications drop constraint if exists notifications_source_type_check;
+alter table public.notifications add constraint notifications_source_type_check
+  check (source_type in ('batch_recall','stock_adjustment','product_request_approved','product_request_rejected','out_of_stock','license_expiring','forecast_completed'));
+
+create or replace function public.check_forecast_accuracy_notifications()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid := public.current_branch_id();
+  v_count integer := 0;
+  v_snap record;
+  v_scope text;
+  v_actual numeric;
+  v_pct text;
+begin
+  if v_branch is null then return 0; end if;
+
+  -- One pass per not-yet-notified snapshot whose entire predicted horizon
+  -- has fully elapsed (period_to <= today) -- period_to is the end of the
+  -- LAST bucket it predicted, computed from its own bucket size so a
+  -- monthly point starting Sept 1 isn't considered "finished" until Oct 1.
+  for v_snap in
+    select
+      s.id, s.product_id, s.category_id, s.generated_at, s.bucket,
+      (select min((pt->>'period_start')::date) from jsonb_array_elements(s.points) pt) as period_from,
+      (select max(
+         case s.bucket
+           when 'day' then (pt->>'period_start')::date + 1
+           when 'week' then (pt->>'period_start')::date + 7
+           else ((pt->>'period_start')::date + interval '1 month')::date
+         end
+       ) from jsonb_array_elements(s.points) pt) as period_to,
+      (select coalesce(sum((pt->>'predicted_revenue')::numeric), 0) from jsonb_array_elements(s.points) pt) as predicted_total
+    from public.sales_forecast_snapshots s
+    where s.branch_id = v_branch and s.notified_at is null
+  loop
+    if v_snap.period_to is null or v_snap.period_to > current_date then
+      continue; -- horizon hasn't fully elapsed yet -- leave it for a later poll
+    end if;
+
+    v_scope := case
+      when v_snap.product_id is not null then (select p.name from public.products p where p.id = v_snap.product_id)
+      when v_snap.category_id is not null then (select c.name from public.product_categories c where c.id = v_snap.category_id and c.branch_id = v_branch)
+      else 'All products'
+    end;
+    v_scope := coalesce(v_scope, 'All products');
+
+    select coalesce(sum(si.unit_price * si.quantity), 0)
+      into v_actual
+      from public.sale_items si
+      join public.sales s2 on s2.id = si.sale_id
+      join public.barcodes bc on bc.id = si.barcode_id
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      join public.product_variants pv on pv.id = sb.product_variant_id
+      left join public.branch_product_categorization cat on cat.product_id = pv.product_id and cat.branch_id = v_branch
+      where s2.branch_id = v_branch
+        and s2.sold_at >= v_snap.period_from::timestamptz
+        and s2.sold_at < v_snap.period_to::timestamptz
+        and (v_snap.product_id is null or pv.product_id = v_snap.product_id)
+        and (v_snap.category_id is null or cat.category_id = v_snap.category_id);
+
+    v_pct := case when v_snap.predicted_total > 0
+      then round(100 * v_actual / v_snap.predicted_total)::text || '%'
+      else 'n/a'
+    end;
+
+    insert into public.notifications (branch_id, source_type, source_id, message)
+    values (
+      v_branch, 'forecast_completed', v_snap.id,
+      format(
+        'Forecast for %s (made %s) has completed: predicted RWF %s, actual RWF %s (%s of predicted).',
+        v_scope, to_char(v_snap.generated_at, 'YYYY-MM-DD'),
+        to_char(v_snap.predicted_total, 'FM999,999,999'), to_char(v_actual, 'FM999,999,999'), v_pct
+      )
+    );
+
+    update public.sales_forecast_snapshots set notified_at = now() where id = v_snap.id;
+    v_count := v_count + 1;
+  end loop;
+
+  return v_count;
+end;
+$$;
+
+revoke all on function public.check_forecast_accuracy_notifications() from public, anon;
+grant execute on function public.check_forecast_accuracy_notifications() to authenticated;
+
