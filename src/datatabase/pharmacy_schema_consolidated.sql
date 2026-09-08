@@ -399,14 +399,6 @@
   using (public.is_super_admin() or branch_id = public.current_branch_id())
   with check (public.is_super_admin() or branch_id = public.current_branch_id());
 
-  -- Legacy global suppliers (branch_id null) stay readable by everyone; a branch
-  -- may only write its own supplier rows.
-  drop policy if exists "suppliers access" on public.suppliers;
-  create policy "suppliers access" on public.suppliers
-  for all to authenticated
-  using (public.is_super_admin() or branch_id is null or branch_id = public.current_branch_id())
-  with check (public.is_super_admin() or branch_id = public.current_branch_id());
-
   drop policy if exists "barcodes access" on public.barcodes;
   create policy "barcodes access" on public.barcodes
   for select to authenticated
@@ -511,6 +503,16 @@
 
   alter table public.suppliers
     add column if not exists branch_id uuid references public.branches(id);
+
+  -- Legacy global suppliers (branch_id null) stay readable by everyone; a branch
+  -- may only write its own supplier rows. (Must come after the branch_id column
+  -- above -- moved out of the earlier RLS policies block, where it referenced a
+  -- column that did not exist yet on a from-scratch run of this file.)
+  drop policy if exists "suppliers access" on public.suppliers;
+  create policy "suppliers access" on public.suppliers
+  for all to authenticated
+  using (public.is_super_admin() or branch_id is null or branch_id = public.current_branch_id())
+  with check (public.is_super_admin() or branch_id = public.current_branch_id());
 
   -- The old global case-insensitive unique name is replaced by a pair of partial
   -- indexes so two pharmacies can each have their own "MedPharm Rwanda" row while
