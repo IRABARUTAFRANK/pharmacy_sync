@@ -236,6 +236,11 @@ export const NAV_ITEMS: NavItem[] = [
   // ── Owner only ───────────────────────────────────────────────
   { id: 'branch',      label: 'Branch Settings',      icon: '⚙️', roles: ['owner'] },
   { id: 'history',     label: 'History',              icon: '🕓', roles: ['owner'] },
+  // App.tsx additionally hides this from a manager until
+  // getMyOrganization() confirms they hold an org_owner/org_manager role
+  // somewhere (an owner always sees it, so they can found a new
+  // organization) -- see computeVisibleNav in App.tsx.
+  { id: 'organization', label: 'Organization',        icon: '🏢', roles: ['owner', 'manager'] },
 ]
 
 // ─── KPIs ─────────────────────────────────────────────────────────────────────

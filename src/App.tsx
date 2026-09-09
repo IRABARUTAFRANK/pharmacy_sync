@@ -14,6 +14,7 @@ import HistoryPage from './pages/HistoryPage'
 
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
+import { getMyOrganization, listOrganizationBranches, type OrganizationSummary, type OrganizationBranch } from './lib/organization'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
 import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
@@ -50,6 +51,7 @@ const PAGE_LOADERS = {
   patients: () => import('./pages/PatientsPage'),
   reports: () => import('./pages/ReportsPage'),
   branch: () => import('./pages/BranchSettingsPage'),
+  organization: () => import('./pages/OrganizationPage'),
 } satisfies Record<string, () => Promise<{ default: ComponentType<any> }>>
 
 const OverviewPage        = lazy(PAGE_LOADERS.overview)
@@ -67,10 +69,51 @@ const CompliancePage        = lazy(PAGE_LOADERS.compliance)
 const PatientsPage         = lazy(PAGE_LOADERS.patients)
 const ReportsPage          = lazy(PAGE_LOADERS.reports)
 const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
+const OrganizationPage     = lazy(PAGE_LOADERS.organization)
 const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
 const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
 const PublicReceiptPage    = lazy(() => import('./pages/PublicReceiptPage'))
+
+// Every NAV_ITEMS row gated by role, plus one extra rule for 'organization':
+// a branch owner always sees it (they can found a new organization from
+// inside it even with none yet), but a manager only sees it once they
+// actually hold an org_owner/org_manager role somewhere (organization !==
+// null) -- a manager has no standing authority to create an organization,
+// so the item would otherwise be a dead end for them. Holding an org role
+// isn't reflected in Role itself, hence the separate check here rather than
+// folding it into NAV_ITEMS' own roles list. Centralized here so the
+// redirect guard, the prefetch warm-up, and the sidebar's own item list can
+// never disagree with each other.
+function computeVisibleNav(role: Role, organization: OrganizationSummary | null) {
+  return NAV_ITEMS.filter(n => n.roles.includes(role) && (n.id !== 'organization' || role === 'owner' || organization !== null))
+}
+
+// Falls back to the least-privileged role, not the broadest one, for any
+// legacy/unrecognized role value (pharmacist/staff exist in the database's
+// check constraint but nothing has ever created one) -- an unknown role
+// should never silently grant full access.
+function roleFromAccess(access: BranchAccess | null): Role {
+  return access?.role === 'owner' || access?.role === 'manager' || access?.role === 'seller' ? access.role : 'seller'
+}
+
+// Where someone lands the moment they sign in (or a restored session
+// resolves), most-privileged-first: an org_owner/org_manager's highest-level
+// view is the cross-branch Organization dashboard, not any one branch's own
+// Overview; a plain branch owner/manager still lands on their branch's
+// Overview same as always; a seller (no dashboard access at all) lands
+// straight on Sales/POS, the only page most of their nav even includes.
+// Deliberately computed once at the sign-in moment (both call sites below
+// resolve `organization` before calling this), not as an ongoing redirect --
+// see the useLayoutEffect guard further down, which only corrects `page`
+// when it's actually invalid for the role, never overriding a deliberate,
+// still-valid manual navigation just because this function would have
+// picked something else.
+function computeDefaultPage(role: Role, organization: OrganizationSummary | null): string {
+  if (organization) return 'organization'
+  if (role === 'seller') return 'sales'
+  return 'overview'
+}
 
 // Fetches a page's chunk ahead of the click that needs it -- on nav-button
 // hover, and once more as a background warm-up shortly after sign-in (see
@@ -360,6 +403,27 @@ export default function App() {
   const [page, setPage]             = useState('overview')
   const [access, setAccess]         = useState<BranchAccess | null>(null)
   const [accessLoading, setAccessLoading] = useState(true)
+  // Whether the signed-in owner/manager also holds an org_owner/org_manager
+  // role somewhere -- null until known, i.e. "no organization" and "not
+  // checked yet" render the same way (Organization nav item stays hidden).
+  // Not folded into `role`/Role itself: an org role is additive to, not a
+  // replacement for, the existing owner/manager/seller branch role.
+  const [organization, setOrganization] = useState<OrganizationSummary | null>(null)
+  const refreshOrganization = useCallback(async () => {
+    try { setOrganization(await getMyOrganization()) } catch { setOrganization(null) }
+  }, [])
+  // Branch list for an org_owner/org_manager's "All branches" / per-branch
+  // picker on Overview -- fetched only once they actually have an
+  // organization, same lazy-on-demand shape as `organization` itself.
+  const [orgBranches, setOrgBranches] = useState<OrganizationBranch[]>([])
+  useEffect(() => {
+    if (!organization) { setOrgBranches([]); return }
+    let cancelled = false
+    listOrganizationBranches(organization.organizationId)
+      .then(list => { if (!cancelled) setOrgBranches(list) })
+      .catch(() => { if (!cancelled) setOrgBranches([]) })
+    return () => { cancelled = true }
+  }, [organization])
   // The pharmacy's own uploaded logo, shown in the sidebar in place of the
   // generic PharmSync mark once one exists (falls back to the mark when
   // null). Every role sees it, not just the owner -- it's branch branding,
@@ -420,8 +484,22 @@ export default function App() {
     return () => { window.removeEventListener('online', up); window.removeEventListener('offline', down) }
   }, [])
 
+  // Resolves organization membership as PART of session restore, before the
+  // loading screen ever clears -- so a restored org_owner/org_manager lands
+  // straight on the Organization dashboard with no visible flash through
+  // Overview first. (An interactive sign-in, below in the `!access` render
+  // branch, does the same two-step-before-render dance for the same reason.)
   useEffect(() => {
-    void restoreBranchAccess().then(setAccess).finally(() => setAccessLoading(false))
+    (async () => {
+      const restored = await restoreBranchAccess()
+      setAccess(restored)
+      if (restored) {
+        const org = await getMyOrganization().catch(() => null)
+        setOrganization(org)
+        setPage(computeDefaultPage(roleFromAccess(restored), org))
+      }
+      setAccessLoading(false)
+    })()
   }, [])
 
   // Fetched fresh on sign-in/session restore; BranchSettingsPage's
@@ -469,19 +547,14 @@ export default function App() {
   }, [])
 
   useEffect(() => { if (access) void refreshTodaySnapshot() }, [access, refreshTodaySnapshot])
+  useEffect(() => { if (access) void refreshOrganization(); else setOrganization(null) }, [access, refreshOrganization])
   useEffect(() => {
     if (!access) return
     const id = setInterval(() => void refreshTodaySnapshot(), 30000)
     return () => clearInterval(id)
   }, [access, refreshTodaySnapshot])
 
-  // Falls back to the least-privileged role, not the broadest one, for any
-  // legacy/unrecognized role value (pharmacist/staff exist in the database's
-  // check constraint but nothing has ever created one) -- an unknown role
-  // should never silently grant full access.
-  const role: Role = access?.role === 'owner' || access?.role === 'manager' || access?.role === 'seller'
-    ? access.role
-    : 'seller'
+  const role: Role = roleFromAccess(access)
 
   // A role only ever sees the pages listed for it in NAV_ITEMS -- this guard
   // makes that true regardless of how `page` got its current value. It
@@ -493,11 +566,11 @@ export default function App() {
   // no single-frame flash of a page this role shouldn't see.
   useLayoutEffect(() => {
     if (!access) return
-    const allowed = NAV_ITEMS.filter(n => n.roles.includes(role))
+    const allowed = computeVisibleNav(role, organization)
     if (!allowed.some(n => n.id === page)) {
       setPage(allowed[0]?.id ?? 'help')
     }
-  }, [access, role, page])
+  }, [access, role, organization, page])
 
   // Background warm-up: once signed in, prefetch every page chunk this role
   // can navigate to, so clicking around later never pays a per-page fetch
@@ -508,7 +581,7 @@ export default function App() {
     if (!access) return
     const saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData
     if (saveData) return
-    const allowed = NAV_ITEMS.filter(n => n.roles.includes(role))
+    const allowed = computeVisibleNav(role, organization)
     const warmUp = () => { allowed.forEach(item => prefetchPage(item.id)) }
     const hasIdleCallback = typeof window.requestIdleCallback === 'function'
     const handle = hasIdleCallback ? window.requestIdleCallback(warmUp, { timeout: 4000 }) : window.setTimeout(warmUp, 1500)
@@ -516,7 +589,7 @@ export default function App() {
       if (hasIdleCallback) window.cancelIdleCallback(handle as number)
       else window.clearTimeout(handle as number)
     }
-  }, [access, role])
+  }, [access, role, organization])
 
   // Global barcode scanner: active only inside the authenticated pharmacy
   // app (never during sign-in, the admin console, branch registration, or
@@ -555,11 +628,20 @@ export default function App() {
   }
 
   if (!access) {
-    return <BranchAccessPage onAccess={branchAccess => { setAccess(branchAccess); setPage('overview') }} />
+    return <BranchAccessPage onAccess={async branchAccess => {
+      // Resolve organization membership BEFORE setting access/page, so both
+      // land in the same render -- otherwise access would briefly go
+      // non-null with the stale 'overview' page still showing before this
+      // resolves, flashing an org_owner through Overview for a beat first.
+      const org = await getMyOrganization().catch(() => null)
+      setOrganization(org)
+      setAccess(branchAccess)
+      setPage(computeDefaultPage(roleFromAccess(branchAccess), org))
+    }} />
   }
 
   const currentRole = ROLES.find(r => r.id === role)!
-  const visibleNav = NAV_ITEMS.filter(n => n.roles.includes(role))
+  const visibleNav = computeVisibleNav(role, organization)
   const alertCount = alerts.filter(a => !a.isRead).length
   const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
 
@@ -616,6 +698,8 @@ export default function App() {
                                      alerts={alerts}
                                      onViewAlerts={() => setPage('alerts')}
                                      onViewFullReport={() => setPage('analytics')}
+                                     organization={organization}
+                                     branches={orgBranches}
                                    />
       case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} />
       case 'receiving':     return <StockReceivingPage />
@@ -630,6 +714,7 @@ export default function App() {
       case 'compliance':    return <CompliancePage />
       case 'patients':      return <PatientsPage />
       case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} />
+      case 'organization':  return <OrganizationPage currentUserId={access!.userId} currentBranchId={access!.branchId} organization={organization} onOrganizationChanged={refreshOrganization} />
       case 'history':       return <HistoryPage period={dateRange} />
       case 'help':          return <HelpPage />
       default:              return null

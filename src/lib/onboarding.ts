@@ -1,6 +1,6 @@
 import { supabase } from "./supabase"
 import { supabaseAdmin } from "./supabaseAdmin"
-import type { BranchRecord, BranchStatus } from "./store"
+import type { BranchRecord, BranchStatus, OrganizationApplicationRecord } from "./store"
 
 interface ApplicationRow {
   id: string
@@ -287,4 +287,224 @@ export async function verifyAdminOtp(email: string, token: string): Promise<void
 
 export async function signOutAdmin(): Promise<void> {
   await supabaseAdmin.auth.signOut()
+}
+
+// ── Organization-first public registration ──────────────────────────────────
+// Same shape as the pharmacy-application functions above, for the flow that
+// replaced them as BranchPortal.tsx's public entry point: register the
+// company -> admin calls to verify -> admin approves -> OTP -> set a
+// password -> register the first branch. See
+// src/datatabase/2026-09-09_organization_first_registration.sql.
+
+interface OrganizationApplicationRow {
+  id: string
+  application_code: string
+  legal_name: string
+  tin: string | null
+  phone: string
+  email: string
+  location: string
+  status: string
+  called_at: string | null
+  denied_reason: string | null
+  organization_id: string | null
+  first_branch_id: string | null
+  branch_code: string | null
+  activation_code: string | null
+  submitted_at: string
+}
+
+function asOrgRecord(row: OrganizationApplicationRow): OrganizationApplicationRecord {
+  return {
+    id: row.id,
+    applicationCode: row.application_code,
+    legalName: row.legal_name,
+    tin: row.tin ?? undefined,
+    phone: row.phone,
+    email: row.email,
+    location: row.location,
+    submittedAt: row.submitted_at,
+    status: row.status as BranchStatus,
+    organizationId: row.organization_id ?? undefined,
+    firstBranchId: row.first_branch_id ?? undefined,
+    branchCode: row.branch_code ?? undefined,
+    activationCode: row.activation_code ?? undefined,
+    calledAt: row.called_at ?? undefined,
+    deniedReason: row.denied_reason ?? undefined,
+  }
+}
+
+export async function submitOrganizationRegistration(input: {
+  legalName: string
+  tin?: string
+  phone: string
+  email: string
+  location: string
+}): Promise<OrganizationApplicationRecord> {
+  const { data, error } = await supabase.rpc("submit_organization_registration", {
+    p_legal_name: input.legalName,
+    p_tin: input.tin ?? null,
+    p_phone: input.phone,
+    p_email: input.email,
+    p_location: input.location,
+  })
+  if (error) raise(error)
+  const created = Array.isArray(data) ? data[0] : data
+  const application = await getOrganizationApplication(created.application_id)
+  if (!application) raise({ message: ONBOARDING_RELOAD_FAILED })
+  return application
+}
+
+export async function getOrganizationApplication(applicationId: string): Promise<OrganizationApplicationRecord | null> {
+  const { data, error } = await supabase.rpc("get_organization_application", { p_application_id: applicationId })
+  if (error) raise(error)
+  const row = (Array.isArray(data) ? data[0] : data) as OrganizationApplicationRow | undefined
+  return row ? asOrgRecord(row) : null
+}
+
+// Used by the emailed activation link (.../#branch?email=...), same
+// reasoning as getPharmacyApplicationByEmail.
+export async function getOrganizationApplicationByEmail(email: string): Promise<OrganizationApplicationRecord | null> {
+  const { data, error } = await supabase.rpc("get_organization_application_by_email", { p_email: email })
+  if (error) raise(error)
+  const row = (Array.isArray(data) ? data[0] : data) as OrganizationApplicationRow | undefined
+  return row ? asOrgRecord(row) : null
+}
+
+export async function listOrganizationApplications(): Promise<OrganizationApplicationRecord[]> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_organization_applications")
+  if (error) raise(error)
+  return ((data ?? []) as OrganizationApplicationRow[]).map(asOrgRecord)
+}
+
+export async function markOrganizationApplicationCalled(applicationId: string): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("admin_mark_organization_called", { p_application_id: applicationId })
+  if (error) raise(error)
+}
+
+export async function denyOrganizationApplication(applicationId: string, reason: string): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("admin_deny_organization_application", {
+    p_application_id: applicationId,
+    p_reason: reason,
+  })
+  if (error) raise(error)
+}
+
+// Sends the activation OTP itself, right here, from the admin's own already-
+// authenticated browser -- same reasoning as approvePharmacyApplication:
+// the applicant isn't expected to be online at approval time.
+export async function approveOrganizationApplication(applicationId: string): Promise<void> {
+  const { data, error } = await supabaseAdmin.rpc("admin_approve_organization_application", { p_application_id: applicationId })
+  if (error) raise(error)
+  const approved = Array.isArray(data) ? data[0] : data
+  if (approved?.email) await requestOrganizationRegistrationOtp(approved.email)
+}
+
+export async function expireStaleOrganizationApplications(): Promise<number> {
+  const { data, error } = await supabaseAdmin.rpc("admin_expire_stale_organization_applications")
+  if (error) raise(error)
+  return Number(data ?? 0)
+}
+
+export async function canRequestOrganizationRegistrationOtp(email: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("can_request_organization_registration_otp", { p_email: email })
+  if (error) raise(error)
+  return Boolean(data)
+}
+
+export async function requestOrganizationRegistrationOtp(email: string): Promise<void> {
+  const allowed = await canRequestOrganizationRegistrationOtp(email)
+  if (!allowed) throw new Error(ONBOARDING_NOT_APPROVED)
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true },
+  })
+  if (error) raise(error)
+}
+
+export async function verifyOrganizationRegistrationOtp(email: string, token: string): Promise<OrganizationApplicationRecord> {
+  const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" })
+  if (error) raise(error)
+  const { data, error: activateError } = await supabase.rpc("activate_organization_registration")
+  if (activateError) raise(activateError)
+  const activated = Array.isArray(data) ? data[0] : data
+  return {
+    id: "",
+    legalName: activated.legal_name,
+    tin: activated.tin ?? undefined,
+    phone: activated.phone,
+    email: activated.email,
+    location: activated.location,
+    submittedAt: new Date().toISOString(),
+    status: "active",
+    organizationId: activated.organization_id,
+    firstBranchId: activated.first_branch_id ?? undefined,
+  }
+}
+
+export interface FirstBranchResult {
+  branchId: string
+  branchCode: string
+  activationCode: string
+  organizationId: string
+  pharmacyName: string
+}
+
+export async function registerFirstBranch(input: {
+  fullName: string
+  pharmacyName: string
+  phone: string
+  email: string
+  location: string
+}): Promise<FirstBranchResult> {
+  const { data, error } = await supabase.rpc("register_first_branch", {
+    p_full_name: input.fullName,
+    p_pharmacy_name: input.pharmacyName,
+    p_phone: input.phone,
+    p_email: input.email,
+    p_location: input.location,
+  })
+  if (error) raise(error)
+  const row = Array.isArray(data) ? data[0] : data
+  return {
+    branchId: row.branch_id,
+    branchCode: row.branch_code,
+    activationCode: row.activation_code,
+    organizationId: row.organization_id,
+    pharmacyName: row.pharmacy_name,
+  }
+}
+
+export interface AllBranchRecord {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  address: string | null
+  status: string
+  branchCode: string | null
+  activationCode: string | null
+  failedLogins: number
+  lockedAt?: string
+  organizationId?: string
+  organizationLegalName?: string
+  createdAt: string
+}
+
+// Every branch regardless of how it was created (old pharmacy-application
+// flow, organization-first registration, or add_branch_to_organization) --
+// admin_list_pharmacy_applications() only ever surfaces branches that came
+// through the old application flow, which is why AdminPortal.tsx's Branch
+// Directory/Security/Categories/Dashboard tabs source their branch list
+// from this instead.
+export async function adminListAllBranches(): Promise<AllBranchRecord[]> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_all_branches")
+  if (error) raise(error)
+  return ((data ?? []) as any[]).map(row => ({
+    id: row.id, name: row.name, phone: row.phone, email: row.email, address: row.address,
+    status: row.status, branchCode: row.branch_code, activationCode: row.activation_code,
+    failedLogins: row.failed_logins ?? 0, lockedAt: row.locked_at ?? undefined,
+    organizationId: row.organization_id ?? undefined, organizationLegalName: row.organization_legal_name ?? undefined,
+    createdAt: row.created_at,
+  }))
 }

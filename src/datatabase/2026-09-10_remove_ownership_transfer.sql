@@ -1,0 +1,23 @@
+-- ============================================================================
+-- Remove the ownership-transfer feature entirely
+-- ============================================================================
+-- Run once, any time after 2026-09-09_organization_rbac.sql. Idempotent.
+--
+-- transfer_organization_ownership() had no confirmation step in the UI --
+-- one click on "Transfer ownership" next to any org_manager's name
+-- immediately, irreversibly (short of another transfer) demoted the real
+-- owner and promoted that person, no "are you sure?" anywhere in the path.
+-- That is exactly what happened live during testing: ownership landed on a
+-- throwaway test account. The UI entry point (the button, and the
+-- lib/organization.ts wrapper that called it) has been removed from the
+-- app; this locks the same thing down at the database layer so no client,
+-- not just this app's UI, can invoke it any more.
+--
+-- The function itself is left in place (not dropped) rather than erased,
+-- since transfer_organization_ownership() is still referenced by
+-- migration history and dropping a security-definer function outright is
+-- harder to walk back than re-granting execute would be, if this feature
+-- is ever deliberately rebuilt later with a real confirmation step.
+-- ============================================================================
+
+revoke all on function public.transfer_organization_ownership(uuid, uuid) from authenticated;

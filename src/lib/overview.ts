@@ -252,6 +252,23 @@ async function fetchSaleItems(saleIds: string[]): Promise<any[]> {
 
 // ── Load ────────────────────────────────────────────────────────────────────
 
+// Everything loadOverview() and loadOrgOverview() both need, pre-fetched --
+// splitting the fetch from the computation lets the org-wide path swap in
+// org_overview_raw()'s rows for the branch-scoped ones without duplicating a
+// single line of the aggregation logic below.
+interface OverviewRaw {
+  sales: any[]
+  taxRates: any[]
+  barcodes: any[]
+  batches: any[]
+  variants: any[]
+  products: any[]
+  categories: any[]
+  categorization: any[]
+  reorderPoints: any[]
+  items: any[]
+}
+
 export async function loadOverview(period: OverviewPeriod): Promise<OverviewData> {
   const now = new Date()
   const range = resolveRange(period, now)
@@ -280,6 +297,55 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   // sale_items has no timestamp of its own, so it is fetched by the sale ids
   // that actually fell inside the window rather than pulled wholesale.
   const items = await fetchSaleItems(sales.map(sale => sale.id))
+
+  return aggregateOverview(now, range, {
+    sales, taxRates, barcodes, batches, variants, products, categories, categorization, reorderPoints, items,
+  })
+}
+
+// Org-wide (branchIds null) or single-other-branch Overview for an
+// org_owner/org_manager, via the org_overview_raw() RPC -- see that
+// function's own comment for why this is a separate security-definer call
+// rather than a widened RLS policy. tax_rates/product_variants/products
+// carry no branch_id, so they stay on the same plain, unfiltered reads
+// loadOverview() already uses.
+export async function loadOrgOverview(
+  period: OverviewPeriod, organizationId: string, branchIds: string[] | null,
+): Promise<OverviewData> {
+  const now = new Date()
+  const range = resolveRange(period, now)
+  const weekStart = startOfWeek(now)
+  const fetchFrom = new Date(Math.min(range.prevStart.getTime(), weekStart.getTime()))
+  const fetchTo = new Date(Math.max(range.end.getTime(), now.getTime()))
+
+  const [taxRates, variants, products, raw] = await Promise.all([
+    fetchAll<any>("tax_rates", "id, rate_percentage"),
+    fetchAll<any>("product_variants", "id, product_id, dosage, form"),
+    fetchAll<any>("products", "id, name"),
+    supabase.rpc("org_overview_raw", {
+      p_organization_id: organizationId,
+      p_branch_ids: branchIds,
+      p_from: fetchFrom.toISOString(),
+      p_to: fetchTo.toISOString(),
+    }).then(({ data, error }) => {
+      if (error) throw new Error(`org_overview_raw: ${error.message}`)
+      return data as {
+        sales: any[]; sale_items: any[]; barcodes: any[]; stock_batches: any[]
+        reorder_points: any[]; product_categories: any[]; branch_product_categorization: any[]
+      }
+    }),
+  ])
+
+  return aggregateOverview(now, range, {
+    sales: raw.sales, taxRates, barcodes: raw.barcodes, batches: raw.stock_batches, variants, products,
+    categories: raw.product_categories, categorization: raw.branch_product_categorization,
+    reorderPoints: raw.reorder_points, items: raw.sale_items,
+  })
+}
+
+function aggregateOverview(now: Date, range: Range, raw: OverviewRaw): OverviewData {
+  const { sales, taxRates, barcodes, batches, variants, products, categories, categorization, reorderPoints, items } = raw
+  const weekStart = startOfWeek(now)
 
   const taxPctById = new Map<string, number>(taxRates.map(t => [t.id, asNumber(t.rate_percentage)]))
   const batchById = new Map<string, any>(batches.map(b => [b.id, b]))

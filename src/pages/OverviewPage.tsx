@@ -7,10 +7,11 @@ import { fmtRWFExact, pct } from '../data'
 import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal } from '../components'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
-import { loadOverview, DATA_FALLBACK_KEYS, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
+import { loadOverview, loadOrgOverview, DATA_FALLBACK_KEYS, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
 import type { LiveAlert } from '../lib/alerts'
 import type { TranslationKey } from '../lib/i18n/en'
 import { filenameSafe, type ReportSection } from '../lib/export'
+import type { OrganizationSummary, OrganizationBranch } from '../lib/organization'
 
 type DrillDownMetric = 'revenue' | 'transactions' | 'items'
 
@@ -530,13 +531,19 @@ const INSIGHT_STYLE = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage({
-  period, branchName, alerts, onViewAlerts, onViewFullReport,
+  period, branchName, alerts, onViewAlerts, onViewFullReport, organization, branches,
 }: {
   period: OverviewPeriod
   branchName: string
   alerts: LiveAlert[]
   onViewAlerts: () => void
   onViewFullReport?: () => void
+  // Present only for an org_owner/org_manager -- when set, this page defaults
+  // to every branch in the organization combined, with a scope picker to
+  // narrow to one. Absent (plain branch owner/manager), the page behaves
+  // exactly as it always has: their own home branch, no picker.
+  organization?: OrganizationSummary | null
+  branches?: OrganizationBranch[]
 }) {
   const { t } = useTranslation()
   const { term: searchTerm } = useGlobalSearch()
@@ -550,6 +557,9 @@ export default function OverviewPage({
   const [showExportModal, setShowExportModal] = useState(false)
   const [showBuilder, setShowBuilder] = useState(false)
   const [visibleWidgets, setVisibleWidgets] = useState<Record<WidgetKey, boolean>>(loadWidgetPrefs)
+  // null = "All branches" (the org-wide default). Only meaningful when
+  // `organization` is set.
+  const [scopeBranchId, setScopeBranchId] = useState<string | null>(null)
 
   const toggleWidget = (key: WidgetKey) => {
     setVisibleWidgets(prev => {
@@ -563,13 +573,17 @@ export default function OverviewPage({
     setLoading(true)
     setError(null)
     try {
-      setData(await loadOverview(period))
+      setData(
+        organization
+          ? await loadOrgOverview(period, organization.organizationId, scopeBranchId ? [scopeBranchId] : null)
+          : await loadOverview(period),
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the dashboard.')
     } finally {
       setLoading(false)
     }
-  }, [period])
+  }, [period, organization, scopeBranchId])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -577,7 +591,13 @@ export default function OverviewPage({
   // category that no longer appears in the new window.
   useEffect(() => { setActiveCategory(null) }, [period])
 
-  if (loading && !data) return <Panel icon="◴" title={t('overviewPage.loadingTitle')} msg={t('overviewPage.loadingMsg', { branch: branchName })} />
+  // Only meaningful once `organization` is set -- "All branches" by default,
+  // or the picked branch's own name once scopeBranchId is set.
+  const scopedBranchName = organization
+    ? (scopeBranchId ? branches?.find(b => b.branchId === scopeBranchId)?.name ?? branchName : t('overviewPage.allBranches'))
+    : branchName
+
+  if (loading && !data) return <Panel icon="◴" title={t('overviewPage.loadingTitle')} msg={t('overviewPage.loadingMsg', { branch: scopedBranchName })} />
   if (error) return <Panel icon="⚠" title={t('overviewPage.errorTitle')} msg={error} />
   if (!data) return null
 
@@ -658,9 +678,22 @@ export default function OverviewPage({
               <button onClick={() => setActiveCategory(null)} style={{ fontSize: 11, color: 'var(--negative)', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>✕ {t('overviewPage.clearFilter')}</button>
             </span>
           ) : (
-            <>{t('overviewPage.toolbarHint', { branch: branchName, period: periodLabel })}</>
+            <>{t('overviewPage.toolbarHint', { branch: scopedBranchName, period: periodLabel })}</>
           )}
         </span>
+        {organization && (
+          <select
+            value={scopeBranchId ?? ''}
+            onChange={e => setScopeBranchId(e.target.value || null)}
+            style={{
+              fontSize: 12, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', cursor: 'pointer',
+            }}
+          >
+            <option value="">{t('overviewPage.allBranches')}</option>
+            {(branches ?? []).map(b => <option key={b.branchId} value={b.branchId}>{b.name}</option>)}
+          </select>
+        )}
         <Btn variant="ghost" small onClick={() => void refresh()}>{loading ? `◴ ${t('overviewPage.refreshing')}` : `↻ ${t('overviewPage.refresh')}`}</Btn>
         <Btn variant="ghost" small onClick={() => setShowExportModal(true)}>↗ {t('overviewPage.exportButton')}</Btn>
         <Btn variant="secondary" small onClick={() => setShowBuilder(true)}>⊞ {t('overviewPage.customizeButton')}</Btn>
@@ -947,9 +980,9 @@ export default function OverviewPage({
       {showExportModal && (
         <ExportModal
           title={t('overviewPage.exportModalTitle')}
-          sections={buildDashboardReport(data, branchName, t)}
-          filenameBase={`dashboard-export-${filenameSafe(branchName)}-${filenameSafe(periodLabel)}`}
-          docTitle={t('overviewPage.reportDocTitle', { branch: branchName, period: periodLabel })}
+          sections={buildDashboardReport(data, scopedBranchName, t)}
+          filenameBase={`dashboard-export-${filenameSafe(scopedBranchName)}-${filenameSafe(periodLabel)}`}
+          docTitle={t('overviewPage.reportDocTitle', { branch: scopedBranchName, period: periodLabel })}
           onClose={() => setShowExportModal(false)}
           formatLabel={t('overviewPage.exportFormatLabel')}
           cancelLabel={t('overviewPage.exportCancel')}

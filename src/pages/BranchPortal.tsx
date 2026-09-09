@@ -4,37 +4,52 @@ import {
   Loader2, ShieldCheck, KeyRound, RefreshCw, AlertCircle, Copy, Check, Lock,
 } from "lucide-react";
 import {
-  getPharmacyApplication,
-  getPharmacyApplicationByEmail,
-  requestPharmacyOtp,
-  submitPharmacyRegistration,
-  verifyPharmacyOtp,
+  getOrganizationApplication,
+  getOrganizationApplicationByEmail,
+  requestOrganizationRegistrationOtp,
+  submitOrganizationRegistration,
+  verifyOrganizationRegistrationOtp,
+  registerFirstBranch,
   ONBOARDING_SERVICE_ERROR,
   ONBOARDING_RELOAD_FAILED,
   ONBOARDING_NOT_APPROVED,
+  type FirstBranchResult,
 } from "../lib/onboarding";
-import { updatePassword } from "../lib/auth";
-import type { BranchRecord } from "../lib/store";
+import { updatePassword, getCurrentAuthEmail } from "../lib/auth";
+import type { OrganizationApplicationRecord } from "../lib/store";
 import { AuthShell, authCardHeading, authBody, authInput, authPrimaryButton, PasswordInput } from "./AuthShell";
 import pharmacyImg from "../assets/stock2.jpg";
 import { useTranslation } from "../lib/i18n";
 import type { TranslationKey } from "../lib/i18n/en";
 
-type Step = "form" | "pending" | "otp" | "password" | "denied" | "success";
+type Step = "form" | "pending" | "otp" | "password" | "branch" | "denied" | "success";
 
-/** Clears the #branch hash, handing control back to App's router (the PharmSync home/dashboard). */
+// A plain hash change (window.location.hash = "") would hand control back to
+// App's router without a page reload -- but App only checks "is anyone
+// signed in?" once, on its very first mount. Someone who just finished
+// verifying OTP / setting a password / registering their first branch here
+// has a brand-new, real session by this point, but App's own `access` state
+// would still be stuck at whatever it resolved to when the page first
+// loaded (almost always "nobody's signed in yet", since that's what's true
+// before registration). A full navigation forces App to remount and re-run
+// that check from scratch, so it actually picks up the session that now
+// exists -- landing the person in their dashboard instead of back on the
+// public marketing page looking logged out.
 function backToHome() {
-  window.location.hash = "";
+  window.location.href = "/";
 }
 
-// activate_pharmacy_account() already ran by the time we reach "password" —
-// this step only sets a password on the now-live session, so it never maps
-// from server status the way the others do; it's entered explicitly from
-// the otp step's verify handler.
-function stepForStatus(status: BranchRecord["status"]): Step {
-  if (status === "active") return "success";
-  if (status === "otp_sent") return "otp";
-  if (status === "denied") return "denied";
+// activate_organization_registration() already ran by the time we reach
+// "password" — this step only sets a password on the now-live session, so
+// it never maps from server status the way the others do; it's entered
+// explicitly from the otp step's verify handler. firstBranchId is what
+// distinguishes "verified, no branch yet" ("branch") from "fully done"
+// ("success") once status is already 'active' — status alone can't express
+// that difference (see register_first_branch() in the schema).
+function stepForStatus(app: OrganizationApplicationRecord): Step {
+  if (app.status === "active") return app.firstBranchId ? "success" : "branch";
+  if (app.status === "otp_sent") return "otp";
+  if (app.status === "denied") return "denied";
   return "pending";
 }
 
@@ -66,8 +81,8 @@ export default function BranchPortal() {
 
   const [step, setStep] = useState<Step>("form");
   const [applicationId, setApplicationId] = useState<string | null>(null);
-  const [application, setApplication] = useState<BranchRecord | null>(null);
-  const [activated, setActivated] = useState<BranchRecord | null>(null);
+  const [application, setApplication] = useState<OrganizationApplicationRecord | null>(null);
+  const [activated, setActivated] = useState<OrganizationApplicationRecord | null>(null);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [otpError, setOtpError] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
@@ -80,9 +95,12 @@ export default function BranchPortal() {
   const [passwordError, setPasswordError] = useState("");
   const [settingPassword, setSettingPassword] = useState(false);
 
-  // Form state
+  // Form state — collects the ORGANIZATION's own fields (legalName/tin) plus
+  // contact info the super admin uses to verify (phone/email/location),
+  // which doubles as the pre-filled default for the "branch" step below.
   const [form, setForm] = useState({
-    pharmacyName: "",
+    legalName: "",
+    tin: "",
     phone: "",
     email: "",
     location: "",
@@ -90,6 +108,20 @@ export default function BranchPortal() {
   const [formErrors, setFormErrors] = useState<Partial<typeof form>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+
+  // "Register your first branch" step state — reached once OTP verification
+  // has confirmed the organization but before any branch/login exists yet.
+  const [branchForm, setBranchForm] = useState({
+    fullName: "",
+    pharmacyName: "",
+    phone: "",
+    email: "",
+    location: "",
+  });
+  const [branchFormErrors, setBranchFormErrors] = useState<Partial<typeof branchForm>>({});
+  const [registeringBranch, setRegisteringBranch] = useState(false);
+  const [branchSubmitError, setBranchSubmitError] = useState("");
+  const [branchResult, setBranchResult] = useState<FirstBranchResult | null>(null);
 
   // "Already applied? Check your status" — for anyone who closed the pending
   // page and lost the emailed link, or whose email never arrived. Same
@@ -107,10 +139,10 @@ export default function BranchPortal() {
   const stepRef = useRef<Step>(step);
   useEffect(() => { stepRef.current = step; }, [step]);
 
-  function applyRecord(record: BranchRecord) {
+  function applyRecord(record: OrganizationApplicationRecord) {
     setApplication(record);
     if (record.status === "active") setActivated(record);
-    setStep(stepForStatus(record.status));
+    setStep(stepForStatus(record));
   }
 
   // The link emailed once a super admin approves — .../#branch?email=... —
@@ -118,7 +150,7 @@ export default function BranchPortal() {
   // that originally submitted the form, so it looks up by email instead of
   // the sessionStorage-remembered application id.
   const resumeFromEmailLink = useCallback(async (email: string) => {
-    const record = await getPharmacyApplicationByEmail(email).catch(() => null);
+    const record = await getOrganizationApplicationByEmail(email).catch(() => null);
     if (!record) return false;
     setApplicationId(record.id);
     applyRecord(record);
@@ -130,7 +162,7 @@ export default function BranchPortal() {
   // that submitted the form — sessionStorage doesn't survive to another device).
   const resumeApplication = useCallback(async (id: string) => {
     try {
-      const record = await getPharmacyApplication(id);
+      const record = await getOrganizationApplication(id);
       if (!record) return;
       setApplicationId(id);
       applyRecord(record);
@@ -141,13 +173,19 @@ export default function BranchPortal() {
   }, []);
 
   useEffect(() => {
-    const emailFromLink = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("email");
-    if (emailFromLink) {
-      void resumeFromEmailLink(emailFromLink);
-      return;
-    }
-    const savedId = sessionStorage.getItem(SESSION_KEY);
-    if (savedId) void resumeApplication(savedId);
+    (async () => {
+      const emailFromLink = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("email");
+      if (emailFromLink) { void resumeFromEmailLink(emailFromLink); return; }
+      const savedId = sessionStorage.getItem(SESSION_KEY);
+      if (savedId) { void resumeApplication(savedId); return; }
+      // Neither the emailed link nor sessionStorage survives closing the tab
+      // entirely between setting a password and registering the first
+      // branch — but the real Supabase Auth session (created by verifyOtp)
+      // does, in localStorage. Fall back to it so that gap doesn't strand
+      // someone mid-flow with no way back in except starting over.
+      const liveEmail = await getCurrentAuthEmail();
+      if (liveEmail) void resumeFromEmailLink(liveEmail);
+    })();
   }, [resumeFromEmailLink, resumeApplication]);
 
   // Poll the application status while waiting for admin approval or OTP
@@ -171,7 +209,7 @@ export default function BranchPortal() {
     const interval = setInterval(async () => {
       if (stepRef.current !== "pending" && stepRef.current !== "otp") return;
       try {
-        const record = await getPharmacyApplication(applicationId);
+        const record = await getOrganizationApplication(applicationId);
         if (record && (stepRef.current === "pending" || stepRef.current === "otp")) applyRecord(record);
       } catch {
         // transient network errors are ignored; the next tick retries
@@ -183,7 +221,7 @@ export default function BranchPortal() {
 
   function validate() {
     const errors: Partial<typeof form> = {};
-    if (!form.pharmacyName.trim()) errors.pharmacyName = t("register.errorPharmacyNameRequired");
+    if (!form.legalName.trim()) errors.legalName = t("register.errorLegalNameRequired");
     if (!form.phone.trim()) errors.phone = t("register.errorPhoneRequired");
     else if (!/^\+?[\d\s\-()]{9,}$/.test(form.phone)) errors.phone = t("register.errorPhoneInvalid");
     if (!form.email.trim()) errors.email = t("register.errorEmailRequired");
@@ -201,8 +239,9 @@ export default function BranchPortal() {
     setSubmitting(true);
     setSubmitError("");
     try {
-      const created = await submitPharmacyRegistration({
-        pharmacyName: form.pharmacyName.trim(),
+      const created = await submitOrganizationRegistration({
+        legalName: form.legalName.trim(),
+        tin: form.tin.trim() || undefined,
         phone: form.phone.trim(),
         email: form.email.trim(),
         location: form.location.trim(),
@@ -238,7 +277,7 @@ export default function BranchPortal() {
     setResending(true);
     setResendInfo("");
     try {
-      await requestPharmacyOtp(email);
+      await requestOrganizationRegistrationOtp(email);
       setResendInfo(t("register.otpResent", { email }));
     } catch (reason) {
       setResendInfo(explain(reason, "register.errorResendFailed"));
@@ -278,7 +317,7 @@ export default function BranchPortal() {
     if (entered.length < 6 || !application) { setOtpError(t("register.errorOtpIncomplete")); return; }
     setOtpError("");
     try {
-      const account = await verifyPharmacyOtp(application.email, entered);
+      const account = await verifyOrganizationRegistrationOtp(application.email, entered);
       setActivated(account);
       setStep("password");
     } catch (reason) {
@@ -300,11 +339,61 @@ export default function BranchPortal() {
     setSettingPassword(true);
     try {
       await updatePassword(password);
-      setStep("success");
+      setStep("branch");
     } catch (reason) {
       setPasswordError(explain(reason, "register.errorSetPasswordFailed"));
     } finally {
       setSettingPassword(false);
+    }
+  }
+
+  // Pre-fill the branch form with the organization's own contact info the
+  // moment this step is entered, so the screen can be submitted with no
+  // edits at all if the first branch's details match what was already given.
+  useEffect(() => {
+    if (step !== "branch") return;
+    const source = activated ?? application;
+    if (!source) return;
+    setBranchForm(f => f.pharmacyName ? f : {
+      fullName: f.fullName,
+      pharmacyName: source.legalName,
+      phone: source.phone,
+      email: source.email,
+      location: source.location,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  function validateBranchForm() {
+    const errors: Partial<typeof branchForm> = {};
+    if (!branchForm.fullName.trim()) errors.fullName = t("register.errorYourNameRequired");
+    if (!branchForm.pharmacyName.trim()) errors.pharmacyName = t("register.errorPharmacyNameRequired");
+    return errors;
+  }
+
+  async function handleRegisterBranch(e: React.FormEvent) {
+    e.preventDefault();
+    const errors = validateBranchForm();
+    setBranchFormErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
+    setRegisteringBranch(true);
+    setBranchSubmitError("");
+    try {
+      const result = await registerFirstBranch({
+        fullName: branchForm.fullName.trim(),
+        pharmacyName: branchForm.pharmacyName.trim(),
+        phone: branchForm.phone.trim(),
+        email: branchForm.email.trim(),
+        location: branchForm.location.trim(),
+      });
+      setBranchResult(result);
+      setActivated(current => current ? { ...current, firstBranchId: result.branchId } : current);
+      setStep("success");
+    } catch (reason) {
+      setBranchSubmitError(explain(reason, "register.errorRegisterBranchFailed"));
+    } finally {
+      setRegisteringBranch(false);
     }
   }
 
@@ -315,6 +404,19 @@ export default function BranchPortal() {
   }
 
   const shownBranch = activated ?? application;
+  // The success screen needs the FIRST BRANCH's own name/codes, not the
+  // organization's legal name -- branchResult (set the moment
+  // handleRegisterBranch succeeds) is authoritative right after
+  // registering. Resuming straight into "success" in a later session (the
+  // branch was already registered before) has no branchResult, but
+  // get_organization_application(_by_email) already joins branch_code/
+  // activation_code onto the application row for exactly this case --
+  // falling back to the organization's own legal name for display in that
+  // one resumed-not-fresh path is an acceptable simplification, since the
+  // branch's own name was never fetched by that query.
+  const successPharmacyName = branchResult?.pharmacyName ?? shownBranch?.legalName ?? "";
+  const successBranchCode = branchResult?.branchCode ?? shownBranch?.branchCode ?? "—";
+  const successActivationCode = branchResult?.activationCode ?? shownBranch?.activationCode ?? "—";
 
   const eyebrow = t("register.eyebrow");
   const tagline = t("register.tagline");
@@ -327,8 +429,9 @@ export default function BranchPortal() {
         <div className="flex items-center gap-0 mb-8">
           {[
             { label: t("register.stepRegister"), done: true },
-            { label: t("register.stepVerify"), done: step === "otp" || step === "password" || step === "success" },
-            { label: t("register.stepSetPassword"), done: step === "password" || step === "success" },
+            { label: t("register.stepVerify"), done: step === "otp" || step === "password" || step === "branch" || step === "success" },
+            { label: t("register.stepSetPassword"), done: step === "password" || step === "branch" || step === "success" },
+            { label: t("register.stepAddBranch"), done: step === "success" },
           ].map((s, i) => (
             <div key={i} className="flex items-center flex-1">
               <div className="flex flex-col items-center">
@@ -340,7 +443,7 @@ export default function BranchPortal() {
                 </div>
                 <p className="text-[10px] mt-1" style={{ fontFamily: "var(--font-body)", color: "#94a3b8" }}>{s.label}</p>
               </div>
-              {i < 2 && (
+              {i < 3 && (
                 <div className="flex-1 h-0.5 mx-1 mb-4" style={{ background: s.done ? "#1e5fa8" : "#e2e8f0" }} />
               )}
             </div>
@@ -357,13 +460,23 @@ export default function BranchPortal() {
           </div>
 
           <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-5">
-            <Field label={t("register.pharmacyNameLabel")} icon={<Building2 className="w-4 h-4" />} error={formErrors.pharmacyName}>
+            <Field label={t("register.legalNameLabel")} icon={<Building2 className="w-4 h-4" />} error={formErrors.legalName}>
               <input
                 type="text"
-                placeholder={t("register.pharmacyNamePlaceholder")}
-                value={form.pharmacyName}
-                onChange={(e) => setForm((f) => ({ ...f, pharmacyName: e.target.value }))}
-                style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.pharmacyName ? "#fca5a5" : "#e2e8f0" }}
+                placeholder={t("register.legalNamePlaceholder")}
+                value={form.legalName}
+                onChange={(e) => setForm((f) => ({ ...f, legalName: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.legalName ? "#fca5a5" : "#e2e8f0" }}
+              />
+            </Field>
+
+            <Field label={t("register.tinLabel")} icon={<Building2 className="w-4 h-4" />}>
+              <input
+                type="text"
+                placeholder={t("register.tinPlaceholder")}
+                value={form.tin}
+                onChange={(e) => setForm((f) => ({ ...f, tin: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38 }}
               />
             </Field>
 
@@ -387,10 +500,10 @@ export default function BranchPortal() {
               />
             </Field>
 
-            <Field label={t("register.locationLabel")} icon={<MapPin className="w-4 h-4" />} error={formErrors.location}>
+            <Field label={t("register.orgLocationLabel")} icon={<MapPin className="w-4 h-4" />} error={formErrors.location}>
               <input
                 type="text"
-                placeholder={t("register.locationPlaceholder")}
+                placeholder={t("register.orgLocationPlaceholder")}
                 value={form.location}
                 onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
                 style={{ ...authInput, paddingLeft: 38, borderColor: formErrors.location ? "#fca5a5" : "#e2e8f0" }}
@@ -468,7 +581,7 @@ export default function BranchPortal() {
             <h2 className="text-xl font-extrabold" style={authCardHeading}>{t("register.pendingTitle")}</h2>
             <p className="text-sm mt-2 leading-relaxed" style={authBody}>
               {tNode("register.pendingBody", {
-                pharmacy: <span className="font-semibold" style={{ color: "#1e5fa8" }}>{shownBranch.pharmacyName}</span>,
+                pharmacy: <span className="font-semibold" style={{ color: "#1e5fa8" }}>{shownBranch.legalName}</span>,
                 phone: <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.phone}</span>,
               })}
             </p>
@@ -506,7 +619,7 @@ export default function BranchPortal() {
             <h2 className="text-xl font-extrabold" style={authCardHeading}>{t("register.deniedTitle")}</h2>
             <p className="text-sm mt-2 leading-relaxed" style={authBody}>
               {tNode("register.deniedBody", {
-                pharmacy: <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.pharmacyName}</span>,
+                pharmacy: <span className="font-semibold" style={{ color: "#0f172a" }}>{shownBranch.legalName}</span>,
               })}
             </p>
           </div>
@@ -632,6 +745,78 @@ export default function BranchPortal() {
         </div>
       )}
 
+      {/* ── STEP: Register first branch ── */}
+      {step === "branch" && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
+          <div className="px-6 py-6">
+            <h1 className="text-2xl font-extrabold" style={authCardHeading}>{t("register.branchFormTitle")}</h1>
+            <p className="text-sm mt-2" style={authBody}>{t("register.branchFormSubtitle")}</p>
+          </div>
+
+          <form onSubmit={handleRegisterBranch} className="px-6 pb-6 space-y-5">
+            <Field label={t("register.yourNameLabel")} icon={<Building2 className="w-4 h-4" />} error={branchFormErrors.fullName}>
+              <input
+                type="text"
+                placeholder={t("register.yourNamePlaceholder")}
+                value={branchForm.fullName}
+                onChange={(e) => setBranchForm((f) => ({ ...f, fullName: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38, borderColor: branchFormErrors.fullName ? "#fca5a5" : "#e2e8f0" }}
+              />
+            </Field>
+
+            <Field label={t("register.branchNameLabel")} icon={<Building2 className="w-4 h-4" />} error={branchFormErrors.pharmacyName}>
+              <input
+                type="text"
+                placeholder={t("register.pharmacyNamePlaceholder")}
+                value={branchForm.pharmacyName}
+                onChange={(e) => setBranchForm((f) => ({ ...f, pharmacyName: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38, borderColor: branchFormErrors.pharmacyName ? "#fca5a5" : "#e2e8f0" }}
+              />
+            </Field>
+
+            <Field label={t("register.phoneLabel")} icon={<Phone className="w-4 h-4" />}>
+              <input
+                type="tel"
+                value={branchForm.phone}
+                onChange={(e) => setBranchForm((f) => ({ ...f, phone: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38 }}
+              />
+            </Field>
+
+            <Field label={t("register.emailLabel")} icon={<Mail className="w-4 h-4" />}>
+              <input
+                type="email"
+                value={branchForm.email}
+                onChange={(e) => setBranchForm((f) => ({ ...f, email: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38 }}
+              />
+            </Field>
+
+            <Field label={t("register.locationLabel")} icon={<MapPin className="w-4 h-4" />}>
+              <input
+                type="text"
+                value={branchForm.location}
+                onChange={(e) => setBranchForm((f) => ({ ...f, location: e.target.value }))}
+                style={{ ...authInput, paddingLeft: 38 }}
+              />
+            </Field>
+
+            {branchSubmitError && (
+              <div className="rounded-xl p-3 flex gap-2" style={{ background: "#fef2f2", border: "1px solid #fecaca" }}>
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: "#dc2626" }} />
+                <p className="text-xs" style={{ color: "#b91c1c", fontFamily: "var(--font-body)" }}>{branchSubmitError}</p>
+              </div>
+            )}
+
+            <button type="submit" disabled={registeringBranch}
+              className="flex items-center justify-center gap-2"
+              style={{ ...authPrimaryButton, opacity: registeringBranch ? 0.7 : 1 }}>
+              {registeringBranch ? <Loader2 className="w-4 h-4 animate-spin" /> : <>{t("register.branchSubmitButton")} <ArrowRight className="w-4 h-4" /></>}
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* ── STEP: Success ── */}
       {step === "success" && shownBranch && (
         <div className="rounded-2xl overflow-hidden" style={{ background: "#fff", border: "1px solid #e8edf4" }}>
@@ -640,29 +825,29 @@ export default function BranchPortal() {
               <CheckCircle2 className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-xl font-extrabold text-white" style={{ fontFamily: "var(--font-display)" }}>{t("register.successTitle")}</h2>
-            <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.85)" }}>{shownBranch.pharmacyName}</p>
+            <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.85)" }}>{successPharmacyName}</p>
           </div>
 
           <div className="p-6 space-y-4">
             <CodeDisplay
               label={t("register.branchCodeLabel")}
-              value={shownBranch.branchCode ?? "—"}
+              value={successBranchCode}
               description={t("register.branchCodeHint")}
-              copied={copied === shownBranch.branchCode}
-              onCopy={() => copyToClipboard(shownBranch.branchCode ?? "")}
+              copied={copied === successBranchCode}
+              onCopy={() => copyToClipboard(successBranchCode)}
             />
             <CodeDisplay
               label={t("register.activationCodeLabel")}
-              value={shownBranch.activationCode ?? "—"}
+              value={successActivationCode}
               description={t("register.activationCodeHint")}
-              copied={copied === shownBranch.activationCode}
-              onCopy={() => copyToClipboard(shownBranch.activationCode ?? "")}
+              copied={copied === successActivationCode}
+              onCopy={() => copyToClipboard(successActivationCode)}
             />
 
             <div className="rounded-xl p-4 space-y-1.5 text-xs" style={{ background: "rgba(30,95,168,0.06)", border: "1px solid rgba(30,95,168,0.2)", color: "#1a4f8f" }}>
               <p className="font-semibold">{t("register.successActiveTitle")}</p>
-              <p>• {t("register.successPharmacyLabel")}: <span className="font-medium">{shownBranch.pharmacyName}</span></p>
-              {shownBranch.location && <p>• {t("register.successLocationLabel")}: <span className="font-medium">{shownBranch.location}</span></p>}
+              <p>• {t("register.successPharmacyLabel")}: <span className="font-medium">{successPharmacyName}</span></p>
+              {shownBranch?.location && <p>• {t("register.successLocationLabel")}: <span className="font-medium">{shownBranch.location}</span></p>}
               <p>• {t("register.successEmailLabel")}: <span className="font-medium">{application?.email}</span></p>
             </div>
 

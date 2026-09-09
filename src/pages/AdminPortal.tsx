@@ -6,7 +6,7 @@ import {
   Lock, Unlock, RefreshCw, ChevronRight, Eye, Send, Bell, Activity,
   Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound, Package, Plus, Ban, Tag, Percent,
 } from "lucide-react";
-import type { BranchRecord, BranchStatus } from "../lib/store";
+import type { BranchRecord, BranchStatus, OrganizationApplicationRecord } from "../lib/store";
 import {
   approvePharmacyApplication,
   deleteBranch,
@@ -24,6 +24,13 @@ import {
   setBranchLock,
   signOutAdmin,
   verifyAdminOtp,
+  approveOrganizationApplication,
+  denyOrganizationApplication,
+  listOrganizationApplications,
+  markOrganizationApplicationCalled,
+  expireStaleOrganizationApplications,
+  adminListAllBranches,
+  type AllBranchRecord,
 } from "../lib/onboarding";
 import {
   adminListSupportTickets,
@@ -238,23 +245,25 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: A
 // ── Approvals ─────────────────────────────────────────────────────────────────
 
 function Approvals({
-  branches,
+  applications,
+  orgBranches,
   onChange,
 }: {
-  branches: BranchRecord[];
+  applications: OrganizationApplicationRecord[];
+  orgBranches: AllBranchRecord[];
   onChange: () => void;
 }) {
   const { t } = useTranslation();
-  const [detailBranch, setDetailBranch] = useState<BranchRecord | null>(null);
+  const [detailBranch, setDetailBranch] = useState<OrganizationApplicationRecord | null>(null);
   const [action, setAction] = useState<"approve" | "deny" | null>(null);
   const [denyReason, setDenyReason] = useState("");
   const [sendingOtp, setSendingOtp] = useState(false);
 
-  const pending = branches.filter((b) => b.status === "pending");
-  const processed = branches.filter((b) => ["otp_sent","active","denied"].includes(b.status));
+  const pending = applications.filter((b) => b.status === "pending");
+  const processed = applications.filter((b) => ["otp_sent","active","denied"].includes(b.status));
 
   async function markCalled(id: string) {
-    await markPharmacyCalled(id);
+    await markOrganizationApplicationCalled(id);
     onChange();
     if (detailBranch?.id === id) setDetailBranch((p) => p ? { ...p, calledAt: new Date().toISOString() } : p);
   }
@@ -263,7 +272,7 @@ function Approvals({
     if (!detailBranch) return;
     setSendingOtp(true);
     try {
-      await approvePharmacyApplication(detailBranch.id);
+      await approveOrganizationApplication(detailBranch.id);
       setDetailBranch(null);
       setAction(null);
       onChange();
@@ -277,7 +286,7 @@ function Approvals({
   async function handleDeny() {
     if (!detailBranch) return;
     try {
-      await denyPharmacyApplication(detailBranch.id, denyReason);
+      await denyOrganizationApplication(detailBranch.id, denyReason);
       setDetailBranch(null);
       setAction(null);
       setDenyReason("");
@@ -314,7 +323,7 @@ function Approvals({
                       </span>
                     )}
                   </div>
-                  <p className="font-bold text-slate-800">{b.pharmacyName}</p>
+                  <p className="font-bold text-slate-800">{b.legalName}</p>
                   <div className="flex flex-col gap-0.5 text-[11px] text-slate-500">
                     <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{b.phone}</span>
                     <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{b.email}</span>
@@ -360,7 +369,7 @@ function Approvals({
               <div key={b.id} className="bg-white rounded-lg border border-slate-100 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
                 <div className="flex items-center gap-3">
                   <span className="font-mono text-[10px] text-slate-400">{b.id}</span>
-                  <p className="text-sm font-medium text-slate-700">{b.pharmacyName}</p>
+                  <p className="text-sm font-medium text-slate-700">{b.legalName}</p>
                   <span className="text-[10px] text-slate-400">{b.location.split(",")[0]}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -377,13 +386,35 @@ function Approvals({
         </div>
       )}
 
+      {/* Every branch created via the organization flow -- registering a
+          first branch, or an org_owner adding another one later -- read-only,
+          no lock/delete/edit here; those stay on the pharmacy-flow-specific
+          Branch Directory/Security pages, unchanged. */}
+      {orgBranches.length > 0 && (
+        <div>
+          <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-3">{t("admin.orgBranchesTitle")}</p>
+          <div className="space-y-2">
+            {orgBranches.map((b) => (
+              <div key={b.id} className="bg-white rounded-lg border border-slate-100 px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-[10px] text-slate-400">{b.branchCode ?? b.id.slice(0, 8)}</span>
+                  <p className="text-sm font-medium text-slate-700">{b.name}</p>
+                  <span className="text-[10px] text-slate-400">{b.organizationLegalName}</span>
+                </div>
+                <Badge status={b.status as BranchStatus} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Approve modal */}
       {detailBranch && action === "approve" && (
         <Modal title={t("admin.approveAndSendOtp")} onClose={() => { setDetailBranch(null); setAction(null); }}>
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               {t("admin.approvePortalAccessFor")}{" "}
-              <span className="font-semibold text-slate-800">{detailBranch.pharmacyName}</span>?
+              <span className="font-semibold text-slate-800">{detailBranch.legalName}</span>?
             </p>
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 space-y-1.5 text-xs">
               <p className="font-semibold text-blue-800 flex items-center gap-1.5"><Send className="w-3 h-3" /> {t("admin.whatWillHappen")}</p>
@@ -412,7 +443,7 @@ function Approvals({
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               {t("admin.denyPortalAccessFor")}{" "}
-              <span className="font-semibold text-slate-800">{detailBranch.pharmacyName}</span>?
+              <span className="font-semibold text-slate-800">{detailBranch.legalName}</span>?
             </p>
             <div>
               <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.reasonOptional")}</label>
@@ -2301,6 +2332,15 @@ export default function AdminPortal() {
   const [adminEmail, setAdminEmail]   = useState("");
   const [nav, setNav]             = useState<NavId>("dashboard");
   const [branches, setBranches]   = useState<BranchRecord[]>([]);
+  const [orgApplications, setOrgApplications] = useState<OrganizationApplicationRecord[]>([]);
+  // admin_list_pharmacy_applications()'s join (the `branches` state above)
+  // only ever surfaces branches that came through the old pharmacy-
+  // application flow -- a branch created via the organization flow
+  // (register_first_branch()/add_branch_to_organization()) has no
+  // application row at all, so it would otherwise be invisible anywhere in
+  // this console. Filtered to organization-owned branches only, since
+  // pharmacy-flow branches are already covered by `branches` above.
+  const [orgBranches, setOrgBranches] = useState<AllBranchRecord[]>([]);
   const [tickets, setTickets]     = useState<AdminTicketRow[]>([]);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2314,16 +2354,27 @@ export default function AdminPortal() {
   const refresh = useCallback(async () => {
     try {
       // Applications nobody approved inside 7 days are deleted server-side.
-      // Swept before the list is read so the console never shows a row that
-      // has already aged out.
-      const expired = await expireStaleApplications().catch(() => 0);
-      const [apps, ticketRows, requestRows] = await Promise.all([
+      // Swept before the lists are read so the console never shows a row
+      // that has already aged out. Both the old pharmacy-application flow
+      // and the new organization-first flow can still have stale pending
+      // rows -- old standalone branches keep working through the pharmacy
+      // flow untouched, so both sweeps/lists run side by side rather than
+      // one replacing the other.
+      const [expired, orgExpired] = await Promise.all([
+        expireStaleApplications().catch(() => 0),
+        expireStaleOrganizationApplications().catch(() => 0),
+      ]);
+      const [apps, orgApps, allBranchRows, ticketRows, requestRows] = await Promise.all([
         listPharmacyApplications(),
+        listOrganizationApplications(),
+        adminListAllBranches(),
         adminListSupportTickets(),
         adminListProductRequests(),
       ]);
-      setExpiredCount(expired);
+      setExpiredCount(expired + orgExpired);
       setBranches(apps);
+      setOrgApplications(orgApps);
+      setOrgBranches(allBranchRows.filter((b) => b.organizationId));
       setTickets(ticketRows);
       setPendingRequestCount(requestRows.filter((r) => r.status === "pending").length);
     } catch (reason) {
@@ -2459,7 +2510,7 @@ export default function AdminPortal() {
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           <div key={nav} className="animate-fade-in">
             {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
-            {nav === "approvals" && <Approvals branches={branches} onChange={refresh} />}
+            {nav === "approvals" && <Approvals applications={orgApplications} orgBranches={orgBranches} onChange={refresh} />}
             {expiredCount > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 mb-4">
                 {t("admin.expiredSwept", { count: expiredCount })}

@@ -70,3 +70,13 @@ export async function signOutFromBranch(): Promise<void> {
   const { error } = await supabase.auth.signOut()
   if (error) throw error
 }
+
+// Lets BranchPortal.tsx resume an organization-registration session that's
+// been verified (real Supabase Auth session live) but hasn't finished
+// register_first_branch() yet, on a tab reopened after the ?email= link and
+// sessionStorage id are both gone -- e.g. the browser was closed entirely
+// between setting a password and registering the first branch.
+export async function getCurrentAuthEmail(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser()
+  return data.user?.email ?? null
+}
