@@ -51,7 +51,13 @@ function Detail({ label, value }: { label: string; value: string }) {
   </div>
 }
 
-export default function BarcodeManagerPage() {
+// NOTE: loadBarcodeDataset() reads barcodes/stock_batches/etc. directly
+// under RLS scoped to the caller's own branch -- there is currently no way
+// to point it at a different branch. `branchId` is accepted (App.tsx always
+// passes it) so this page still shows the CALLER's own branch's barcodes
+// while "viewing" another branch, rather than erroring -- widening the
+// underlying RLS policies is tracked as a follow-up.
+export default function BarcodeManagerPage({ branchId: _branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const statusLabel = (s: BarcodeStatus) => t(BARCODE_STATUS_TITLE_KEYS[s])
   const typeLabel = (ty: BarcodeType) => t(BARCODE_TYPE_TITLE_KEYS[ty])

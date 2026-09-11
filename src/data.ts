@@ -206,13 +206,38 @@ export interface InsuranceProvider {
 // ─── Nav Config ───────────────────────────────────────────────────────────────
 
 // Two functional tiers from here on: owner/manager see everything, seller
-// sees only Sales, Patients, and Help -- "for confidentiality of
+// sees only Sales, Alerts, Patients, and Help -- "for confidentiality of
 // information," per the request that shaped this list. `pharmacist`/`staff`
 // stay legal role values in the database (nothing ever created one) but no
 // nav item grants them anything any more; the only roles a real login can
 // ever end up with going forward are owner, manager, and seller.
 // Team/staff management no longer has its own nav item -- it now lives only
 // inside Branch Settings' owner-only "Users & Roles" tab.
+//
+// ── The four-role permission matrix (branch role x org role) ─────────────
+// The whiteboard/spec names four roles: org_owner, org_manager, branch
+// manager, sales person. Only two of those are a distinct type (`OrgRole` in
+// src/lib/organization.ts, additive -- a person keeps their own branch role
+// too); "branch manager" and "sales person" are just this file's `manager`
+// and `seller` Role values, not a separate enum. Enforcement lives in two
+// places that must never disagree: this NAV_ITEMS table (+ App.tsx's
+// computeVisibleNav) client-side, and the actual Postgres RPC/RLS checks
+// server-side (assert_owner_or_manager(), assert_org_member(), the
+// organization_members role check) -- nav gating is a convenience, not the
+// security boundary.
+//   org_owner    -- full company control: add/staff branches, grant/revoke
+//                   org_owner/org_manager, view+edit any branch's data while
+//                   viewing it (effective_branch_id()), org settings.
+//   org_manager  -- same cross-branch visibility + approve/reject/dispatch
+//                   transfers as an owner, but cannot add branches, manage
+//                   org membership, or edit org settings.
+//   manager      -- ("branch manager") full operational control of their
+//                   OWN branch only: inventory, receiving, sales, reports,
+//                   analytics, compliance, insurance, transactions/history.
+//   owner        -- everything `manager` has for their own branch, plus
+//                   Branch Settings and can found/lead an organization.
+//   seller       -- ("sales person") Sales/POS, Alerts, Patients, Help only
+//                   -- no financial totals, analytics, or branch settings.
 export const NAV_ITEMS: NavItem[] = [
   // ── Owner / manager only ────────────────────────────────────
   { id: 'overview',     label: 'Overview',            icon: '◉',  roles: ['owner', 'manager'] },
@@ -220,7 +245,6 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'receiving',   label: 'Receive Stock',        icon: '📥', roles: ['owner', 'manager'] },
   { id: 'barcode',     label: 'Barcode Manager',      icon: '▦',  roles: ['owner', 'manager'] },
   { id: 'reports',     label: 'Products in Stock',    icon: '📦', roles: ['owner', 'manager'] },
-  { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager'] },
   { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager'] },
   { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager'] },
   // 'analyst' (AI Analyst) is intentionally left out of NAV_ITEMS -- the
@@ -231,6 +255,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'compliance',  label: 'RRA Compliance',        icon: '🏛️', roles: ['owner', 'manager'] },
   // ── Shared with seller ──────────────────────────────────────
   { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'seller'] },
+  { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager', 'seller'] },
   { id: 'patients',    label: 'Patients',              icon: '🩺', roles: ['owner', 'manager', 'seller'] },
   { id: 'help',        label: 'Help & Support',       icon: '💬', roles: ['owner', 'manager', 'seller'] },
   // ── Owner only ───────────────────────────────────────────────

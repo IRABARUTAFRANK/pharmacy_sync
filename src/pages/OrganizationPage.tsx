@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Btn, Card, CenterAlert, Modal, SectionHeader, StatusBadge } from "../components"
+import {
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from "recharts"
+import { Btn, Card, CenterAlert, ChartTooltip, Modal, SectionHeader, StatusBadge } from "../components"
 import { useTranslation } from "../lib/i18n"
 import type { TranslationKey } from "../lib/i18n/en"
 import { errorMessage } from "../lib/supabase"
@@ -16,10 +19,20 @@ import {
   listOrganizationStockTransfers, receiveStockTransfer, rejectStockTransfer, requestStockTransfer,
   type StockTransfer, type StockTransferStatus,
 } from "../lib/stockTransfers"
+import { loadOrgOverview, type OverviewPeriod } from "../lib/overview"
+import type { LiveAlert } from "../lib/alerts"
 import { PasswordInput } from "./AuthShell"
+import OverviewPage from "./OverviewPage"
 
 const inputStyle = { width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" as const }
 const labelStyle = { fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase" as const, letterSpacing: "0.05em", display: "block", marginBottom: 4 }
+
+// Matches OverviewPage's own `heroCardStyle` -- the Dashboard tab renders
+// <OverviewPage> plus these two extra cards (pending approvals, branch
+// leaderboard) on the same screen, so they need the identical rounded,
+// border-free, soft-shadow look or the seam between the two components
+// would show.
+const DASHBOARD_CARD_STYLE = { borderRadius: 20, border: "none", boxShadow: "0 6px 24px rgba(17,24,39,0.07)" } as const
 
 function CardHeader({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
   return (
@@ -68,6 +81,15 @@ function StatusBadgeWithT({ labelKey, color, bg }: { labelKey: TranslationKey; c
 const BRANCH_STATUS_COLORS: Record<string, { c: string; bg: string }> = {
   active: { c: "#16a34a", bg: "#d1fae5" },
   locked: { c: "#dc2626", bg: "#fef2f2" },
+}
+
+// A stable color per branch (by position in the org's branch list) for the
+// leaderboard's color dots and, eventually, any per-branch chart series --
+// same small fixed palette idea as OverviewPage's own categorical colors,
+// just keyed by branch instead of product category.
+const BRANCH_DOT_PALETTE = ["#1e5fa8", "#7c3aed", "#0891b2", "#059669", "#d97706", "#db2777"]
+function branchDotColor(index: number): string {
+  return BRANCH_DOT_PALETTE[index % BRANCH_DOT_PALETTE.length]
 }
 
 const TRANSFER_STATUS_COLORS: Record<StockTransferStatus, { c: string; bg: string }> = {
@@ -515,25 +537,41 @@ function TransferRow({ transfer, currentBranchId, onAction }: {
   )
 }
 
+// Kept in sync with App.tsx's own local ORG_TABS constant, which drives the
+// actual tab switcher now (see the `activeTab` prop below).
 type OrgTab = "dashboard" | "transfers" | "branches" | "members" | "settings"
 
-const ORG_TABS: { id: OrgTab; icon: string; labelKey: TranslationKey }[] = [
-  { id: "dashboard", icon: "📊", labelKey: "organization.tabDashboard" },
-  { id: "transfers", icon: "🔁", labelKey: "organization.tabTransfers" },
-  { id: "branches", icon: "🏬", labelKey: "organization.tabBranches" },
-  { id: "members", icon: "👥", labelKey: "organization.tabMembers" },
-  { id: "settings", icon: "⚙️", labelKey: "organization.tabSettings" },
-]
-
-export default function OrganizationPage({ currentUserId, currentBranchId, organization, onOrganizationChanged }: {
+export default function OrganizationPage({
+  currentUserId, currentBranchId, organization, onOrganizationChanged, onViewBranch, activeTab, period, alerts, onViewAlerts, onGoToTransfers,
+}: {
   currentUserId: string
   currentBranchId: string
   organization: OrganizationSummary | null
   onOrganizationChanged: () => void
+  // Drills into a branch's own operational dashboard (Overview/Inventory/
+  // Sales/etc.) -- this always goes through App's top-level `page` state
+  // (see App.tsx), never a nested view inside this component, so the org
+  // dashboard cleanly unmounts instead of stacking with the branch one.
+  onViewBranch: (branch: { branchId: string; branchName: string; branchCode: string | null }) => void
+  // Which of ORG_TABS is showing. Controlled by App.tsx -- while this page
+  // is active, App's own sidebar IS the org-tab switcher (Dashboard/Stock
+  // Transfers/Branches/Members/Settings), replacing the branch nav rather
+  // than sitting alongside a second, nested tab list here. See App.tsx's
+  // `orgTab` state for why this isn't owned locally.
+  // The three below exist only to hand straight to <OverviewPage> for the
+  // "dashboard" tab -- same values App.tsx already threads to the plain
+  // sidebar Overview page, so this is the org-wide dashboard sharing the
+  // exact same component and data instead of a second, duplicate one.
+  period: OverviewPeriod
+  alerts: LiveAlert[]
+  onViewAlerts: () => void
+  // Jumps the dashboard's "Pending Approvals" callout (org_manager only,
+  // see the dashboard tab below) straight to the Stock Transfers tab --
+  // same App.tsx-owned orgTab switch as clicking the sidebar itself.
+  onGoToTransfers: () => void
+  activeTab: OrgTab
 }) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<OrgTab>("dashboard")
-
   const [branches, setBranches] = useState<OrganizationBranch[]>([])
   const [branchesLoading, setBranchesLoading] = useState(true)
   const [branchesError, setBranchesError] = useState<string | null>(null)
@@ -552,6 +590,18 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
   const [summary, setSummary] = useState<OrgBranchSummary[]>([])
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [leaderboardSortKey, setLeaderboardSortKey] = useState<"todayRevenue" | "monthToDateRevenue" | "alerts">("monthToDateRevenue")
+  const [leaderboardSortAsc, setLeaderboardSortAsc] = useState(false)
+
+  // Per-branch daily revenue, merged into one combined series for the
+  // multi-branch trend chart below -- org_overview_raw()'s combined-branches
+  // call doesn't tag each sale with its branch_id (see that RPC's comment),
+  // so this reuses the same per-branch call the "View Branch" drill-in
+  // already relies on, once per branch, rather than a new backend endpoint.
+  const [branchTrend, setBranchTrend] = useState<Record<string, string | number>[]>([])
+  const [branchTrendLoading, setBranchTrendLoading] = useState(true)
+  const [branchTrendError, setBranchTrendError] = useState<string | null>(null)
+  const [activeTrendBranches, setActiveTrendBranches] = useState<Set<string>>(new Set())
 
   const [myTransfers, setMyTransfers] = useState<StockTransfer[]>([])
   const [orgTransfers, setOrgTransfers] = useState<StockTransfer[]>([])
@@ -629,6 +679,34 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
     }
   }, [organizationId, t])
 
+  // One loadOrgOverview() call per branch (each already scoped to a single
+  // branch, the exact same call "View Branch" drill-in uses), merged into
+  // one combined-by-date series -- see the branchTrend state comment above
+  // for why a single combined-branches call can't produce this by itself.
+  const refreshBranchTrend = useCallback(async () => {
+    if (!organizationId || branches.length === 0) { setBranchTrendLoading(false); return }
+    setBranchTrendLoading(true)
+    setBranchTrendError(null)
+    try {
+      const perBranch = await Promise.all(
+        branches.map(async b => ({ branch: b, data: await loadOrgOverview(period, organizationId, [b.branchId]) })),
+      )
+      const byLabel = new Map<string, Record<string, string | number>>()
+      for (const { branch, data } of perBranch) {
+        for (const point of data.revenueTrend) {
+          const row = byLabel.get(point.label) ?? { label: point.label }
+          row[branch.branchId] = point.revenue
+          byLabel.set(point.label, row)
+        }
+      }
+      setBranchTrend(Array.from(byLabel.values()))
+    } catch (reason) {
+      setBranchTrendError(errorMessage(reason, t("organization.dashboardLoadError")))
+    } finally {
+      setBranchTrendLoading(false)
+    }
+  }, [organizationId, branches, period, t])
+
   const refreshTransfers = useCallback(async () => {
     if (!organizationId) return
     setTransfersLoading(true)
@@ -648,7 +726,16 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
   useEffect(() => { void refreshMembers() }, [refreshMembers])
   useEffect(() => { void refreshLog() }, [refreshLog])
   useEffect(() => { void refreshSummary() }, [refreshSummary])
+  useEffect(() => { void refreshBranchTrend() }, [refreshBranchTrend])
   useEffect(() => { void refreshTransfers() }, [refreshTransfers])
+
+  // Every branch starts visible on the trend chart -- click a chip to hide
+  // one, same toggle-to-compare interaction as the org-portal spec's
+  // reference design. Re-defaults whenever the branch roster itself changes
+  // (a branch added/removed), not on every trend refresh.
+  useEffect(() => {
+    setActiveTrendBranches(new Set(branches.map(b => b.branchId)))
+  }, [branches])
 
   async function handleRemoveMember(member: OrganizationPerson) {
     if (!organizationId) return
@@ -723,54 +810,162 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {successMsg && <CenterAlert key={successSeq} message={successMsg} tone="success" />}
-      <SectionHeader title={t("page.organization")} subtitle={t("organization.subtitle")} />
+      {/* The Dashboard tab renders the same rich Overview dashboard used by
+          the plain sidebar Overview page (org-wide by default, with its own
+          toolbar) -- this generic header would just sit above it redundantly,
+          so it's skipped only for that one tab. Every other tab keeps it. */}
+      {activeTab !== "dashboard" && <SectionHeader title={t("page.organization")} subtitle={t("organization.subtitle")} />}
       {isOrgOwner && <TwoFactorNudge />}
 
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", gap: 4 }}>
-          {ORG_TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
-                border: `1.5px solid ${activeTab === tab.id ? "var(--primary)" : "transparent"}`,
-                background: activeTab === tab.id ? "var(--primary-light)" : "transparent",
-                color: activeTab === tab.id ? "var(--primary)" : "var(--ink-mid)",
-                fontWeight: activeTab === tab.id ? 700 : 500, fontSize: 13, textAlign: "left",
-              }}
-            >
-              <span>{tab.icon}</span>{t(tab.labelKey)}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ flex: "1 1 480px", minWidth: 320, display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* App.tsx's own sidebar IS the org-tab switcher while this page is
+          active (Dashboard/Stock Transfers/Branches/Members/Settings) --
+          see `activeTab` prop -- so there's no second, nested tab list here
+          any more; this is just the selected tab's content. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {activeTab === "dashboard" && (
             <>
-              <Card>
-                <CardHeader icon="🏢" title={organization.legalName} subtitle={organization.tradeName ?? undefined} />
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginTop: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.tinLabel")}</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{organization.tin ?? "—"}</div>
+              {/* org_manager only: approving transfers is core to that role
+                  (the org spec's own wording) but they can't restructure the
+                  company, so their dashboard promotes what needs THEIR
+                  action above the company-wide leaderboard -- an org_owner's
+                  dashboard leads with the leaderboard instead (see below),
+                  reading as a company-wide command center rather than a
+                  to-do list. This is the visual difference between the two
+                  roles' otherwise-identical dashboard tab. */}
+              {isOrgManagerCaller && !transfersLoading && orgTransfers.some(tr => tr.status === "pending") && (
+                <Card style={DASHBOARD_CARD_STYLE}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 10, background: "#fef3c7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⏳</div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>
+                          {t("organization.pendingApprovalsCount", { count: orgTransfers.filter(tr => tr.status === "pending").length })}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.pendingApprovalsSubtitle")}</div>
+                      </div>
+                    </div>
+                    <Btn variant="primary" small onClick={onGoToTransfers}>{t("organization.pendingApprovalsAction")}</Btn>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.statusLabel")}</div>
-                    <div style={{ marginTop: 4 }}><StatusBadge label={organization.status} color={organization.status === "active" ? "#16a34a" : "#dc2626"} bg={organization.status === "active" ? "#d1fae5" : "#fef2f2"} /></div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.branchCountLabel")}</div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{organization.branchCount}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.yourRoleLabel")}</div>
-                    <div style={{ marginTop: 4 }}><OrgRoleBadge role={organization.myRole} /></div>
-                  </div>
-                </div>
-              </Card>
+                </Card>
+              )}
 
-              <Card>
+              {/* The org-wide dashboard -- same component, same data source
+                  as the plain sidebar Overview page, just always given
+                  `organization`+`branches` here so it defaults to "All
+                  branches" combined with a picker to narrow to one. Visiting
+                  one specific branch's full operational suite (not just this
+                  dashboard) is the separate "View Branch" action below. */}
+              <OverviewPage
+                period={period}
+                branchName={organization.legalName}
+                alerts={alerts}
+                onViewAlerts={onViewAlerts}
+                organization={organization}
+                branches={branches}
+              />
+
+              {/* Combined revenue trend across every branch, one line each,
+                  toggleable -- the per-org-spec chart OverviewPage's own
+                  single aggregate line can't show (see branchTrend state
+                  comment above for why this needs its own per-branch calls).
+                  Only worth showing once there's more than one branch to
+                  actually compare. */}
+              {branches.length > 1 && (
+                <Card style={DASHBOARD_CARD_STYLE}>
+                  <CardHeader icon="📈" title={t("organization.trendChartTitle")} subtitle={t("organization.trendChartSubtitle")} />
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" }}>
+                    {branches.map((b, i) => {
+                      const active = activeTrendBranches.has(b.branchId)
+                      return (
+                        <button
+                          key={b.branchId}
+                          onClick={() => setActiveTrendBranches(prev => {
+                            const next = new Set(prev)
+                            if (next.has(b.branchId)) { if (next.size > 1) next.delete(b.branchId) }
+                            else next.add(b.branchId)
+                            return next
+                          })}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 999,
+                            border: "1px solid var(--border)", background: active ? "var(--bg)" : "transparent",
+                            opacity: active ? 1 : 0.4, cursor: "pointer", fontSize: 12, fontFamily: "inherit", color: "var(--ink)",
+                          }}
+                        >
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: branchDotColor(i), flexShrink: 0 }} />
+                          {b.name}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {branchTrendError && <p style={{ fontSize: 12, color: "#b91c1c" }}>{branchTrendError}</p>}
+                  {branchTrendLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : (
+                    <ResponsiveContainer width="100%" height={230}>
+                      <AreaChart data={branchTrend} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                        <defs>
+                          {branches.map((b, i) => (
+                            <linearGradient key={b.branchId} id={`gBranch-${b.branchId}`} x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor={branchDotColor(i)} stopOpacity={0.18} />
+                              <stop offset="95%" stopColor={branchDotColor(i)} stopOpacity={0} />
+                            </linearGradient>
+                          ))}
+                        </defs>
+                        <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+                        <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} minTickGap={16} />
+                        <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(Number(v)).toLocaleString()} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
+                        {branches.map((b, i) => activeTrendBranches.has(b.branchId) && (
+                          <Area key={b.branchId} type="monotone" dataKey={b.branchId} name={b.name} stroke={branchDotColor(i)} fill={`url(#gBranch-${b.branchId})`} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                        ))}
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </Card>
+              )}
+
+              {/* Revenue and stock-health bars, one per branch -- the same
+                  `summary` rows the leaderboard table below reads, just
+                  charted instead of tabulated. */}
+              {!summaryLoading && summary.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                  <Card style={DASHBOARD_CARD_STYLE}>
+                    <CardHeader icon="💰" title={t("organization.revenueByBranchTitle")} subtitle={t("organization.revenueByBranchSubtitle")} />
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={summary} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" vertical={false} />
+                        <XAxis dataKey="branchName" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => Math.round(Number(v)).toLocaleString()} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
+                        <Bar dataKey="todayRevenue" name={t("organization.dashboardColTodayRevenue")} fill="#4318ff" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Bar dataKey="monthToDateRevenue" name={t("organization.dashboardColMtdRevenue")} fill="#a78bfa" radius={[4, 4, 0, 0]} barSize={18} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Card>
+                  <Card style={DASHBOARD_CARD_STYLE}>
+                    <CardHeader icon="⚠️" title={t("organization.stockHealthByBranchTitle")} subtitle={t("organization.stockHealthByBranchSubtitle")} />
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={summary.map(s => ({ ...s, stockAlerts: s.outOfStockCount + s.lowStockCount }))} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                        <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" vertical={false} />
+                        <XAxis dataKey="branchName" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
+                        <Bar dataKey="stockAlerts" name={t("organization.dashboardColStockAlerts")} fill="#f59e0b" radius={[4, 4, 0, 0]} barSize={18} />
+                        <Bar dataKey="pendingTransfersIn" name={t("organization.dashboardColPendingIn")} fill="#0891b2" radius={[4, 4, 0, 0]} barSize={18} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Card>
+                </div>
+              )}
+
+              {/* Branch Performance leaderboard -- click-through comparison
+                  across the whole organization, sortable, with a color dot
+                  per branch and a derived Healthy/Needs Attention badge
+                  (alerts or pending inbound transfers). This is what makes
+                  the org-level dashboards visually distinct from a single
+                  branch's own Overview, which has no cross-branch table. */}
+              <Card style={DASHBOARD_CARD_STYLE}>
                 <CardHeader icon="📊" title={t("organization.dashboardBranchesTitle")} subtitle={t("organization.dashboardBranchesSubtitle")} />
                 {summaryError && <p style={{ fontSize: 12, color: "#b91c1c", margin: "12px 0" }}>{summaryError}</p>}
                 {summaryLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 12 }}>{t("organization.loading")}</p> : (
@@ -778,22 +973,63 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                       <thead>
                         <tr style={{ textAlign: "left", color: "var(--ink-muted)", borderBottom: "1px solid var(--border)" }}>
-                          {["dashboardColBranch", "dashboardColTodayRevenue", "dashboardColMtdRevenue", "dashboardColOutOfStock", "dashboardColLowStock", "dashboardColPendingIn"].map(k => (
-                            <th key={k} style={{ padding: "8px 10px", fontWeight: 600 }}>{t(`organization.${k}` as TranslationKey)}</th>
+                          <th style={{ padding: "8px 10px", fontWeight: 600 }}>{t("organization.dashboardColBranch" as TranslationKey)}</th>
+                          {([
+                            ["todayRevenue", "dashboardColTodayRevenue"],
+                            ["monthToDateRevenue", "dashboardColMtdRevenue"],
+                            ["alerts", "dashboardColStockAlerts"],
+                          ] as const).map(([key, labelKey]) => (
+                            <th
+                              key={key}
+                              onClick={() => {
+                                if (leaderboardSortKey === key) setLeaderboardSortAsc(a => !a)
+                                else { setLeaderboardSortKey(key); setLeaderboardSortAsc(false) }
+                              }}
+                              style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right", cursor: "pointer", userSelect: "none", color: leaderboardSortKey === key ? "var(--primary)" : "var(--ink-muted)" }}
+                            >
+                              {t(labelKey as TranslationKey)}{leaderboardSortKey === key ? (leaderboardSortAsc ? " ↑" : " ↓") : ""}
+                            </th>
                           ))}
+                          <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right" }}>{t("organization.dashboardColPendingIn" as TranslationKey)}</th>
+                          <th style={{ padding: "8px 10px", fontWeight: 600, textAlign: "right" }}>{t("organization.dashboardColStatus" as TranslationKey)}</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {summary.map(row => (
-                          <tr key={row.branchId} style={{ borderBottom: "1px solid var(--bg-alt)" }}>
-                            <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--ink)" }}>{row.branchName}</td>
-                            <td style={{ padding: "8px 10px" }}>{row.todayRevenue.toLocaleString()}</td>
-                            <td style={{ padding: "8px 10px" }}>{row.monthToDateRevenue.toLocaleString()}</td>
-                            <td style={{ padding: "8px 10px" }}>{row.outOfStockCount}</td>
-                            <td style={{ padding: "8px 10px" }}>{row.lowStockCount}</td>
-                            <td style={{ padding: "8px 10px" }}>{row.pendingTransfersIn}</td>
-                          </tr>
-                        ))}
+                        {[...summary]
+                          .sort((a, b) => {
+                            const val = (row: OrgBranchSummary) => leaderboardSortKey === "alerts"
+                              ? row.outOfStockCount + row.lowStockCount
+                              : row[leaderboardSortKey]
+                            return leaderboardSortAsc ? val(a) - val(b) : val(b) - val(a)
+                          })
+                          .map(row => {
+                            const branchIndex = branches.findIndex(b => b.branchId === row.branchId)
+                            const branch = branches[branchIndex]
+                            const alertCount = row.outOfStockCount + row.lowStockCount
+                            const needsAttention = alertCount > 0 || row.pendingTransfersIn > 0
+                            const attentionColors = needsAttention ? BRANCH_STATUS_COLORS.locked : BRANCH_STATUS_COLORS.active
+                            return (
+                              <tr
+                                key={row.branchId}
+                                onClick={() => branch && onViewBranch({ branchId: branch.branchId, branchName: branch.name, branchCode: branch.branchCode })}
+                                style={{ borderBottom: "1px solid var(--bg-alt)", cursor: branch ? "pointer" : "default" }}
+                              >
+                                <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--ink)" }}>
+                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: branchDotColor(branchIndex < 0 ? 0 : branchIndex), flexShrink: 0 }} />
+                                    {row.branchName}
+                                  </span>
+                                </td>
+                                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "var(--font-mono)" }}>{row.todayRevenue.toLocaleString()}</td>
+                                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "var(--font-mono)" }}>{row.monthToDateRevenue.toLocaleString()}</td>
+                                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "var(--font-mono)", color: alertCount > 0 ? "var(--warning)" : "var(--ink-muted)" }}>{alertCount}</td>
+                                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: "var(--font-mono)" }}>{row.pendingTransfersIn}</td>
+                                <td style={{ padding: "8px 10px", textAlign: "right" }}>
+                                  <StatusBadge label={t(needsAttention ? "organization.branchStatusAttention" : "organization.branchStatusHealthy")} color={attentionColors.c} bg={attentionColors.bg} />
+                                </td>
+                              </tr>
+                            )
+                          })}
                       </tbody>
                     </table>
                     {summary.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.branchesEmpty")}</p>}
@@ -828,33 +1064,68 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
           )}
 
           {activeTab === "branches" && (
-            <Card>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
-                <CardHeader icon="🏬" title={t("organization.branchesTitle")} subtitle={t("organization.branchesSubtitle", { count: branches.length })} />
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t("organization.branchesTitle")}</h2>
+                  <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.branchesSubtitle", { count: branches.length })}</p>
+                </div>
                 {isOrgOwner && <Btn variant="primary" small onClick={() => setShowAddBranch(true)}>+ {t("organization.addBranch")}</Btn>}
               </div>
-              {branchesError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{branchesError}</p>}
-              {branchesLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : branches.map((b, i) => {
-                const colors = BRANCH_STATUS_COLORS[b.status] ?? BRANCH_STATUS_COLORS.active
-                return (
-                  <div key={b.branchId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i === branches.length - 1 ? "none" : "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{b.name}</div>
-                      <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>
-                        {b.branchCode ?? b.address ?? "—"}
-                        {" · "}
-                        {b.staffCount > 0 ? t("organization.staffCountLabel", { count: b.staffCount }) : t("organization.noStaffYet")}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <StatusBadge label={b.status} color={colors.c} bg={colors.bg} />
-                      {isOrgOwner && <Btn variant="secondary" small onClick={() => setStaffingBranch({ id: b.branchId, name: b.name, alreadyStaffed: b.staffCount > 0 })}>{t("organization.staffBranch")}</Btn>}
-                    </div>
-                  </div>
-                )
-              })}
-              {!branchesLoading && branches.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.branchesEmpty")}</p>}
-            </Card>
+              {branchesError && <p style={{ fontSize: 12, color: "#b91c1c" }}>{branchesError}</p>}
+              {branchesLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
+                  {branches.map((b, i) => {
+                    const colors = BRANCH_STATUS_COLORS[b.status] ?? BRANCH_STATUS_COLORS.active
+                    const row = summary.find(s => s.branchId === b.branchId)
+                    const alertCount = row ? row.outOfStockCount + row.lowStockCount : null
+                    const manager = members.find(m => m.scope === "branch" && m.branchId === b.branchId && (m.role === "owner" || m.role === "manager"))
+                    return (
+                      <Card key={b.branchId}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: branchDotColor(i), flexShrink: 0 }} />
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
+                              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{b.branchCode ?? b.address ?? "—"}</div>
+                            </div>
+                          </div>
+                          <StatusBadge label={b.status} color={colors.c} bg={colors.bg} />
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
+                          <div style={{ textAlign: "center", padding: "8px 6px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{row ? row.todayRevenue.toLocaleString() : "—"}</div>
+                            <div style={{ fontSize: 10, color: "var(--ink-muted)", marginTop: 2 }}>{t("organization.branchCardToday")}</div>
+                          </div>
+                          <div style={{ textAlign: "center", padding: "8px 6px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{b.staffCount}</div>
+                            <div style={{ fontSize: 10, color: "var(--ink-muted)", marginTop: 2 }}>{t("organization.branchCardStaff")}</div>
+                          </div>
+                          <div style={{ textAlign: "center", padding: "8px 6px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--border)" }}>
+                            <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 13, color: alertCount ? "var(--warning)" : "var(--ink)" }}>{alertCount ?? "—"}</div>
+                            <div style={{ fontSize: 10, color: "var(--ink-muted)", marginTop: 2 }}>{t("organization.branchCardAlerts")}</div>
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingTop: 12, borderTop: "1px solid var(--bg-alt)" }}>
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {manager ? manager.fullName : (b.staffCount > 0 ? t("organization.staffCountLabel", { count: b.staffCount }) : t("organization.noStaffYet"))}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                            {(isOrgOwner || isOrgManagerCaller) && <Btn variant="primary" small onClick={() => onViewBranch({ branchId: b.branchId, branchName: b.name, branchCode: b.branchCode })}>{t("organization.viewBranch")}</Btn>}
+                            {isOrgOwner && <Btn variant="secondary" small onClick={() => setStaffingBranch({ id: b.branchId, name: b.name, alreadyStaffed: b.staffCount > 0 })}>{t("organization.staffBranch")}</Btn>}
+                          </div>
+                        </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+              {!branchesLoading && branches.length === 0 && (
+                <Card><p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12, margin: 0 }}>{t("organization.branchesEmpty")}</p></Card>
+              )}
+            </div>
           )}
 
           {activeTab === "members" && (
@@ -903,7 +1174,29 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
           {activeTab === "settings" && (
             <>
               <Card>
-                <CardHeader icon="🏢" title={t("organization.settingsTitle")} subtitle={t("organization.settingsSubtitle")} />
+                <CardHeader icon="🏢" title={organization.legalName} subtitle={organization.tradeName ?? undefined} />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 16, marginTop: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.tinLabel")}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{organization.tin ?? "—"}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.statusLabel")}</div>
+                    <div style={{ marginTop: 4 }}><StatusBadge label={organization.status} color={organization.status === "active" ? "#16a34a" : "#dc2626"} bg={organization.status === "active" ? "#d1fae5" : "#fef2f2"} /></div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.branchCountLabel")}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)", marginTop: 4 }}>{organization.branchCount}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.yourRoleLabel")}</div>
+                    <div style={{ marginTop: 4 }}><OrgRoleBadge role={organization.myRole} /></div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader icon="⚙️" title={t("organization.settingsTitle")} subtitle={t("organization.settingsSubtitle")} />
                 {settingsError && <p style={{ fontSize: 12, color: "#b91c1c", margin: "12px 0" }}>{settingsError}</p>}
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 420, marginTop: 12 }}>
                   <div>
@@ -957,7 +1250,6 @@ export default function OrganizationPage({ currentUserId, currentBranchId, organ
               </Card>
             </>
           )}
-        </div>
       </div>
 
       {showAddBranch && (

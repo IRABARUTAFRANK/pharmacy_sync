@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 // Reference/lookup data for the receiving wizard. Everything here is loaded once
 // when the page mounts and filtered client-side: branch catalogues are small and
@@ -170,6 +170,7 @@ export async function receiveStockDelivery(
   supplierName: string,
   notes: string,
   lines: DeliveryLine[],
+  branchId?: string,
 ): Promise<DeliveryReceipt> {
   const payload = lines.map(line =>
     Object.fromEntries(Object.entries(line).filter(([, value]) => value !== undefined && value !== "" && value !== null))
@@ -178,6 +179,7 @@ export async function receiveStockDelivery(
     p_supplier_name: supplierName,
     p_notes: notes,
     p_lines: payload,
+    ...branchArg(branchId),
   })
   if (error) throw error
   const receipt = (Array.isArray(data) ? data[0] : data) as DeliveryReceipt | undefined

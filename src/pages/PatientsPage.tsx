@@ -42,7 +42,12 @@ function VisitHistory({ patientId }: { patientId: string }) {
   </div>
 }
 
-export default function PatientsPage() {
+// NOTE: the per-patient purchase-history expansion further down this file
+// calls listSaleHistory(), which reads sales directly under RLS scoped to
+// the caller's own branch -- it will show nothing (rather than the viewed
+// branch's actual history) while viewing another branch. The main patient
+// list below IS branch-aware (list_branch_patients() accepts p_branch_id).
+export default function PatientsPage({ branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const [patients, setPatients] = useState<PatientListRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,13 +64,13 @@ export default function PatientsPage() {
     setLoading(true)
     setError(null)
     try {
-      setPatients(await listBranchPatients())
+      setPatients(await listBranchPatients(branchId))
     } catch (reason) {
       setError(errorMessage(reason, t("patients.loadError")))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, branchId])
 
   useEffect(() => { void refresh() }, [refresh])
 

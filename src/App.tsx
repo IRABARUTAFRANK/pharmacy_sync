@@ -75,18 +75,38 @@ const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
 const PublicReceiptPage    = lazy(() => import('./pages/PublicReceiptPage'))
 
-// Every NAV_ITEMS row gated by role, plus one extra rule for 'organization':
-// a branch owner always sees it (they can found a new organization from
-// inside it even with none yet), but a manager only sees it once they
-// actually hold an org_owner/org_manager role somewhere (organization !==
-// null) -- a manager has no standing authority to create an organization,
-// so the item would otherwise be a dead end for them. Holding an org role
-// isn't reflected in Role itself, hence the separate check here rather than
-// folding it into NAV_ITEMS' own roles list. Centralized here so the
-// redirect guard, the prefetch warm-up, and the sidebar's own item list can
-// never disagree with each other.
-function computeVisibleNav(role: Role, organization: OrganizationSummary | null) {
-  return NAV_ITEMS.filter(n => n.roles.includes(role) && (n.id !== 'organization' || role === 'owner' || organization !== null))
+// Every NAV_ITEMS row gated by role, plus two extra rules neither one can
+// express through Role alone (an org role is additive to, not a replacement
+// for, the branch owner/manager/seller role NAV_ITEMS itself gates on):
+//
+//   'organization' -- a branch owner always sees it (they can found a new
+//   organization from inside it even with none yet), but a manager only sees
+//   it once they actually hold an org_owner/org_manager role somewhere
+//   (organization !== null) -- a manager has no standing authority to create
+//   an organization, so the item would otherwise be a dead end for them.
+//
+//   'overview' -- hidden for an org_owner once they've delegated to an
+//   org_manager, but ONLY for their own home-branch nav. They still have the
+//   identical org-wide view at Organization > Dashboard; this just removes
+//   the redundant, now-unstaffed duty of also running their own branch's
+//   day-to-day dashboard once someone else (the org_manager) is doing that.
+//   Only the owner loses it -- an org_manager keeps their own branch-level
+//   Overview. `viewingOtherBranch` (true while drilled into a DIFFERENT
+//   branch from Organization > Branches, see App's `viewingBranch` state)
+//   suppresses this exclusion entirely -- that other branch's dashboard was
+//   never the redundant one, so without this an org_owner who'd delegated
+//   away their own Overview would land on whatever nav item happened to
+//   sort first (Inventory Dashboard) instead of that branch's Overview.
+//
+// Centralized here so the redirect guard, the prefetch warm-up, and the
+// sidebar's own item list can never disagree with each other.
+function computeVisibleNav(role: Role, organization: OrganizationSummary | null, viewingOtherBranch = false) {
+  const ownerDelegatedAway = !viewingOtherBranch && role === 'owner' && organization?.myRole === 'org_owner' && organization.hasOrgManager
+  return NAV_ITEMS.filter(n =>
+    n.roles.includes(role)
+    && (n.id !== 'organization' || role === 'owner' || organization !== null)
+    && (n.id !== 'overview' || !ownerDelegatedAway),
+  )
 }
 
 // Falls back to the least-privileged role, not the broadest one, for any
@@ -167,6 +187,21 @@ function useHashRoute(): HashRoute {
   }, [])
   return route
 }
+
+// ─── Organization-mode sidebar ─────────────────────────────────────────────────
+// Mirrors OrganizationPage.tsx's own OrgTab/ORG_TABS (kept as a separate,
+// duplicated constant rather than a shared import -- see the `orgTab` state
+// comment above for why).
+
+type OrgTab = 'dashboard' | 'transfers' | 'branches' | 'members' | 'settings'
+
+const ORG_TABS: { id: OrgTab; icon: string; labelKey: TranslationKey }[] = [
+  { id: 'dashboard', icon: '📊', labelKey: 'organization.tabDashboard' },
+  { id: 'transfers', icon: '🔁', labelKey: 'organization.tabTransfers' },
+  { id: 'branches', icon: '🏬', labelKey: 'organization.tabBranches' },
+  { id: 'members', icon: '👥', labelKey: 'organization.tabMembers' },
+  { id: 'settings', icon: '⚙️', labelKey: 'organization.tabSettings' },
+]
 
 // ─── Role Config ──────────────────────────────────────────────────────────────
 
@@ -424,6 +459,26 @@ export default function App() {
       .catch(() => { if (!cancelled) setOrgBranches([]) })
     return () => { cancelled = true }
   }, [organization])
+  // An org_owner/org_manager "drilling into" one branch's own operational
+  // dashboard from the Organization > Branches tab. Deliberately top-level
+  // state (not something nested inside OrganizationPage) so that jumping
+  // here always goes through the same exclusive `page` switch every other
+  // nav transition does -- OrganizationPage fully unmounts instead of a
+  // branch dashboard rendering stacked on top of it. Cleared below whenever
+  // `page` goes back to 'organization', and on sign-out.
+  const [viewingBranch, setViewingBranch] = useState<{ branchId: string; branchName: string; branchCode?: string | null } | null>(null)
+  useEffect(() => { if (page === 'organization') setViewingBranch(null) }, [page])
+  // While `page === 'organization'`, the sidebar shows ONLY these org-level
+  // tabs (Dashboard/Stock Transfers/Branches/Members/Settings) instead of
+  // the full branch nav -- an org owner looking at their organization should
+  // see just the organization dashboard, nothing else on the side. The
+  // branch nav (Overview/Inventory/Sales/etc.) only reappears once they've
+  // actually drilled into one branch via "View Branch" (page leaves
+  // 'organization', viewingBranch gets set). Kept as a small local constant
+  // rather than imported from OrganizationPage.tsx so that page stays
+  // code-split (importing from it here would pull its whole module into
+  // this always-loaded top-level bundle).
+  const [orgTab, setOrgTab] = useState<OrgTab>('dashboard')
   // The pharmacy's own uploaded logo, shown in the sidebar in place of the
   // generic PharmSync mark once one exists (falls back to the mark when
   // null). Every role sees it, not just the owner -- it's branch branding,
@@ -566,11 +621,22 @@ export default function App() {
   // no single-frame flash of a page this role shouldn't see.
   useLayoutEffect(() => {
     if (!access) return
-    const allowed = computeVisibleNav(role, organization)
+    const allowed = computeVisibleNav(role, organization, !!viewingBranch)
     if (!allowed.some(n => n.id === page)) {
       setPage(allowed[0]?.id ?? 'help')
     }
-  }, [access, role, organization, page])
+  }, [access, role, organization, page, viewingBranch])
+
+  // Same correction, one level down: an org_manager only gets Dashboard/
+  // Stock Transfers/Members inside the Organization section (see
+  // visibleOrgTabs below) -- if orgTab is sitting on Branches or Settings
+  // when that restriction takes effect (e.g. right after being demoted from
+  // org_owner), snap back to Dashboard rather than showing a tab they no
+  // longer have a sidebar entry for.
+  useLayoutEffect(() => {
+    if (organization?.myRole !== 'org_manager') return
+    if (orgTab !== 'dashboard' && orgTab !== 'transfers' && orgTab !== 'members') setOrgTab('dashboard')
+  }, [organization, orgTab])
 
   // Background warm-up: once signed in, prefetch every page chunk this role
   // can navigate to, so clicking around later never pays a per-page fetch
@@ -611,6 +677,7 @@ export default function App() {
     await signOutFromBranch()
     setAccess(null)
     setPage('overview')
+    setViewingBranch(null)
     setShowUser(false)
   }
 
@@ -641,9 +708,21 @@ export default function App() {
   }
 
   const currentRole = ROLES.find(r => r.id === role)!
-  const visibleNav = computeVisibleNav(role, organization)
+  const visibleNav = computeVisibleNav(role, organization, !!viewingBranch)
+  // An org_manager only gets Dashboard/Stock Transfers/Members inside the
+  // Organization section -- Branches and Settings stay owner-only. An
+  // org_owner keeps all five.
+  const visibleOrgTabs = organization?.myRole === 'org_manager'
+    ? ORG_TABS.filter(tab => tab.id === 'dashboard' || tab.id === 'transfers' || tab.id === 'members')
+    : ORG_TABS
   const alertCount = alerts.filter(a => !a.isRead).length
   const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
+
+  // Drilling into one branch from Organization > Branches used to swap the
+  // org sidebar away entirely (page became 'overview'). Now it renders a
+  // second, persistent org-tab rail alongside the branch's own nav -- see
+  // the two-<Sidebar> block below -- so the org context never disappears.
+  const showingBranchDrillIn = !!(organization && viewingBranch)
 
   // "Go to a section as you type": ranks a label that STARTS WITH what's been
   // typed so far above one that merely contains it somewhere in the middle —
@@ -690,6 +769,153 @@ export default function App() {
 
   const closeMenus = () => { setShowNotif(false); setShowUser(false); setShowSearchNav(false) }
 
+  const viewingBranchId = viewingBranch?.branchId
+
+  // Extracted so the two-rail layout (org tabs + branch nav side by side
+  // while drilled into a branch, see showingBranchDrillIn) can give the
+  // branch-context <Sidebar> the exact same header/topContent/footer as the
+  // single-sidebar layout does, without duplicating this JSX twice.
+  const sidebarHeader = (expanded: boolean) => (
+    // The pharmacy's own uploaded logo (Branch Settings) replaces the
+    // shared <Logo /> mark once one exists -- same mark used on the
+    // home page and sign-in otherwise. The "PharmSync" wordmark next
+    // to it always stays the product name, not the pharmacy's own.
+    <div style={{ height: 60, padding: expanded ? '0 16px' : '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      {pharmacyLogoUrl
+        ? <img src={pharmacyLogoUrl} alt="" width={32} height={32} style={{ objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
+        : <Logo size={32} showWordmark={false} />}
+      {expanded && (
+        <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
+            Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>{t('shell.tagline')}</div>
+        </div>
+      )}
+    </div>
+  )
+
+  // The org rail is the leftmost element on screen whenever it renders
+  // (showingBranchDrillIn), so IT carries the logo mark there -- not the
+  // branch rail beside it. Giving both rails their own copy of the logo
+  // used to put the mark in the second column instead of the true top-left
+  // corner (and looked like two logos colliding); the branch rail skips its
+  // own header entirely in that state instead (see the two-<Sidebar> block
+  // below). Icon-only, matching the rail's permanent 60px width.
+  const orgRailHeader = () => (
+    <div style={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+      {pharmacyLogoUrl
+        ? <img src={pharmacyLogoUrl} alt="" width={28} height={28} style={{ objectFit: 'contain', borderRadius: 6 }} />
+        : <Logo size={28} showWordmark={false} />}
+    </div>
+  )
+
+  const sidebarTopContent = (expanded: boolean) => expanded && (
+    <>
+      {/* Org role badge -- the sidebar's own persistent identity cue for an
+          org_owner/org_manager, alongside the top bar. Shown for every page
+          while an org role exists, not just the dashboard, so it doesn't pop
+          in and out. */}
+      {organization && (
+        <div style={{ padding: '10px 12px 0', flexShrink: 0 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', padding: '3px 9px', borderRadius: 999,
+            fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+            background: 'var(--primary-light)', color: 'var(--primary)',
+          }}>
+            {t(organization.myRole === 'org_owner' ? 'shell.roleOrgOwner' : 'shell.roleOrgManager')}
+          </span>
+        </div>
+      )}
+
+      {/* "Today so far" -- replaces a role/branch pill that only ever
+          repeated info already shown in the top bar (branch name) and
+          the avatar (who's signed in). Not shown at all if the fetch
+          failed, which is expected for a seller (ai_branch_snapshot()
+          is owner/manager-only) rather than an error worth surfacing. */}
+      {todaySnapshot && (
+        <div data-tour="today-snapshot" style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
+          <div style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <button
+              onClick={() => setPage('overview')}
+              style={{ display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+            >
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {t('shell.todaySnapshotLabel')}
+              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
+                {fmtRWFExact(todaySnapshot.todayRevenue)}
+              </div>
+            </button>
+            {(todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount) > 0 && (
+              <button
+                onClick={goToInventoryAttention}
+                title={t('shell.todaySnapshotAttentionHint')}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
+                  background: 'none', border: 'none', padding: 0, fontSize: 11, color: '#b45309', fontWeight: 600,
+                  textDecoration: 'underline', textUnderlineOffset: 2,
+                }}
+              >
+                ⚠ {t('shell.todaySnapshotAttention', { count: todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount })}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Language switcher — lives here, not the top bar, because the top
+          bar's search box + date filter + branch badge + notif bell +
+          avatar already crowd a laptop-width screen; anything appended
+          after them there risked being squeezed past the app-shell's
+          overflow:hidden and never rendering at all. The sidebar has its
+          own space that isn't competing with anything else. */}
+      <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div data-tour="language"><LanguageSwitcher /></div>
+        <div data-tour="connection" style={{
+          display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8,
+          background: isOnline ? '#f0fdf4' : '#fef3c7',
+          border: `1px solid ${isOnline ? '#86efac' : '#fcd34d'}`,
+        }}>
+          <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#16a34a' : '#d97706', flexShrink: 0 }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? '#16a34a' : '#d97706', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {isOnline ? t('shell.online') : pendingSync > 0 ? t('shell.offlineQueued', { count: pendingSync }) : t('shell.offline')}
+          </span>
+        </div>
+      </div>
+    </>
+  )
+
+  const sidebarFooter = (expanded: boolean) => (
+    <div style={{ padding: '10px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+      <button
+        onClick={() => { setShowUser(u => !u); setShowNotif(false) }}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: expanded ? 8 : 0,
+          justifyContent: expanded ? 'flex-start' : 'center',
+          padding: '7px 8px', borderRadius: 8, border: 'none', background: 'transparent',
+          cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.14s',
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
+      >
+        {pharmacyLogoUrl
+          ? <img src={pharmacyLogoUrl} alt="" width={32} height={32} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+          : <div style={{
+              width: 32, height: 32, borderRadius: '50%', background: currentRole.color,
+              color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 700, flexShrink: 0,
+            }}>{currentRole.abbr}</div>}
+        {expanded && (
+          <div style={{ overflow: 'hidden', textAlign: 'left' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
+            <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{t(roleLabelKey(currentRole.id))}</div>
+          </div>
+        )}
+      </button>
+    </div>
+  )
+
   function renderPage() {
     switch (page) {
       case 'overview':      return <OverviewPage
@@ -700,22 +926,34 @@ export default function App() {
                                      onViewFullReport={() => setPage('analytics')}
                                      organization={organization}
                                      branches={orgBranches}
+                                     initialScopeBranchId={viewingBranchId}
                                    />
-      case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} />
-      case 'receiving':     return <StockReceivingPage />
-      case 'barcode':       return <BarcodeManagerPage />
-      case 'sales':         return <SalesPage onViewAllTransactions={() => setPage('transactions')} />
+      case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} branchId={viewingBranchId} />
+      case 'receiving':     return <StockReceivingPage branchId={viewingBranchId} />
+      case 'barcode':       return <BarcodeManagerPage branchId={viewingBranchId} />
+      case 'sales':         return <SalesPage onViewAllTransactions={() => setPage('transactions')} branchId={viewingBranchId} role={role} />
       case 'reports':       return <ReportsPage />
-      case 'alerts':        return <AlertsPage />
-      case 'transactions':  return <TransactionsPage period={dateRange} />
-      case 'insurance':     return <InsurancePage />
+      case 'alerts':        return <AlertsPage branchId={viewingBranchId} />
+      case 'transactions':  return <TransactionsPage period={dateRange} branchId={viewingBranchId} />
+      case 'insurance':     return <InsurancePage branchId={viewingBranchId} />
       case 'analyst':       return <AnalystPage />
-      case 'analytics':     return <AnalyticsPage period={dateRange} />
-      case 'compliance':    return <CompliancePage />
-      case 'patients':      return <PatientsPage />
+      case 'analytics':     return <AnalyticsPage period={dateRange} branchId={viewingBranchId} />
+      case 'compliance':    return <CompliancePage branchId={viewingBranchId} />
+      case 'patients':      return <PatientsPage branchId={viewingBranchId} />
       case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} />
-      case 'organization':  return <OrganizationPage currentUserId={access!.userId} currentBranchId={access!.branchId} organization={organization} onOrganizationChanged={refreshOrganization} />
-      case 'history':       return <HistoryPage period={dateRange} />
+      case 'organization':  return <OrganizationPage
+                                     currentUserId={access!.userId}
+                                     currentBranchId={access!.branchId}
+                                     organization={organization}
+                                     onOrganizationChanged={refreshOrganization}
+                                     onViewBranch={branch => { setViewingBranch(branch); setPage('overview') }}
+                                     activeTab={orgTab}
+                                     period={dateRange}
+                                     alerts={alerts}
+                                     onViewAlerts={() => setPage('alerts')}
+                                     onGoToTransfers={() => setOrgTab('transfers')}
+                                   />
+      case 'history':       return <HistoryPage period={dateRange} branchId={viewingBranchId} />
       case 'help':          return <HelpPage />
       default:              return null
     }
@@ -738,124 +976,52 @@ export default function App() {
         aria-hidden="true"
       />
 
+      {/* Drilled into one branch from Organization > Branches: the org-tab
+          rail stays put (icon-only, like Supabase's far-left project rail)
+          instead of disappearing, with the branch's own full nav rendered
+          as a second, normal rail right beside it -- see showingBranchDrillIn
+          above. Clicking any org-rail item exits the branch view back into
+          that org tab. */}
+      {showingBranchDrillIn && (
+        <Sidebar
+          className="app-chrome app-org-rail"
+          collapsedWidth={60}
+          expandedWidth={60}
+          items={visibleOrgTabs.map(tab => ({ id: tab.id, icon: tab.icon }))}
+          activeId="branches"
+          onSelect={id => { setViewingBranch(null); setOrgTab(id as OrgTab); setPage('organization') }}
+          getLabel={id => t(ORG_TABS.find(tab => tab.id === id)!.labelKey)}
+          header={orgRailHeader}
+        />
+      )}
+
       <Sidebar
         className={`app-chrome app-sidebar${sidebarOpen ? ' sidebar-open' : ''}`}
         dataTour="sidebar"
         /* The tour explains the nav items, so the sidebar has to stay open
            for the whole walkthrough rather than collapsing on mouse-out. */
         pinned={sidebarOpen || tourOpen}
-        items={visibleNav.map(item => ({ id: item.id, icon: item.icon, badge: navBadge(item.id) }))}
-        activeId={page}
-        onSelect={id => { setPage(id); if (window.matchMedia('(max-width: 640px)').matches) setSidebarOpen(false) }}
-        getLabel={id => t(`nav.${id}` as TranslationKey)}
+        items={showingBranchDrillIn
+          ? visibleNav.map(item => ({ id: item.id, icon: item.icon, badge: navBadge(item.id) }))
+          : page === 'organization'
+            ? visibleOrgTabs.map(tab => ({ id: tab.id, icon: tab.icon }))
+            : visibleNav.map(item => ({ id: item.id, icon: item.icon, badge: navBadge(item.id) }))}
+        activeId={showingBranchDrillIn ? page : page === 'organization' ? orgTab : page}
+        onSelect={id => {
+          if (!showingBranchDrillIn && page === 'organization') { setOrgTab(id as OrgTab); return }
+          setPage(id)
+          if (window.matchMedia('(max-width: 640px)').matches) setSidebarOpen(false)
+        }}
+        getLabel={id => (!showingBranchDrillIn && page === 'organization')
+          ? t(ORG_TABS.find(tab => tab.id === id)!.labelKey)
+          : t(`nav.${id}` as TranslationKey)}
         onItemHover={prefetchPage}
-        header={expanded => (
-          // The pharmacy's own uploaded logo (Branch Settings) replaces the
-          // shared <Logo /> mark once one exists -- same mark used on the
-          // home page and sign-in otherwise. The "PharmSync" wordmark next
-          // to it always stays the product name, not the pharmacy's own.
-          <div style={{ height: 60, padding: expanded ? '0 16px' : '0 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            {pharmacyLogoUrl
-              ? <img src={pharmacyLogoUrl} alt="" width={32} height={32} style={{ objectFit: 'contain', borderRadius: 6, flexShrink: 0 }} />
-              : <Logo size={32} showWordmark={false} />}
-            {expanded && (
-              <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.01em' }}>
-                  Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--ink-muted)', fontWeight: 500, marginTop: 1 }}>{t('shell.tagline')}</div>
-              </div>
-            )}
-          </div>
-        )}
-        topContent={expanded => expanded && (
-          <>
-            {/* "Today so far" -- replaces a role/branch pill that only ever
-                repeated info already shown in the top bar (branch name) and
-                the avatar (who's signed in). Not shown at all if the fetch
-                failed, which is expected for a seller (ai_branch_snapshot()
-                is owner/manager-only) rather than an error worth surfacing. */}
-            {todaySnapshot && (
-              <div data-tour="today-snapshot" style={{ padding: '10px 12px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0 }}>
-                <div style={{ background: 'var(--primary-light)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <button
-                    onClick={() => setPage('overview')}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
-                  >
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      {t('shell.todaySnapshotLabel')}
-                    </div>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--primary)', marginTop: 2 }}>
-                      {fmtRWFExact(todaySnapshot.todayRevenue)}
-                    </div>
-                  </button>
-                  {(todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount) > 0 && (
-                    <button
-                      onClick={goToInventoryAttention}
-                      title={t('shell.todaySnapshotAttentionHint')}
-                      style={{
-                        display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit', cursor: 'pointer',
-                        background: 'none', border: 'none', padding: 0, fontSize: 11, color: '#b45309', fontWeight: 600,
-                        textDecoration: 'underline', textUnderlineOffset: 2,
-                      }}
-                    >
-                      ⚠ {t('shell.todaySnapshotAttention', { count: todaySnapshot.outOfStockCount + todaySnapshot.lowStockCount + todaySnapshot.expiringSoonCount })}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Language switcher — lives here, not the top bar, because the top
-                bar's search box + date filter + branch badge + notif bell +
-                avatar already crowd a laptop-width screen; anything appended
-                after them there risked being squeezed past the app-shell's
-                overflow:hidden and never rendering at all. The sidebar has its
-                own space that isn't competing with anything else. */}
-            <div style={{ padding: '0 12px 10px', borderBottom: '1px solid var(--bg-alt)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div data-tour="language"><LanguageSwitcher /></div>
-              <div data-tour="connection" style={{
-                display: 'flex', alignItems: 'center', gap: 6, padding: '5px 9px', borderRadius: 8,
-                background: isOnline ? '#f0fdf4' : '#fef3c7',
-                border: `1px solid ${isOnline ? '#86efac' : '#fcd34d'}`,
-              }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: isOnline ? '#16a34a' : '#d97706', flexShrink: 0 }} />
-                <span style={{ fontSize: 11, fontWeight: 600, color: isOnline ? '#16a34a' : '#d97706', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {isOnline ? t('shell.online') : pendingSync > 0 ? t('shell.offlineQueued', { count: pendingSync }) : t('shell.offline')}
-                </span>
-              </div>
-            </div>
-          </>
-        )}
-        footer={expanded => (
-          <div style={{ padding: '10px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-            <button
-              onClick={() => { setShowUser(u => !u); setShowNotif(false) }}
-              style={{
-                width: '100%', display: 'flex', alignItems: 'center', gap: expanded ? 8 : 0,
-                justifyContent: expanded ? 'flex-start' : 'center',
-                padding: '7px 8px', borderRadius: 8, border: 'none', background: 'transparent',
-                cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.14s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
-            >
-              {pharmacyLogoUrl
-                ? <img src={pharmacyLogoUrl} alt="" width={32} height={32} style={{ borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
-                : <div style={{
-                    width: 32, height: 32, borderRadius: '50%', background: currentRole.color,
-                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, fontWeight: 700, flexShrink: 0,
-                  }}>{currentRole.abbr}</div>}
-              {expanded && (
-                <div style={{ overflow: 'hidden', textAlign: 'left' }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{access.fullName}</div>
-                  <div style={{ fontSize: 10, color: 'var(--ink-muted)' }}>{t(roleLabelKey(currentRole.id))}</div>
-                </div>
-              )}
-            </button>
-          </div>
-        )}
+        // The org rail already carries the logo while it's on screen
+        // (showingBranchDrillIn) -- this rail skips its own header entirely
+        // rather than showing a second, redundant mark in the wrong corner.
+        header={showingBranchDrillIn ? undefined : sidebarHeader}
+        topContent={sidebarTopContent}
+        footer={sidebarFooter}
       />
 
       {/* ── Main area ─────────────────────────────────────────────────────────── */}
@@ -928,14 +1094,46 @@ export default function App() {
             {DATE_RANGE_OPTIONS.map(opt => <option key={opt} value={opt}>{t(dateRangeLabelKey[opt])}</option>)}
           </select>
 
-          <div data-tour="branch" title={t('shell.branchScopedNotice')} style={{
-            padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
-            fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
-            fontWeight: 600, flexShrink: 0,
-          }}>
-            {access.branchName}
-            {access.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{access.branchCode}</span>}
-          </div>
+          {/* While an org_owner/org_manager is drilling into another
+              branch's dashboard (viewingBranch set from Organization >
+              Branches), this pill swaps to show THAT branch plus an "Org
+              view" tag and a one-click way back -- the visible half of the
+              fix for the two-dashboards-at-once confusion; the state-machine
+              half (renderPage()'s exclusive switch) is what actually
+              prevents both from mounting together. */}
+          {viewingBranch ? (
+            <div data-tour="branch" title={t('shell.viewingBranchNotice')} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px 5px 10px', borderRadius: 8,
+              border: '1px solid var(--border-strong)', background: 'var(--primary-light)',
+              fontSize: 12, fontFamily: 'inherit', flexShrink: 0,
+            }}>
+              <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
+                {viewingBranch.branchName}
+                {viewingBranch.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{viewingBranch.branchCode}</span>}
+              </span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--surface)', borderRadius: 999, padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {t('shell.viewingBranchBadge')}
+              </span>
+              <button
+                onClick={() => { setViewingBranch(null); setPage('organization') }}
+                style={{
+                  fontSize: 11, fontWeight: 600, color: 'var(--primary)', background: 'var(--surface)',
+                  border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                ← {t('shell.backToOrganization')}
+              </button>
+            </div>
+          ) : (
+            <div data-tour="branch" title={t('shell.branchScopedNotice')} style={{
+              padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
+              fontSize: 12, fontFamily: 'inherit', background: 'var(--bg)', color: 'var(--ink)',
+              fontWeight: 600, flexShrink: 0,
+            }}>
+              {access.branchName}
+              {access.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{access.branchCode}</span>}
+            </div>
+          )}
 
           {/* Walkthrough. This slot used to hold the online pill; the
               connection state moved into the sidebar (topContent above) so

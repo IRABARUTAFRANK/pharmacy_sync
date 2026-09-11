@@ -209,7 +209,13 @@ function MyRequestsPanel({ requests, loading }: { requests: ProductRequestRow[];
   </Card>
 }
 
-export default function StockReceivingPage() {
+// NOTE: loadReceivingReference()'s categories/suppliers come from a direct
+// RLS-scoped table read (products/variants/tax rates are global and unaffected)
+// -- still the CALLER's own branch while "viewing" another one; see the
+// read-path migration's scope notes. receiveStockDelivery() itself IS
+// branch-aware (this file's own migration), so submitting a delivery while
+// viewing another branch correctly receives stock into that branch.
+export default function StockReceivingPage({ branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const variantLabel = (variant: { dosage: string | null; form: string | null; unit: string | null }) =>
     [variant.dosage, variant.form, variant.unit].filter(Boolean).join(" · ") || t("receiving.variantStandardFallback")
@@ -442,7 +448,7 @@ export default function StockReceivingPage() {
     setSubmitting(true)
     setSubmitError(null)
     try {
-      const saved = await receiveStockDelivery(supplier.trim(), notes.trim(), lines.map(buildLine))
+      const saved = await receiveStockDelivery(supplier.trim(), notes.trim(), lines.map(buildLine), branchId)
       setReceipt(saved)
       // Newly-received quantities and the supplier should show up in the
       // selectors straight away for the next delivery.

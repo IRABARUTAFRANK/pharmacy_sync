@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Remove the ownership-transfer feature entirely
 -- ============================================================================
--- Run once, any time after 2026-09-09_organization_rbac.sql. Idempotent.
+-- Run once, any    time after 2026-09-09_organization_rbac.sql. Idempotent.
 --
 -- transfer_organization_ownership() had no confirmation step in the UI --
 -- one click on "Transfer ownership" next to any org_manager's name

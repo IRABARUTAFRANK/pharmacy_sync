@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 export type StockAdjustmentType = "damage" | "loss" | "correction" | "return" | "expired_writeoff" | "recalled"
 
@@ -30,8 +30,8 @@ export async function adjustStock(stockBatchId: string, adjustmentType: StockAdj
   return data as string
 }
 
-export async function listStockAdjustments(): Promise<StockAdjustmentRecord[]> {
-  const { data, error } = await supabase.rpc("list_stock_adjustments")
+export async function listStockAdjustments(branchId?: string): Promise<StockAdjustmentRecord[]> {
+  const { data, error } = await supabase.rpc("list_stock_adjustments", { ...branchArg(branchId) })
   if (error) throw error
   return ((data ?? []) as any[]).map(row => ({
     id: row.id,

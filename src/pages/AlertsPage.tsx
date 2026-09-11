@@ -18,7 +18,13 @@ const sourceColors: Record<string, { c: string; bg: string }> = {
   out_of_stock:              { c: '#dc2626', bg: '#fef2f2' },
 }
 
-export default function AlertsPage() {
+// NOTE: loadLiveAlerts() reads public.notifications directly under RLS
+// scoped to the caller's own branch -- there is currently no way to point it
+// at a different branch (see the read-path migration's own scope notes).
+// `branchId` is accepted (App.tsx always passes it) so this page still shows
+// the CALLER's own branch's alerts while "viewing" another branch, rather
+// than erroring -- widening notifications' RLS policy is a follow-up.
+export default function AlertsPage({ branchId: _branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const COLUMN_DEFS: { key: ColKey; label: string }[] = [
     { key: 'source_type', label: t('alertsPage.colSourceType') },

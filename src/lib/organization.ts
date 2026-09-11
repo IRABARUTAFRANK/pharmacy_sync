@@ -11,6 +11,10 @@ export interface OrganizationSummary {
   status: string
   myRole: OrgRole
   branchCount: number
+  // Once an org_owner has delegated to an org_manager, App.tsx hides that
+  // owner's own branch-level Overview nav item (they still have the
+  // identical view at Organization > Dashboard) -- see computeVisibleNav.
+  hasOrgManager: boolean
 }
 
 export interface OrganizationBranch {
@@ -86,6 +90,7 @@ export async function getMyOrganization(): Promise<OrganizationSummary | null> {
   return {
     organizationId: row.organization_id, legalName: row.legal_name, tradeName: row.trade_name,
     tin: row.tin, status: row.status, myRole: row.my_role as OrgRole, branchCount: row.branch_count,
+    hasOrgManager: Boolean(row.has_org_manager),
   }
 }
 

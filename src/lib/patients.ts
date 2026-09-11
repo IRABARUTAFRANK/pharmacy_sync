@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 export type PatientGender = "male" | "female" | "other"
 
@@ -22,10 +22,10 @@ export interface PatientListRow extends Patient {
   lifetimeSpend: number
 }
 
-export async function findPatientByIdentifier(identifier: string): Promise<Patient | null> {
+export async function findPatientByIdentifier(identifier: string, branchId?: string): Promise<Patient | null> {
   const trimmed = identifier.trim()
   if (!trimmed) return null
-  const { data, error } = await supabase.rpc("find_patient_by_identifier", { p_identifier: trimmed })
+  const { data, error } = await supabase.rpc("find_patient_by_identifier", { p_identifier: trimmed, ...branchArg(branchId) })
   if (error) throw error
   const row = (data ?? [])[0]
   if (!row) return null
@@ -44,18 +44,19 @@ export async function upsertPatient(
   gender: PatientGender | null,
   age: number | null,
   phone: string,
-  tin?: string | null
+  tin?: string | null,
+  branchId?: string,
 ): Promise<string> {
   const { data, error } = await supabase.rpc("upsert_patient", {
     p_full_name: fullName, p_gender: gender, p_age: age,
-    p_phone: phone, p_tin: tin?.trim() || null,
+    p_phone: phone, p_tin: tin?.trim() || null, ...branchArg(branchId),
   })
   if (error) throw error
   return data as string
 }
 
-export async function listBranchPatients(): Promise<PatientListRow[]> {
-  const { data, error } = await supabase.rpc("list_branch_patients")
+export async function listBranchPatients(branchId?: string): Promise<PatientListRow[]> {
+  const { data, error } = await supabase.rpc("list_branch_patients", { ...branchArg(branchId) })
   if (error) throw error
   return ((data ?? []) as any[]).map(row => ({
     id: row.id, fullName: row.full_name, gender: row.gender, age: row.age,

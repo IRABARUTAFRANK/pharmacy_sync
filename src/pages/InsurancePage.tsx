@@ -208,7 +208,14 @@ type ClaimColumn = "claimId" | "provider" | "coverage" | "amount" | "status" | "
 // including "not covered") lives in the Super Admin Portal — this page is
 // the branch's own view of the money side, plus a read-only look at why a
 // given product's coverage is what it is.
-export default function InsurancePage() {
+// NOTE: this page's data (loadBranchInsuranceClaims/loadCoverageOverridesWithNames/
+// loadInsuranceProviders) reads tables directly under RLS scoped to the
+// caller's own branch -- unlike the RPC-based pages, there is currently no
+// way to point these at a different branch. `branchId` is accepted (App.tsx
+// always passes it) so this page still shows the CALLER's own branch's
+// insurance data while "viewing" another branch, rather than erroring --
+// widening the underlying RLS policies is tracked as a follow-up.
+export default function InsurancePage({ branchId: _branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const [providers, setProviders] = useState<InsuranceProvider[]>([])
   const [claims, setClaims] = useState<BranchInsuranceClaim[]>([])

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -501,6 +501,59 @@ function KPICard({ tile, active, onClick }: { tile: Tile; active: boolean; onCli
   )
 }
 
+// Solid pastel-tile palette for the org-wide dashboard's KPI row (cycled by
+// tile index) -- a deliberately different SHAPE AND fill from KPICard's tall
+// bordered white branch tile, not just a recolor, so an organization-wide
+// dashboard reads as visually distinct at a glance (per the request that
+// shaped this: an org owner's and a branch manager's dashboard must never
+// look interchangeable).
+const PASTEL_TILES = [
+  { bg: '#fce7f3', text: '#be185d' },
+  { bg: '#fef3c7', text: '#b45309' },
+  { bg: '#dcfce7', text: '#15803d' },
+  { bg: '#ede9fe', text: '#6d28d9' },
+  { bg: '#dbeafe', text: '#1d4ed8' },
+  { bg: '#cffafe', text: '#0e7490' },
+] as const
+
+function PastelTile({ tile, palette, onClick }: { tile: Tile; palette: (typeof PASTEL_TILES)[number]; onClick?: () => void }) {
+  const positive = (tile.change ?? 0) >= 0
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: palette.bg, borderRadius: 16, padding: '16px 16px 14px',
+        cursor: onClick ? 'pointer' : 'default', transition: 'transform 0.15s',
+        opacity: tile.muted ? 0.65 : 1,
+        // Grid items default to min-width:auto (their content's min-content),
+        // so a long unbreakable word -- a Kinyarwanda label/value routinely
+        // is -- can force the whole grid track wider than its 150px column
+        // and spill the row past the card's edge. minWidth:0 + wrapping on
+        // the text nodes lets the tile shrink to the column instead.
+        minWidth: 0,
+      }}
+      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'none' }}
+    >
+      <div style={{
+        width: 34, height: 34, borderRadius: '50%', background: '#fff', fontSize: 15,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12, flexShrink: 0,
+      }}>
+        {tile.icon}
+      </div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: palette.text, fontFamily: 'var(--font-display)', letterSpacing: '-0.01em', lineHeight: 1.15, overflowWrap: 'break-word' }}>
+        {tile.value}
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--ink-mid)', fontWeight: 500, marginTop: 3, overflowWrap: 'break-word' }}>{tile.label}</div>
+      {tile.change != null && (
+        <div style={{ fontSize: 10, fontWeight: 700, marginTop: 7, color: positive ? '#15803d' : '#b91c1c', overflowWrap: 'break-word' }}>
+          {positive ? '↑' : '↓'} {Math.abs(tile.change).toFixed(1)}% {tile.sub}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── States ──────────────────────────────────────────────────────────────────
 
 function Panel({ icon, title, msg }: { icon: string; title: string; msg: string }) {
@@ -531,7 +584,7 @@ const INSIGHT_STYLE = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage({
-  period, branchName, alerts, onViewAlerts, onViewFullReport, organization, branches,
+  period, branchName, alerts, onViewAlerts, onViewFullReport, organization, branches, initialScopeBranchId,
 }: {
   period: OverviewPeriod
   branchName: string
@@ -544,6 +597,14 @@ export default function OverviewPage({
   // exactly as it always has: their own home branch, no picker.
   organization?: OrganizationSummary | null
   branches?: OrganizationBranch[]
+  // Set when arriving here via "View Branch" from Organization > Branches --
+  // seeds the scope picker to that branch instead of the org-wide "All
+  // branches" default, without taking away the picker itself (still free to
+  // switch to another branch, or back to "All branches", from here). Only
+  // read once, on mount -- this component always remounts fresh on that
+  // navigation (App.tsx's renderPage() switch unmounts whatever page was
+  // showing before), so a plain useState initializer is enough.
+  initialScopeBranchId?: string
 }) {
   const { t } = useTranslation()
   const { term: searchTerm } = useGlobalSearch()
@@ -559,7 +620,7 @@ export default function OverviewPage({
   const [visibleWidgets, setVisibleWidgets] = useState<Record<WidgetKey, boolean>>(loadWidgetPrefs)
   // null = "All branches" (the org-wide default). Only meaningful when
   // `organization` is set.
-  const [scopeBranchId, setScopeBranchId] = useState<string | null>(null)
+  const [scopeBranchId, setScopeBranchId] = useState<string | null>(initialScopeBranchId ?? null)
 
   const toggleWidget = (key: WidgetKey) => {
     setVisibleWidgets(prev => {
@@ -596,6 +657,46 @@ export default function OverviewPage({
   const scopedBranchName = organization
     ? (scopeBranchId ? branches?.find(b => b.branchId === scopeBranchId)?.name ?? branchName : t('overviewPage.allBranches'))
     : branchName
+
+  // True only when this mount came from "View Branch" (Organization >
+  // Branches > View Branch, see App.tsx's onViewBranch). This is what makes
+  // a drilled-into branch's dashboard visually read as THAT branch's own
+  // Overview -- fixed to one branch, no scope picker -- rather than the
+  // org-wide "All branches" aggregate an org_owner/org_manager's plain
+  // Overview nav item shows by default. Never flips mid-mount: the page
+  // always remounts fresh on this navigation (see the prop comment above).
+  const lockedToBranch = !!initialScopeBranchId
+
+  // True for the company-wide "All branches" aggregate -- Organization >
+  // Dashboard for both org_owner and org_manager, and the plain sidebar
+  // Overview for an org_owner/org_manager who hasn't narrowed to one branch.
+  // This is what gets the dark hero KPI band below instead of the plain
+  // white card grid: the one visual signal that reads as "company-wide
+  // command center" at a glance, distinct from every single-branch view
+  // (a standalone branch, or a branch reached via drill-in) which always
+  // keeps the plain light card look.
+  const isOrgWideView = !!organization && !lockedToBranch
+
+  // True once the org-wide picker itself (not the drill-in prop) has been
+  // narrowed to one branch -- e.g. the toolbar <select> below, or the KPI
+  // leaderboard's row click, both just call setScopeBranchId. Distinct from
+  // lockedToBranch (arrived here via "View Branch" with no picker at all):
+  // this keeps the picker and the org-wide card shapes, just swaps every
+  // "All branches combined" label for that branch's own name so picking one
+  // branch is never silently mislabeled as still showing the aggregate.
+  const viewingSpecificBranch = isOrgWideView && !!scopeBranchId
+
+  // Horizon-UI-style executive look for the org-wide dashboard: rounded,
+  // border-free, soft-shadow cards throughout instead of the plain bordered
+  // ones every single-branch view keeps -- shape/shadow is the constant
+  // signature; the accent hue (indigo for org_owner, teal for org_manager)
+  // is the second cue that additionally tells the two org-level roles apart
+  // from each other, same pairing the sidebar badge and topbar pill already
+  // use for that distinction.
+  const orgAccent = organization?.myRole === 'org_manager' ? '#0891b2' : '#4318ff'
+  const heroCardStyle: CSSProperties | undefined = isOrgWideView
+    ? { borderRadius: 20, border: 'none', boxShadow: '0 6px 24px rgba(17,24,39,0.07)' }
+    : undefined
 
   if (loading && !data) return <Panel icon="◴" title={t('overviewPage.loadingTitle')} msg={t('overviewPage.loadingMsg', { branch: scopedBranchName })} />
   if (error) return <Panel icon="⚠" title={t('overviewPage.errorTitle')} msg={error} />
@@ -646,6 +747,16 @@ export default function OverviewPage({
     },
   ]
 
+  // Shared between the hero (org-wide) and plain (single-branch) KPI grid
+  // renders below so the drill-down click behavior never has to be kept in
+  // sync between two copies.
+  function kpiOnClick(tileId: string): (() => void) | undefined {
+    if (tileId === 'revenue' || tileId === 'transactions' || tileId === 'items') return () => setDrillDownMetric(tileId as DrillDownMetric)
+    if (tileId === 'inventory') return () => setShowInventoryDrillDown(true)
+    if (tileId === 'expiring') return () => setShowExpiringDrillDown(true)
+    return undefined
+  }
+
   const visibleCategories = activeCategory
     ? data.categoryMix.filter(c => c.name === activeCategory)
     : data.categoryMix
@@ -671,7 +782,27 @@ export default function OverviewPage({
     <>
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
-        <span style={{ fontSize: 12, color: 'var(--ink-muted)', flex: 1 }}>
+        <span style={{ fontSize: 12, color: 'var(--ink-muted)', flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+          {lockedToBranch && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: 999,
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+              background: 'var(--primary-light)', color: 'var(--primary)', flexShrink: 0,
+            }}>
+              {t('overviewPage.branchDashboardBadge')}
+            </span>
+          )}
+          {isOrgWideView && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: 999,
+              fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+              background: viewingSpecificBranch ? 'var(--primary-light)' : (organization?.myRole === 'org_manager' ? '#cffafe' : '#dbeafe'),
+              color: viewingSpecificBranch ? 'var(--primary)' : (organization?.myRole === 'org_manager' ? '#0e7490' : '#1e5fa8'),
+              flexShrink: 0,
+            }}>
+              {viewingSpecificBranch ? t('overviewPage.scopedBranchBadge', { branch: scopedBranchName }) : t('overviewPage.orgWideBadge')}
+            </span>
+          )}
           {activeCategory ? (
             <span>
               {t('overviewPage.filteredBy')} <strong style={{ color: 'var(--primary)' }}>{dataLabel(activeCategory, t)}</strong>&nbsp;
@@ -682,57 +813,116 @@ export default function OverviewPage({
           )}
         </span>
         {organization && (
-          <select
-            value={scopeBranchId ?? ''}
-            onChange={e => setScopeBranchId(e.target.value || null)}
-            style={{
+          lockedToBranch ? (
+            // Fixed to the one branch this view was opened for -- no picker,
+            // since drilling into a branch means you're inside its own
+            // dashboard, not adjusting an org-wide scope (that's what the
+            // Organization > Dashboard tab's leaderboard is for instead).
+            <span style={{
               fontSize: 12, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
-              background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', cursor: 'pointer',
-            }}
-          >
-            <option value="">{t('overviewPage.allBranches')}</option>
-            {(branches ?? []).map(b => <option key={b.branchId} value={b.branchId}>{b.name}</option>)}
-          </select>
+              background: 'var(--bg)', color: 'var(--ink)', fontWeight: 600,
+            }}>
+              {scopedBranchName}
+            </span>
+          ) : (
+            <select
+              value={scopeBranchId ?? ''}
+              onChange={e => setScopeBranchId(e.target.value || null)}
+              style={{
+                fontSize: 12, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)',
+                background: 'var(--surface)', color: 'var(--ink)', fontFamily: 'inherit', cursor: 'pointer',
+                outline: 'none',
+              }}
+              onFocus={e => { (e.target as HTMLSelectElement).style.borderColor = 'var(--primary)'; (e.target as HTMLSelectElement).style.boxShadow = '0 0 0 3px var(--primary-light)' }}
+              onBlur={e => { (e.target as HTMLSelectElement).style.borderColor = 'var(--border)'; (e.target as HTMLSelectElement).style.boxShadow = 'none' }}
+            >
+              <option value="">{t('overviewPage.allBranches')}</option>
+              {(branches ?? []).map(b => <option key={b.branchId} value={b.branchId}>{b.name}</option>)}
+            </select>
+          )
         )}
         <Btn variant="ghost" small onClick={() => void refresh()}>{loading ? `◴ ${t('overviewPage.refreshing')}` : `↻ ${t('overviewPage.refresh')}`}</Btn>
         <Btn variant="ghost" small onClick={() => setShowExportModal(true)}>↗ {t('overviewPage.exportButton')}</Btn>
         <Btn variant="secondary" small onClick={() => setShowBuilder(true)}>⊞ {t('overviewPage.customizeButton')}</Btn>
       </div>
 
-      {/* KPI Grid */}
+      {/* KPI row -- a single summary card of solid pastel tiles for the
+          org-wide aggregate (isOrgWideView), the plain tall bordered card
+          grid for anything scoped to one branch. Different SHAPE AND fill,
+          not just a recolor, so the two are never confused at a glance. */}
       {visibleWidgets.kpiCards && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-          {tiles.map(tile => (
-            <KPICard
-              key={tile.id}
-              tile={tile}
-              active={false}
-              onClick={
-                tile.id === 'revenue' || tile.id === 'transactions' || tile.id === 'items'
-                  ? () => setDrillDownMetric(tile.id as DrillDownMetric)
-                  : tile.id === 'inventory'
-                    ? () => setShowInventoryDrillDown(true)
-                    : tile.id === 'expiring'
-                      ? () => setShowExpiringDrillDown(true)
-                      : undefined
-              }
-            />
-          ))}
-        </div>
+        isOrgWideView ? (
+          <Card style={{ ...heroCardStyle, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', fontFamily: 'var(--font-display)' }}>
+                  {viewingSpecificBranch
+                    ? t('overviewPage.viewingBranchHero', { branch: scopedBranchName })
+                    : (organization?.myRole === 'org_manager' ? t('overviewPage.orgHeroLabelManager') : t('overviewPage.orgHeroLabelOwner'))}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>{periodLabel}</div>
+              </div>
+              <Btn variant="ghost" small onClick={() => setShowExportModal(true)}>↗ {t('overviewPage.exportButton')}</Btn>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14 }}>
+              {tiles.map((tile, i) => (
+                <PastelTile key={tile.id} tile={tile} palette={PASTEL_TILES[i % PASTEL_TILES.length]} onClick={kpiOnClick(tile.id)} />
+              ))}
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
+            {tiles.map(tile => (
+              <KPICard key={tile.id} tile={tile} active={false} onClick={kpiOnClick(tile.id)} />
+            ))}
+          </div>
+        )
       )}
 
       {/* Revenue Trend + Sales by Category */}
       {row1Widgets.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: row1Widgets.map(w => `${w.weight}fr`).join(' '), gap: 14, marginBottom: 14 }}>
           {visibleWidgets.revenueTrend && (
-            <Card>
-              <SectionHeader
-                title={t('overviewPage.revenueTrendTitle')}
-                subtitle={t('overviewPage.revenueTrendSubtitle', {
-                  period: periodLabel,
-                  bucket: t(data.bucket === 'month' ? 'overviewPage.bucketByMonth' : 'overviewPage.bucketByDay'),
-                })}
-              />
+            <Card style={heroCardStyle}>
+              {isOrgWideView ? (
+                // "Total spent"-style hero header: period + on-track/needs-
+                // attention pills, one big number, change% called out in the
+                // subtitle -- replaces the plain SectionHeader every single-
+                // branch view still gets, so this card alone would be enough
+                // to tell an org-wide dashboard apart from a branch one.
+                <div style={{ marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999, background: orgAccent + '14', color: orgAccent }}>
+                      {periodLabel}
+                    </span>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 999,
+                      background: (data.revenue.changePct ?? 0) < 0 ? '#fee2e2' : '#dcfce7',
+                      color: (data.revenue.changePct ?? 0) < 0 ? '#dc2626' : '#16a34a',
+                    }}>
+                      {(data.revenue.changePct ?? 0) < 0 ? `⚠ ${t('overviewPage.heroNeedsAttention')}` : `✓ ${t('overviewPage.heroOnTrack')}`}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: 'var(--ink)', fontFamily: 'var(--font-display)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+                    {fmtRWFExact(data.revenue.value)}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-muted)', marginTop: 6 }}>
+                    {t('overviewPage.revenueTrendTitle')}
+                    {data.revenue.changePct != null && (
+                      <strong style={{ marginLeft: 8, color: data.revenue.changePct >= 0 ? 'var(--positive)' : 'var(--negative)' }}>{pct(data.revenue.changePct)}</strong>
+                    )}
+                    {' '}{periodSub}
+                  </div>
+                </div>
+              ) : (
+                <SectionHeader
+                  title={t('overviewPage.revenueTrendTitle')}
+                  subtitle={t('overviewPage.revenueTrendSubtitle', {
+                    period: periodLabel,
+                    bucket: t(data.bucket === 'month' ? 'overviewPage.bucketByMonth' : 'overviewPage.bucketByDay'),
+                  })}
+                />
+              )}
               {/* Never gated on "are there sales": lib/overview.ts seeds every
                   bucket in the window, so a quiet period draws a real flat line at
                   zero instead of hiding the chart. */}
@@ -740,12 +930,12 @@ export default function OverviewPage({
                   <AreaChart data={data.revenueTrend} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="gRev" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#1e5fa8" stopOpacity={0.16} />
-                        <stop offset="95%" stopColor="#1e5fa8" stopOpacity={0} />
+                        <stop offset="5%" stopColor={isOrgWideView ? orgAccent : '#1e5fa8'} stopOpacity={0.18} />
+                        <stop offset="95%" stopColor={isOrgWideView ? orgAccent : '#1e5fa8'} stopOpacity={0} />
                       </linearGradient>
                       <linearGradient id="gVat" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                        <stop offset="5%" stopColor={isOrgWideView ? (organization?.myRole === 'org_manager' ? '#67e8f9' : '#a78bfa') : '#60a5fa'} stopOpacity={0.2} />
+                        <stop offset="95%" stopColor={isOrgWideView ? (organization?.myRole === 'org_manager' ? '#67e8f9' : '#a78bfa') : '#60a5fa'} stopOpacity={0} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
@@ -754,15 +944,15 @@ export default function OverviewPage({
                       tickFormatter={v => Math.round(v).toLocaleString()} />
                     <Tooltip content={<ChartTooltip />} />
                     <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
-                    <Area type="monotone" dataKey="revenue" name={t('overviewPage.seriesRevenue')} stroke="#1e5fa8" fill="url(#gRev)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                    <Area type="monotone" dataKey="vat" name={t('overviewPage.seriesVatCollected')} stroke="#60a5fa" fill="url(#gVat)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                    <Area type="monotone" dataKey="revenue" name={t('overviewPage.seriesRevenue')} stroke={isOrgWideView ? orgAccent : '#1e5fa8'} fill="url(#gRev)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                    <Area type="monotone" dataKey="vat" name={t('overviewPage.seriesVatCollected')} stroke={isOrgWideView ? (organization?.myRole === 'org_manager' ? '#67e8f9' : '#a78bfa') : '#60a5fa'} fill="url(#gVat)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                   </AreaChart>
               </ResponsiveContainer>
             </Card>
           )}
 
           {visibleWidgets.categorySales && (
-            <Card>
+            <Card style={heroCardStyle}>
               <SectionHeader
                 title={t('overviewPage.categorySalesTitle')}
                 subtitle={activeCategory
@@ -781,7 +971,7 @@ export default function OverviewPage({
                     <Bar dataKey="sales" name={t('overviewPage.seriesRevenue')} radius={[0, 5, 5, 0]} barSize={13} cursor="pointer"
                       onClick={(bar: any) => setActiveCategory(activeCategory === bar.name ? null : bar.name)}>
                       {visibleCategories.map((c, i) => (
-                        <Cell key={i} fill={activeCategory === c.name ? '#1e5fa8' : '#a7f3d0'} />
+                        <Cell key={i} fill={activeCategory === c.name ? (isOrgWideView ? orgAccent : '#1e5fa8') : (isOrgWideView ? orgAccent + '33' : '#a7f3d0')} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -796,7 +986,7 @@ export default function OverviewPage({
       {row2Widgets.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: row2Widgets.map(w => `${w.weight}fr`).join(' '), gap: 14, marginBottom: 14 }}>
           {visibleWidgets.dailyTransactions && (
-            <Card>
+            <Card style={heroCardStyle}>
               <SectionHeader title={t('overviewPage.dailyTransactionsTitle')} subtitle={t('overviewPage.dailyTransactionsSubtitle')} />
               <ResponsiveContainer width="100%" height={185}>
                 <BarChart data={data.dailyTransactions} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -806,14 +996,14 @@ export default function OverviewPage({
                   <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip content={<ChartTooltip />} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
-                  <Bar dataKey="txn" name={t('overviewPage.seriesTransactions')} fill="#1e5fa8" radius={[4, 4, 0, 0]} barSize={22} />
+                  <Bar dataKey="txn" name={t('overviewPage.seriesTransactions')} fill={isOrgWideView ? orgAccent : '#1e5fa8'} radius={[4, 4, 0, 0]} barSize={22} />
                 </BarChart>
               </ResponsiveContainer>
             </Card>
           )}
 
           {visibleWidgets.paymentMethods && (
-            <Card>
+            <Card style={heroCardStyle}>
               {/* Not a cash/mobile-money/card mix: public.sales has no payment_method
                   column yet. This shows the split the database really records. */}
               <SectionHeader title={t('overviewPage.paymentSplitTitle')} subtitle={t('overviewPage.paymentSplitSubtitle')} />
@@ -856,7 +1046,7 @@ export default function OverviewPage({
           )}
 
           {visibleWidgets.alertsFeed && (
-            <Card style={{ padding: '16px 14px' }}>
+            <Card style={{ padding: '16px 14px', ...heroCardStyle }}>
               <SectionHeader title={t('overviewPage.activeAlertsTitle')} action={t('overviewPage.activeAlertsAction', { count: openAlerts.length })} onAction={onViewAlerts} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: 7, overflowY: 'auto', maxHeight: 220 }}>
                 {openAlerts.length === 0 ? (
@@ -894,7 +1084,7 @@ export default function OverviewPage({
 
       {/* Top Products */}
       {visibleWidgets.topProducts && (
-        <Card>
+        <Card style={heroCardStyle}>
           <SectionHeader
             title={activeCategory
               ? t('overviewPage.topProductsTitleFiltered', { category: dataLabel(activeCategory, t) })

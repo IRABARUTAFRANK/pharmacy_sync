@@ -61,7 +61,13 @@ export function StockLevelsModal({ row, onClose, onSaved }: { row: InventoryRow;
 // `initialStatus` lets a caller (the sidebar's "Today so far" card) deep-link
 // straight into a filtered view instead of landing on "all" and making
 // someone re-click a tile themselves.
-export default function LiveInventoryPage({ initialStatus }: { initialStatus?: "attention" | InventoryRow["stock_status"] } = {}) {
+// NOTE: loadInventoryDataset() reads stock_batches/barcodes/products/etc.
+// directly under RLS scoped to the caller's own branch -- there is currently
+// no way to point it at a different branch. `branchId` is accepted (App.tsx
+// always passes it) so this page still shows the CALLER's own branch's
+// inventory while "viewing" another branch, rather than erroring -- widening
+// the underlying RLS policies is tracked as a follow-up.
+export default function LiveInventoryPage({ initialStatus, branchId: _branchId }: { initialStatus?: "attention" | InventoryRow["stock_status"]; branchId?: string } = {}) {
   const { t } = useTranslation()
   const statusMeta = {
     ok: { label: t("inventoryPage.statusOk"), color: "#16a34a", background: "#d1fae5" },

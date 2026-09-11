@@ -224,7 +224,7 @@ function formatForecastPeriodLabel(iso: string, granularity: "day" | "week" | "m
 // functions the AI analyst uses as tools -- directly, no LLM involved. Real
 // numbers (the forecast is real linear regression, computed in Postgres),
 // zero API cost, and it works even when the AI analyst doesn't.
-export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
+export default function AnalyticsPage({ period, branchId }: { period?: OverviewPeriod; branchId?: string }) {
   const { t, lang } = useTranslation()
   const [error, setError] = useState("")
 
@@ -313,51 +313,51 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
 
   useEffect(() => {
     setSnapshotLoading(true)
-    loadBranchSnapshot().then(setSnapshot).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorSnapshot"))).finally(() => setSnapshotLoading(false))
+    loadBranchSnapshot(branchId).then(setSnapshot).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorSnapshot"))).finally(() => setSnapshotLoading(false))
     loadReceivingReference().then(ref => setReference({ products: ref.products, categories: ref.categories })).catch(() => { /* forecast pickers just stay empty */ })
-    loadInsuranceClaimAging().then(setClaimAging).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorClaimAging")))
+    loadInsuranceClaimAging(branchId).then(setClaimAging).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorClaimAging")))
     loadRecallLog(50).then(setRecallLog).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorRecallLog")))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [branchId])
 
   useEffect(() => {
     setTrendLoading(true)
     setStockLoading(true)
     Promise.all([
-      loadSalesTrend(dateFrom, dateTo, bucket).then(setTrend),
-      loadTopProducts(dateFrom, dateTo, topMetric, topDirection, 10).then(setTopProducts),
-      loadCategoryBreakdown(dateFrom, dateTo).then(setCategoryBreakdown),
-      loadInsuranceSummary(dateFrom, dateTo).then(setInsurance),
-      loadSellerPerformance(dateFrom, dateTo).then(setSellers),
-      loadPatientSummary(dateFrom, dateTo).then(setPatients),
-      loadStockAdjustments(dateFrom, dateTo).then(setStockAdjustments),
-      loadInventoryTurnover(dateFrom, dateTo).then(setInventoryTurnover),
-      loadSupplierPerformance(dateFrom, dateTo).then(setSupplierPerformance),
-      loadSalesHeatmap(dateFrom, dateTo).then(setSalesHeatmap),
-      loadBasketSize(dateFrom, dateTo, bucket).then(setBasketSize),
-      loadDiscountUsage(dateFrom, dateTo).then(setDiscountUsage),
-      loadInsuranceProviderComparison(dateFrom, dateTo).then(setProviderComparison),
-      loadSellerProductivity(dateFrom, dateTo).then(setSellerProductivity),
+      loadSalesTrend(dateFrom, dateTo, bucket, branchId).then(setTrend),
+      loadTopProducts(dateFrom, dateTo, topMetric, topDirection, 10, branchId).then(setTopProducts),
+      loadCategoryBreakdown(dateFrom, dateTo, branchId).then(setCategoryBreakdown),
+      loadInsuranceSummary(dateFrom, dateTo, branchId).then(setInsurance),
+      loadSellerPerformance(dateFrom, dateTo, branchId).then(setSellers),
+      loadPatientSummary(dateFrom, dateTo, branchId).then(setPatients),
+      loadStockAdjustments(dateFrom, dateTo, branchId).then(setStockAdjustments),
+      loadInventoryTurnover(dateFrom, dateTo, branchId).then(setInventoryTurnover),
+      loadSupplierPerformance(dateFrom, dateTo, branchId).then(setSupplierPerformance),
+      loadSalesHeatmap(dateFrom, dateTo, branchId).then(setSalesHeatmap),
+      loadBasketSize(dateFrom, dateTo, bucket, branchId).then(setBasketSize),
+      loadDiscountUsage(dateFrom, dateTo, branchId).then(setDiscountUsage),
+      loadInsuranceProviderComparison(dateFrom, dateTo, branchId).then(setProviderComparison),
+      loadSellerProductivity(dateFrom, dateTo, branchId).then(setSellerProductivity),
     ]).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorRange"))).finally(() => setTrendLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom, dateTo, bucket, topMetric, topDirection])
+  }, [dateFrom, dateTo, bucket, topMetric, topDirection, branchId])
 
   useEffect(() => {
     setStockLoading(true)
-    loadStockStatus(stockFilter).then(setStockRows).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorStock"))).finally(() => setStockLoading(false))
+    loadStockStatus(stockFilter, branchId).then(setStockRows).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorStock"))).finally(() => setStockLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stockFilter])
+  }, [stockFilter, branchId])
 
   useEffect(() => {
     setDeadStockLoading(true)
-    loadDeadStock(deadStockDays, 50).then(setDeadStock).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorDeadStock"))).finally(() => setDeadStockLoading(false))
+    loadDeadStock(deadStockDays, 50, branchId).then(setDeadStock).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorDeadStock"))).finally(() => setDeadStockLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deadStockDays])
+  }, [deadStockDays, branchId])
 
   async function runPatientRetention() {
     setRetentionLoading(true)
     try {
-      setPatientRetention(await loadPatientRetention({ lookbackDays: retentionLookback, inactiveDays: retentionInactive, limit: 20 }))
+      setPatientRetention(await loadPatientRetention({ lookbackDays: retentionLookback, inactiveDays: retentionInactive, limit: 20, branchId }))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("analyticsPage.errorRetention"))
     } finally {
@@ -368,13 +368,13 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
   useEffect(() => {
     void runPatientRetention()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [branchId])
 
   async function runForecast() {
     setForecastLoading(true)
     setError("")
     try {
-      const scope = { productId: forecastProductId || null, categoryId: forecastCategoryId || null, daysHistory: forecastHistory, horizonDays: forecastHorizon }
+      const scope = { productId: forecastProductId || null, categoryId: forecastCategoryId || null, daysHistory: forecastHistory, horizonDays: forecastHorizon, branchId }
       const [summary, series] = await Promise.all([loadSalesForecast(scope), loadSalesForecastSeries(scope)])
       setForecast(summary)
       setForecastSeries(series)
@@ -394,12 +394,13 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
             periodStart: p.periodStart, predictedRevenue: p.forecastRevenue, predictedQuantity: p.forecastQuantity,
             lowerBound: p.lowerBound, upperBound: p.upperBound,
           })),
+          branchId,
         }).catch(reason => console.error("Could not save forecast snapshot:", reason))
       }
       if (actualPeriods.length > 0) {
         loadSalesForecastAccuracy({
           productId: scope.productId, categoryId: scope.categoryId,
-          from: actualPeriods[0], to: actualPeriods[actualPeriods.length - 1],
+          from: actualPeriods[0], to: actualPeriods[actualPeriods.length - 1], branchId,
         }).then(setForecastAccuracy).catch(reason => console.error("Could not load forecast accuracy:", reason))
       } else {
         setForecastAccuracy([])
@@ -421,7 +422,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
     const handle = setTimeout(() => { void runForecast() }, 400)
     return () => clearTimeout(handle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forecastProductId, forecastCategoryId, forecastHistory, forecastHorizon])
+  }, [forecastProductId, forecastCategoryId, forecastHistory, forecastHorizon, branchId])
 
   const forecastGranularity = useMemo(() => inferForecastGranularity(forecastSeries.map(p => p.periodStart)), [forecastSeries])
   const forecastChartData = useMemo(() => {
@@ -460,8 +461,8 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
       let sections: ReportSection[]
       if (def.id === "sales") {
         const [trendData, topData] = await Promise.all([
-          loadSalesTrend(period.from, period.to, "day"),
-          loadTopProducts(period.from, period.to, "revenue", "desc", 10),
+          loadSalesTrend(period.from, period.to, "day", branchId),
+          loadTopProducts(period.from, period.to, "revenue", "desc", 10, branchId),
         ])
         sections = [
           {
@@ -480,8 +481,8 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         ]
       } else if (def.id === "inventory") {
         const [turnoverData, deadStockData] = await Promise.all([
-          loadInventoryTurnover(period.from, period.to),
-          loadDeadStock(periodSpanDays(period), 50),
+          loadInventoryTurnover(period.from, period.to, branchId),
+          loadDeadStock(periodSpanDays(period), 50, branchId),
         ])
         sections = [
           {
@@ -499,8 +500,8 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         // Claim aging has no from/to of its own -- it's "how old are claims
         // still pending right now", a live snapshot regardless of period.
         const [insuranceData, agingData] = await Promise.all([
-          loadInsuranceSummary(period.from, period.to),
-          loadInsuranceClaimAging(),
+          loadInsuranceSummary(period.from, period.to, branchId),
+          loadInsuranceClaimAging(branchId),
         ])
         sections = [
           {
@@ -519,9 +520,9 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         // aren't period-scoped data) -- summary and retention are.
         const spanDays = periodSpanDays(period)
         const [summary, retention, list] = await Promise.all([
-          loadPatientSummary(period.from, period.to),
-          loadPatientRetention({ lookbackDays: spanDays, inactiveDays: Math.min(60, spanDays), limit: 20 }),
-          listBranchPatients(),
+          loadPatientSummary(period.from, period.to, branchId),
+          loadPatientRetention({ lookbackDays: spanDays, inactiveDays: Math.min(60, spanDays), limit: 20, branchId }),
+          listBranchPatients(branchId),
         ])
         let male = 0, female = 0, other = 0, unspecified = 0, ageSum = 0, ageCount = 0
         for (const p of list) {
@@ -558,7 +559,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
           },
         ]
       } else if (def.id === "productivity") {
-        const data = await loadSellerProductivity(period.from, period.to)
+        const data = await loadSellerProductivity(period.from, period.to, branchId)
         sections = [{
           title: "Seller Productivity",
           headers: ["Seller", "Role", "Transactions", "Revenue (RWF)", "Active Hours", "Revenue/Hour (RWF)", "Transactions/Hour"],
@@ -583,7 +584,7 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         // A forecast has no "from/to" of its own -- the chosen period becomes
         // how much sales history to train the projection on.
         const spanDays = periodSpanDays(period)
-        const data = await loadSalesForecast({ daysHistory: spanDays, horizonDays: Math.min(90, Math.max(7, spanDays)) })
+        const data = await loadSalesForecast({ daysHistory: spanDays, horizonDays: Math.min(90, Math.max(7, spanDays)), branchId })
         sections = [{
           title: "Sales Forecast",
           headers: ["Metric", "Value"],
@@ -598,8 +599,8 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         }]
       } else if (def.id === "category") {
         const [catData, discData] = await Promise.all([
-          loadCategoryBreakdown(period.from, period.to),
-          loadDiscountUsage(period.from, period.to),
+          loadCategoryBreakdown(period.from, period.to, branchId),
+          loadDiscountUsage(period.from, period.to, branchId),
         ])
         sections = [
           {
@@ -615,8 +616,8 @@ export default function AnalyticsPage({ period }: { period?: OverviewPeriod }) {
         ]
       } else {
         const [supData, adjData] = await Promise.all([
-          loadSupplierPerformance(period.from, period.to),
-          loadStockAdjustments(period.from, period.to),
+          loadSupplierPerformance(period.from, period.to, branchId),
+          loadStockAdjustments(period.from, period.to, branchId),
         ])
         sections = [
           {

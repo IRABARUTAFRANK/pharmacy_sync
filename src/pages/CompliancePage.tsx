@@ -51,7 +51,7 @@ function buildTransactionsSection(rows: ComplianceTransaction[], title: string):
 
 type DownloadKind = "daily" | "weekly" | "monthly" | "annual" | "table"
 
-export default function CompliancePage() {
+export default function CompliancePage({ branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const [monthlyVat, setMonthlyVat] = useState<MonthlyVatPoint[]>([])
   const [transactions, setTransactions] = useState<ComplianceTransaction[]>([])
@@ -63,11 +63,11 @@ export default function CompliancePage() {
     const now = new Date()
     const startOfYear = new Date(now.getFullYear(), 0, 1).toISOString().slice(0, 10)
     const today = now.toISOString().slice(0, 10)
-    void Promise.all([loadVatByMonth(8), listComplianceTransactions(startOfYear, today, 2000)])
+    void Promise.all([loadVatByMonth(8, branchId), listComplianceTransactions(startOfYear, today, 2000, branchId)])
       .then(([vat, txns]) => { setMonthlyVat(vat); setTransactions(txns) })
       .catch(reason => setError(reason instanceof Error ? reason.message : t("compliancePage.loadError")))
       .finally(() => setLoading(false))
-  }, [t])
+  }, [t, branchId])
 
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import QRCode from "qrcode"
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Btn, CenterAlert, ChartTooltip, Logo, Modal, SectionHeader } from "../components"
-import { fmtRWFExact } from "../data"
+import { fmtRWFExact, type Role } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { listBranchPatients, upsertPatient, type PatientGender, type PatientListRow } from "../lib/patients"
 import { listTaxRates, type TaxRate } from "../lib/products"
@@ -316,11 +316,12 @@ interface PatientDraft {
 
 const BLANK_PATIENT: PatientDraft = { fullName: "", gender: "", age: "", identifier: "" }
 
-function PatientStep({ draft, onChange, onClear, resolvedId }: {
+function PatientStep({ draft, onChange, onClear, resolvedId, branchId }: {
   draft: PatientDraft
   onChange: (next: PatientDraft) => void
   onClear: () => void
   resolvedId: string | null
+  branchId?: string
 }) {
   const { t } = useTranslation()
   // Explicit choice instead of an implicit "type something to reveal the
@@ -347,11 +348,11 @@ function PatientStep({ draft, onChange, onClear, resolvedId }: {
   useEffect(() => {
     if (mode !== "record" || roster || loadingRoster) return
     setLoadingRoster(true)
-    void listBranchPatients()
+    void listBranchPatients(branchId)
       .then(setRoster)
       .catch(() => setRoster([]))
       .finally(() => setLoadingRoster(false))
-  }, [mode, roster, loadingRoster])
+  }, [mode, roster, loadingRoster, branchId])
 
   // Name, phone or TIN -- all three match the same box, so a cashier who only
   // knows the patient's name is not stuck.
@@ -498,7 +499,13 @@ function PosStatTile({ icon, value, valueColor, label, sub }: { icon: string; va
   )
 }
 
-export default function SalesPage({ onViewAllTransactions }: { onViewAllTransactions?: () => void }) {
+// NOTE: loadPosDashboardSnapshot()/listSaleHistory()/getSaleReceipt() below
+// read tables directly under RLS scoped to the caller's own branch and stay
+// on the CALLER's own branch while "viewing" another one (see the read-path
+// migration's scope notes) -- but the sale-completing path itself
+// (upsertPatient/completeSale) IS branch-aware, so a sale rung up while
+// viewing another branch is correctly attributed to that branch.
+export default function SalesPage({ onViewAllTransactions, branchId, role }: { onViewAllTransactions?: () => void; branchId?: string; role: Role }) {
   const { t } = useTranslation()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [providers, setProviders] = useState<InsuranceProvider[]>([])
@@ -542,9 +549,17 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
 
   // Non-critical: the checkout flow works with or without this panel, so a
   // failed load here doesn't block or interrupt a sale in progress.
+  // A seller never fetches (let alone renders) todayRevenue/avgBasketValue/
+  // pendingClaimsAmount -- those are branch-wide financial KPIs, out of
+  // scope for "Sales sees only their own workflow" (see NAV_ITEMS' role
+  // matrix comment in src/data.ts). Recent sale history stays visible to a
+  // seller -- that's the POS's own operational log, not a financial rollup.
   async function loadDashboard() {
     try {
-      const [snap, recent] = await Promise.all([loadPosDashboardSnapshot(), listSaleHistory(8)])
+      const [snap, recent] = await Promise.all([
+        role === "seller" ? Promise.resolve(null) : loadPosDashboardSnapshot(),
+        listSaleHistory(8),
+      ])
       setSnapshot(snap)
       setRecentSales(recent)
     } catch {
@@ -734,6 +749,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
           patientDraft.age.trim() ? Number.parseInt(patientDraft.age, 10) : null,
           patientDraft.identifier.trim(),
           null,
+          branchId,
         )
       }
       const result = await completeSale({
@@ -744,6 +760,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
         })),
         insuranceProviderId: providerId || null,
         patientId,
+        branchId,
       })
       const fullReceipt = await getSaleReceipt(result.saleId)
       setPendingReceipt(fullReceipt)
@@ -821,7 +838,7 @@ export default function SalesPage({ onViewAllTransactions }: { onViewAllTransact
       <div ref={checkoutSectionRef} style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         {/* Left: patient + scan + cart */}
         <div style={{ flex: "2 1 460px", minWidth: 340 }}>
-          <PatientStep draft={patientDraft} onChange={setPatientDraft} onClear={() => setPatientDraft(BLANK_PATIENT)} resolvedId={null} />
+          <PatientStep draft={patientDraft} onChange={setPatientDraft} onClear={() => setPatientDraft(BLANK_PATIENT)} resolvedId={null} branchId={branchId} />
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 8 }}>

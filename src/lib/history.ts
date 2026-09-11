@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 // One unified, owner-only view across every kind of event this branch has
 // ever generated -- see list_branch_history() in the schema for the full
@@ -38,8 +38,8 @@ function raise(error: { message: string } | null, fallback: string): never {
   throw new Error(error?.message ?? fallback)
 }
 
-export async function loadBranchHistory(from?: string, to?: string): Promise<HistoryEvent[]> {
-  const { data, error } = await supabase.rpc("list_branch_history", { p_from: from ?? null, p_to: to ?? null })
+export async function loadBranchHistory(from?: string, to?: string, branchId?: string): Promise<HistoryEvent[]> {
+  const { data, error } = await supabase.rpc("list_branch_history", { p_from: from ?? null, p_to: to ?? null, ...branchArg(branchId) })
   if (error) raise(error, "Could not load branch history.")
   return (data ?? []).map((row: any) => ({
     eventAt: row.event_at, category: row.category as HistoryCategory,

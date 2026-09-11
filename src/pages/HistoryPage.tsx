@@ -289,7 +289,7 @@ function TableView({ events }: { events: HistoryEvent[] }) {
 // Owner-only, enforced by list_branch_history() itself (raises if the caller
 // isn't the branch owner) — App.tsx's nav also hides this page from anyone
 // else, but that's convenience, not the actual gate.
-export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
+export default function HistoryPage({ period, branchId }: { period?: OverviewPeriod; branchId?: string }) {
   const { t } = useTranslation()
   const [events, setEvents] = useState<HistoryEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -316,13 +316,13 @@ export default function HistoryPage({ period }: { period?: OverviewPeriod }) {
     try {
       const from = dateFrom ? new Date(`${dateFrom}T00:00:00`).toISOString() : undefined
       const to = dateTo ? new Date(`${dateTo}T23:59:59.999`).toISOString() : undefined
-      setEvents(await loadBranchHistory(from, to))
+      setEvents(await loadBranchHistory(from, to, branchId))
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("history.loadError"))
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, t])
+  }, [dateFrom, dateTo, t, branchId])
 
   useEffect(() => { void refresh() }, [refresh])
 

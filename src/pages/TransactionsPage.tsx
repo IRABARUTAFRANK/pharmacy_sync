@@ -35,7 +35,13 @@ function StatTile({ icon, value, valueColor, tint, label }: { icon: string; valu
 // Every completed sale is written atomically by complete_sale() — this page
 // reads that same stored record back, so "stored receipt" means a real trip
 // to the database, not anything cached from the moment of sale.
-export default function TransactionsPage({ period }: { period?: OverviewPeriod }) {
+// NOTE: this page's data (listSaleHistory/loadDailyRevenueTrend/getSaleReceipt)
+// reads sales tables directly under RLS scoped to the caller's own branch --
+// there is currently no way to point it at a different branch. `branchId` is
+// accepted (App.tsx always passes it) so this page still shows the CALLER's
+// own branch's transactions while "viewing" another branch, rather than
+// erroring -- widening the underlying RLS policies is tracked as a follow-up.
+export default function TransactionsPage({ period, branchId: _branchId }: { period?: OverviewPeriod; branchId?: string }) {
   const { t } = useTranslation()
   const [rows, setRows] = useState<SaleHistoryRow[]>([])
   const [trend, setTrend] = useState<DailyRevenuePoint[]>([])

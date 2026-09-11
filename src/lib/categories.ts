@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 export interface BranchCategory {
   id: string
@@ -8,23 +8,23 @@ export interface BranchCategory {
   code: string
 }
 
-export async function listBranchCategories(): Promise<BranchCategory[]> {
-  const { data, error } = await supabase.rpc("list_branch_categories")
+export async function listBranchCategories(branchId?: string): Promise<BranchCategory[]> {
+  const { data, error } = await supabase.rpc("list_branch_categories", { ...branchArg(branchId) })
   if (error) throw error
   return ((data ?? []) as any[]).map(row => ({
     id: row.id, name: row.name, description: row.description, productCount: Number(row.product_count), code: row.code,
   }))
 }
 
-export async function createBranchCategory(name: string, description: string): Promise<string> {
-  const { data, error } = await supabase.rpc("create_branch_category", { p_name: name, p_description: description || null })
+export async function createBranchCategory(name: string, description: string, branchId?: string): Promise<string> {
+  const { data, error } = await supabase.rpc("create_branch_category", { p_name: name, p_description: description || null, ...branchArg(branchId) })
   if (error) throw error
   return data as string
 }
 
-export async function updateBranchCategory(categoryId: string, name: string, description: string): Promise<void> {
+export async function updateBranchCategory(categoryId: string, name: string, description: string, branchId?: string): Promise<void> {
   const { error } = await supabase.rpc("update_branch_category", {
-    p_category_id: categoryId, p_name: name, p_description: description || null,
+    p_category_id: categoryId, p_name: name, p_description: description || null, ...branchArg(branchId),
   })
   if (error) throw error
 }

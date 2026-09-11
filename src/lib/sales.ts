@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 import { supabaseAdmin } from "./supabaseAdmin"
 import { listTaxRates, type TaxRate } from "./products"
 import type { PaymentMethod } from "./branch"
@@ -61,8 +61,8 @@ export interface BranchDiscount {
   isCurrent: boolean
 }
 
-export async function listBranchDiscounts(): Promise<BranchDiscount[]> {
-  const { data, error } = await supabase.rpc("list_branch_discounts")
+export async function listBranchDiscounts(branchId?: string): Promise<BranchDiscount[]> {
+  const { data, error } = await supabase.rpc("list_branch_discounts", { ...branchArg(branchId) })
   if (error) raise(error, "Could not load discounts.")
   return (data ?? []).map((row: any) => ({
     id: row.id, name: row.name, discountType: row.discount_type as DiscountType, value: Number(row.value),
@@ -70,9 +70,10 @@ export async function listBranchDiscounts(): Promise<BranchDiscount[]> {
   }))
 }
 
-export async function createBranchDiscount(name: string, discountType: DiscountType, value: number, validFrom?: string | null, validTo?: string | null): Promise<string> {
+export async function createBranchDiscount(name: string, discountType: DiscountType, value: number, validFrom?: string | null, validTo?: string | null, branchId?: string): Promise<string> {
   const { data, error } = await supabase.rpc("create_branch_discount", {
     p_name: name, p_discount_type: discountType, p_value: value, p_valid_from: validFrom ?? null, p_valid_to: validTo ?? null,
+    ...branchArg(branchId),
   })
   if (error) raise(error, "Could not create this discount.")
   return data as string
@@ -271,6 +272,11 @@ export interface CompleteSaleInput {
   // portion only (see complete_sale()'s own comment), never what insurance
   // is billed for.
   discountId?: string | null
+  // Set only when an org_owner/org_manager is viewing another branch's Sales
+  // page -- attributes the sale to that branch instead of the caller's own.
+  // Undefined/omitted preserves today's exact behavior (the caller's own
+  // branch, resolved server-side).
+  branchId?: string
 }
 
 // The one and only way a sale is written: complete_sale() re-validates and
@@ -289,6 +295,7 @@ export async function completeSale(input: CompleteSaleInput): Promise<CompleteSa
     p_patient_id: input.patientId ?? null,
     p_payment_method: input.paymentMethod ?? null,
     p_discount_id: input.discountId ?? null,
+    ...branchArg(input.branchId),
   })
   if (error) raise(error, "Could not complete this sale.")
   const row = Array.isArray(data) ? data[0] : data
