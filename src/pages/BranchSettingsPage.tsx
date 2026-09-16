@@ -94,7 +94,7 @@ function ComingSoonPanel({ label }: { label: string }) {
   )
 }
 
-type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "alerts" | "compliance" | "printing"
+export type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "alerts" | "compliance" | "printing"
 
 const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }[] = [
   { id: "profile", icon: "🏥", labelKey: "branchSettings.tabProfile" },
@@ -316,9 +316,9 @@ function CategoryModal({ initial, onClose, onSaved }: {
 // save here actually persists a new one -- without it, the sidebar would
 // only pick up the change on the next sign-in/reload, same staleness the
 // receipt doesn't have (it re-fetches the branch row fresh every print).
-export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url: string | null) => void }) {
+export default function BranchSettingsPage({ onLogoSaved, initialTab }: { onLogoSaved?: (url: string | null) => void; initialTab?: SettingsTab }) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "profile")
 
   const [branchName, setBranchName] = useState("")
   const [address, setAddress] = useState("")
@@ -815,6 +815,19 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
                       style={{ ...inputStyle, width: 70 }}
                     />
                     <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.reminderHoursUnit")}</span>
+                  </div>
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.triggerExpiringSoonLabel")} description={t("branchSettings.triggerExpiringSoonHint")}
+                  dbRef="branches.expiry_alert_threshold_days"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                    <input
+                      type="number" min={1} max={365} value={expiryAlertThresholdDays}
+                      onChange={e => setExpiryAlertThresholdDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                      style={{ ...inputStyle, width: 70 }}
+                    />
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.daysUnit")}</span>
                   </div>
                 </SettingRow>
                 <SettingRow

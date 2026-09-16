@@ -1,5 +1,5 @@
 import type { TranslationKey } from "./i18n/en"
-import { supabase } from "./supabase"
+import { fetchAll, supabase } from "./supabase"
 
 // Read-only barcode history for the Barcode Manager screen. Barcodes are only ever
 // created server-side by receive_stock_delivery(); nothing here writes.
@@ -134,20 +134,23 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
   const batchIds = (batches ?? []).map(batch => batch.id)
   if (batchIds.length === 0) return []
 
-  const [barcodesResult, variantsResult, productsResult] = await Promise.all([
-    supabase.from("barcodes").select("id, code, barcode_type, pieces_per_pack, child_count, stock_batch_id").in("stock_batch_id", batchIds).order("code"),
-    supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
-    supabase.from("products").select("id, name"),
+  // product_variants/products are paged via fetchAll() -- not branch-scoped, so a
+  // plain select silently truncates past 1000 rows once a real price-list import
+  // lands, and a receipt for a product past the cutoff would print "Unknown product".
+  // barcodes is paged too -- a single big delivery (a hundred cartons, each split
+  // into packs) can produce more than 1000 barcode rows on its own.
+  const [barcodes, variants, products] = await Promise.all([
+    fetchAll<any>("barcodes", "id, code, barcode_type, pieces_per_pack, child_count, stock_batch_id", "code",
+      query => query.in("stock_batch_id", batchIds)),
+    fetchAll<any>("product_variants", "id, product_id, dosage, form, unit", "id"),
+    fetchAll<any>("products", "id, name", "name"),
   ])
-  if (barcodesResult.error) throw barcodesResult.error
-  if (variantsResult.error) throw variantsResult.error
-  if (productsResult.error) throw productsResult.error
 
   const batchById = new Map((batches ?? []).map(batch => [batch.id, batch]))
-  const variantById = new Map((variantsResult.data ?? []).map(variant => [variant.id, variant]))
-  const productById = new Map((productsResult.data ?? []).map(product => [product.id, product]))
+  const variantById = new Map(variants.map(variant => [variant.id, variant]))
+  const productById = new Map(products.map(product => [product.id, product]))
 
-  return (barcodesResult.data ?? []).map(barcode => {
+  return barcodes.map((barcode: any) => {
     const batch = batchById.get(barcode.stock_batch_id)
     const variant = batch ? variantById.get(batch.product_variant_id) : undefined
     const product = variant ? productById.get(variant.product_id) : undefined
@@ -167,16 +170,18 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
 }
 
 export async function loadBarcodeDataset(): Promise<BarcodeDataset> {
-  const results = await Promise.all([
-    supabase.from("barcodes").select("*").order("code"),
-    supabase.from("stock_batches").select("*"),
-    supabase.from("product_variants").select("*"),
-    supabase.from("products").select("*"),
+  // product_variants/products/barcodes/stock_batches are all paged via fetchAll()
+  // -- see loadDeliveryBarcodes above for why barcodes needs it too.
+  const [variants, products, barcodes, batches, ...results] = await Promise.all([
+    fetchAll<any>("product_variants", "*", "id"),
+    fetchAll<any>("products", "*", "name"),
+    fetchAll<any>("barcodes", "*", "code"),
+    fetchAll<any>("stock_batches", "*", "id"),
     supabase.from("suppliers").select("id, supplier_name"),
   ])
   const failed = results.find(result => result.error)
   if (failed?.error) throw failed.error
-  const [barcodes, batches, variants, products, suppliers] = results.map(result => result.data ?? []) as any[][]
+  const [suppliers] = results.map(result => result.data ?? []) as any[][]
 
   const batchById = new Map(batches.map(batch => [batch.id, batch]))
   const variantById = new Map(variants.map(variant => [variant.id, variant]))

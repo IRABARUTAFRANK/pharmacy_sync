@@ -1,5 +1,5 @@
 import { getMyBranchDetails } from "./branch"
-import { supabase } from "./supabase"
+import { fetchAll, supabase } from "./supabase"
 
 export interface InventoryRow {
   product_id: string
@@ -39,17 +39,26 @@ export interface InventoryDataset {
 const asNumber = (value: string | number | null | undefined) => Number(value ?? 0)
 
 export async function loadInventoryDataset(): Promise<InventoryDataset> {
-  const [branch, ...results] = await Promise.all([
+  // product_variants/products are paged via fetchAll() -- they aren't branch-scoped
+  // and pass PostgREST's 1000-row cap once a real price-list import lands; a plain
+  // select would silently drop everything past the cutoff from the whole page.
+  // stock_batches/barcodes are paged too -- branch-scoped, but one barcode row per
+  // physical pack/carton means a single large delivery (a hundred cartons, each
+  // split into packs) can push a branch's own barcode count past 1000 on its own,
+  // and that delivery would just never show up in Live Inventory.
+  const [branch, variants, products, batches, barcodes, ...results] = await Promise.all([
     getMyBranchDetails(),
-    supabase.from("stock_batches").select("*").order("received_at", { ascending: false }),
-    supabase.from("product_variants").select("*"), supabase.from("products").select("*"),
-    supabase.from("barcodes").select("*"), supabase.from("suppliers").select("*"),
+    fetchAll<any>("product_variants", "*", "id"),
+    fetchAll<any>("products", "*", "name"),
+    fetchAll<any>("stock_batches", "*", "received_at", undefined, false),
+    fetchAll<any>("barcodes", "*", "id"),
+    supabase.from("suppliers").select("*"),
     supabase.from("reorder_points").select("*"), supabase.from("product_categories").select("*"),
     supabase.from("branch_product_categorization").select("*"), supabase.from("tax_rates").select("*"),
   ])
   const failed = results.find(result => result.error)
   if (failed?.error) throw failed.error
-  const [batches, variants, products, barcodes, suppliers, reorderPoints, categories, categorizations, taxRates] = results.map(result => result.data ?? []) as any[][]
+  const [suppliers, reorderPoints, categories, categorizations, taxRates] = results.map(result => result.data ?? []) as any[][]
   const expiryThresholdDays = branch.expiryAlertThresholdDays
   const defaultReorderMin = branch.defaultReorderMin
   const today = new Date()

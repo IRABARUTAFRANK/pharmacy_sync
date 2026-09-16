@@ -11,6 +11,10 @@ import { loadOverview, DATA_FALLBACK_KEYS, type OverviewData, type OverviewPerio
 import type { LiveAlert } from '../lib/alerts'
 import type { TranslationKey } from '../lib/i18n/en'
 import { filenameSafe, type ReportSection } from '../lib/export'
+import {
+  dismissOnboardingChecklist, isOnboardingChecklistDismissed, loadOnboardingProgress, onboardingCompletionCount,
+  type OnboardingProgress,
+} from '../lib/gettingStarted'
 
 type DrillDownMetric = 'revenue' | 'transactions' | 'items'
 
@@ -500,6 +504,81 @@ function KPICard({ tile, active, onClick }: { tile: Tile; active: boolean; onCli
   )
 }
 
+// ─── Getting Started checklist ─────────────────────────────────────────────
+// Part of the Slack-style "just-in-time" onboarding redesign: a persistent,
+// dismissible, non-blocking checklist (see lib/gettingStarted.ts) rather than
+// the older one-shot linear GuidedTour (lib/tour.tsx) that fires once and
+// explains the shell, not the job. Each item reflects real usage server-side
+// and is clickable straight through to where that task actually happens.
+
+interface ChecklistItemDef {
+  key: keyof OnboardingProgress
+  labelKey: TranslationKey
+  page: string
+}
+
+const CHECKLIST_ITEMS: ChecklistItemDef[] = [
+  { key: 'receivedStock', labelKey: 'overviewPage.checklistReceiveStock', page: 'receiving' },
+  { key: 'completedSale', labelKey: 'overviewPage.checklistCompleteSale', page: 'sales' },
+  { key: 'setReorderPoint', labelKey: 'overviewPage.checklistSetReorderPoint', page: 'inventory' },
+  { key: 'addedPatient', labelKey: 'overviewPage.checklistAddPatient', page: 'sales' },
+  { key: 'invitedStaff', labelKey: 'overviewPage.checklistInviteStaff', page: 'branch' },
+]
+
+function OnboardingChecklist({ progress, onNavigate, onDismiss }: {
+  progress: OnboardingProgress
+  onNavigate: (page: string) => void
+  onDismiss: () => void
+}) {
+  const { t } = useTranslation()
+  const done = onboardingCompletionCount(progress)
+  const total = CHECKLIST_ITEMS.length
+  return (
+    <Card style={{ marginBottom: 16, background: 'var(--primary-light, #eef4fb)', border: '1px solid var(--border-strong)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--ink)' }}>{t('overviewPage.checklistTitle')}</div>
+          <div style={{ fontSize: 11, color: 'var(--ink-muted)', marginTop: 2 }}>{t('overviewPage.checklistSubtitle', { done, total })}</div>
+        </div>
+        <button
+          onClick={onDismiss}
+          title={t('overviewPage.checklistDismiss')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-muted)', fontSize: 16, padding: '0 2px', lineHeight: 1 }}
+        >×</button>
+      </div>
+      <div style={{ height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 3, marginBottom: 12, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${(done / total) * 100}%`, background: 'var(--primary)', borderRadius: 3, transition: 'width 0.3s' }} />
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {CHECKLIST_ITEMS.map(item => {
+          const itemDone = progress[item.key]
+          return (
+            <button
+              key={item.key}
+              onClick={() => { if (!itemDone) onNavigate(item.page) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 20,
+                border: itemDone ? '1px solid transparent' : '1px solid var(--border-strong)',
+                background: itemDone ? 'rgba(22,163,74,0.08)' : 'var(--surface)',
+                cursor: itemDone ? 'default' : 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              <span style={{
+                width: 16, height: 16, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, flexShrink: 0, background: itemDone ? '#16a34a' : 'transparent',
+                border: itemDone ? 'none' : '1.5px solid var(--border-strong)', color: '#fff',
+              }}>{itemDone ? '✓' : ''}</span>
+              <span style={{ fontSize: 12, color: itemDone ? 'var(--ink-muted)' : 'var(--ink)', textDecoration: itemDone ? 'line-through' : 'none' }}>
+                {t(item.labelKey)}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
 // ─── States ──────────────────────────────────────────────────────────────────
 
 function Panel({ icon, title, msg }: { icon: string; title: string; msg: string }) {
@@ -530,13 +609,15 @@ const INSIGHT_STYLE = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage({
-  period, branchName, alerts, onViewAlerts, onViewFullReport,
+  period, branchName, alerts, onViewAlerts, onViewFullReport, userId, onNavigate,
 }: {
   period: OverviewPeriod
   branchName: string
   alerts: LiveAlert[]
   onViewAlerts: () => void
   onViewFullReport?: () => void
+  userId: string
+  onNavigate: (page: string) => void
 }) {
   const { t } = useTranslation()
   const { term: searchTerm } = useGlobalSearch()
@@ -544,6 +625,25 @@ export default function OverviewPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  const [onboarding, setOnboarding] = useState<OnboardingProgress | null>(null)
+  const [checklistDismissed, setChecklistDismissed] = useState(() => isOnboardingChecklistDismissed(userId))
+
+  useEffect(() => {
+    if (checklistDismissed) return
+    loadOnboardingProgress()
+      .then(progress => {
+        setOnboarding(progress)
+        // All five done is itself a completion moment -- dismiss automatically
+        // rather than leaving a "5/5 done" card sitting on the dashboard
+        // forever waiting to be manually closed.
+        if (onboardingCompletionCount(progress) === CHECKLIST_ITEMS.length) {
+          dismissOnboardingChecklist(userId)
+          setChecklistDismissed(true)
+        }
+      })
+      .catch(() => { /* best-effort -- the checklist just stays hidden this visit */ })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checklistDismissed, userId])
   const [drillDownMetric, setDrillDownMetric] = useState<DrillDownMetric | null>(null)
   const [showInventoryDrillDown, setShowInventoryDrillDown] = useState(false)
   const [showExpiringDrillDown, setShowExpiringDrillDown] = useState(false)
@@ -649,6 +749,14 @@ export default function OverviewPage({
 
   return (
     <>
+      {onboarding && !checklistDismissed && (
+        <OnboardingChecklist
+          progress={onboarding}
+          onNavigate={onNavigate}
+          onDismiss={() => { dismissOnboardingChecklist(userId); setChecklistDismissed(true) }}
+        />
+      )}
+
       {/* Toolbar */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, alignItems: 'center' }}>
         <span style={{ fontSize: 12, color: 'var(--ink-muted)', flex: 1 }}>

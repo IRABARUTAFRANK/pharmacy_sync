@@ -32,8 +32,10 @@ export const ALERT_SOURCE_TITLE_KEYS: Record<string, TranslationKey> = {
   product_request_approved: "alerts.source.productRequestApproved",
   product_request_rejected: "alerts.source.productRequestRejected",
   out_of_stock: "alerts.source.outOfStock",
+  low_stock: "alerts.source.lowStock",
   license_expiring: "alerts.source.licenseExpiring",
   forecast_completed: "alerts.source.forecastCompleted",
+  expiring_soon: "alerts.source.expiringSoon",
 }
 
 const SEVERITY: Record<string, AlertSeverity> = {
@@ -42,8 +44,10 @@ const SEVERITY: Record<string, AlertSeverity> = {
   product_request_approved: "info",
   product_request_rejected: "warning",
   out_of_stock: "critical",
+  low_stock: "warning",
   license_expiring: "critical",
   forecast_completed: "info",
+  expiring_soon: "warning",
 }
 
 interface NotificationRow {
@@ -93,6 +97,15 @@ export async function checkOutOfStockAlerts(): Promise<void> {
   if (error) throw error
 }
 
+// Same recurring shape as checkOutOfStockAlerts() above, but for "still has
+// stock, just below its reorder point" -- a heads-up before a product runs
+// out completely, not just after. Reuses the same out_of_stock_reminder_hours
+// setting for how often it re-fires.
+export async function checkLowStockAlerts(): Promise<void> {
+  const { error } = await supabase.rpc("check_low_stock_alerts")
+  if (error) throw error
+}
+
 // One-shot, not recurring: writes off (and notifies about, under the
 // existing 'stock_adjustment' source type) any barcode still marked
 // 'active' whose batch has passed its expiry_date. Once written off its
@@ -101,6 +114,15 @@ export async function checkOutOfStockAlerts(): Promise<void> {
 // actually gone. Also called from App.tsx's existing poll.
 export async function checkExpiredStock(): Promise<void> {
   const { error } = await supabase.rpc("check_expired_stock")
+  if (error) throw error
+}
+
+// One-shot per batch, same shape as checkExpiredStock() above -- but fires
+// BEFORE expiry, once a batch first falls within Branch Settings'
+// expiry_alert_threshold_days window (Inventory tab), so there is actually a
+// heads-up to act on it before checkExpiredStock() has to write it off.
+export async function checkExpiringSoonStock(): Promise<void> {
+  const { error } = await supabase.rpc("check_expiring_soon_stock")
   if (error) throw error
 }
 

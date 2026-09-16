@@ -12,6 +12,7 @@ import {
 } from "../lib/receiving"
 import { loadDeliveryBarcodes, type DeliveryBarcodeLabel } from "../lib/barcodes"
 import { errorMessage } from "../lib/supabase"
+import { useSessionDraft } from "../lib/sessionDraft"
 import {
   listMyProductRequests,
   productRequestImageUrl,
@@ -32,6 +33,7 @@ interface LineForm {
   expiryDate: string
   costPrice: string
   sellingPrice: string
+  profitMultiplier: string
   packaging: Packaging
   cartons: string
   packs: string
@@ -42,7 +44,7 @@ let lineSequence = 0
 const blankLine = (): LineForm => ({
   key: `line-${(lineSequence += 1)}`,
   productId: "", variantId: "", categoryName: "", manufacturer: "", batchNumber: "", expiryDate: "",
-  costPrice: "", sellingPrice: "", packaging: "simple", cartons: "1", packs: "1", piecesPerPack: "1",
+  costPrice: "", sellingPrice: "", profitMultiplier: "", packaging: "simple", cartons: "1", packs: "1", piecesPerPack: "1",
 })
 
 const toInt = (value: string, fallback = 0) => {
@@ -52,6 +54,17 @@ const toInt = (value: string, fallback = 0) => {
 const toMoney = (value: string) => {
   const parsed = Number.parseFloat(value)
   return Number.isFinite(parsed) ? parsed : Number.NaN
+}
+
+// Selling price = cost price × profit multiplier (e.g. cost 1000, multiplier
+// 1.4 -> sells at 1400). Returns null when either side isn't a usable number
+// yet, so callers can leave the selling price field untouched rather than
+// overwrite it with "NaN" while the pharmacist is still typing.
+const computeSellingPrice = (costPriceValue: string, multiplierValue: string): string | null => {
+  const cost = toMoney(costPriceValue)
+  const multiplier = toMoney(multiplierValue)
+  if (!(cost >= 0) || !(multiplier > 0)) return null
+  return (cost * multiplier).toFixed(2)
 }
 
 // Mirrors the RPC's own arithmetic: cartons × packs × pieces, or packs × pieces.
@@ -228,10 +241,19 @@ export default function StockReceivingPage() {
   const [requestsLoading, setRequestsLoading] = useState(true)
   const [showRequestModal, setShowRequestModal] = useState(false)
 
-  const [supplier, setSupplier] = useState("")
-  const [notes, setNotes] = useState("")
-  const [lines, setLines] = useState<LineForm[]>([blankLine()])
-  const [index, setIndex] = useState(0)
+  // Each survives navigating to another page and back (Analytics, Alerts,
+  // anywhere) -- see useSessionDraft() in lib/sessionDraft.ts for why a
+  // half-filled delivery would otherwise vanish the moment a pharmacist
+  // glances elsewhere. Cleared explicitly on a successful submit and on
+  // "Start New Delivery" (below) so a saved delivery never reappears as if
+  // unsaved.
+  const [supplier, setSupplier, clearSupplierDraft] = useSessionDraft("receiving_supplier", "")
+  const [notes, setNotes, clearNotesDraft] = useSessionDraft("receiving_notes", "")
+  const [lines, setLines, clearLinesDraft] = useSessionDraft<LineForm[]>("receiving_lines", () => [blankLine()])
+  const [index, setIndex, clearIndexDraft] = useSessionDraft("receiving_index", 0)
+  function clearReceivingDraft() {
+    clearSupplierDraft(); clearNotesDraft(); clearLinesDraft(); clearIndexDraft()
+  }
   const [motion, setMotion] = useState("slide-in-right")
   const timer = useRef<number | null>(null)
   const [addingCategory, setAddingCategory] = useState(false)
@@ -398,6 +420,7 @@ export default function StockReceivingPage() {
     setMotion("slide-in-right")
     setBarcodeLabels([])
     setLabelsError(null)
+    clearReceivingDraft()
   }
 
   const productOptions = useMemo<ComboOption[]>(() => reference.products.map(product => ({
@@ -444,6 +467,11 @@ export default function StockReceivingPage() {
     try {
       const saved = await receiveStockDelivery(supplier.trim(), notes.trim(), lines.map(buildLine))
       setReceipt(saved)
+      // Already saved -- without this, the just-submitted lines would still
+      // be sitting in the draft and reappear as if unsaved the moment the
+      // pharmacist navigates away from this receipt screen and back before
+      // clicking "Start New Delivery".
+      clearReceivingDraft()
       // Newly-received quantities and the supplier should show up in the
       // selectors straight away for the next delivery.
       void loadReceivingReference().then(setReference).catch(() => undefined)
@@ -574,7 +602,18 @@ export default function StockReceivingPage() {
               <SearchSelect
                 options={productOptions}
                 value={line.productId}
-                onSelect={productId => { updateLine({ productId, variantId: "" }); void applyProductDefaults(productId, "") }}
+                onSelect={productId => {
+                  // A product with only one variant has nothing to actually
+                  // choose -- forcing a second click through an otherwise
+                  // empty dropdown just to confirm the one option there was
+                  // never a real decision, so it's filled in automatically.
+                  // A product with several variants still requires an
+                  // explicit pick, same as before.
+                  const onlyVariant = variantsFor(productId)
+                  const autoVariantId = onlyVariant.length === 1 ? onlyVariant[0].id : ""
+                  updateLine({ productId, variantId: autoVariantId })
+                  void applyProductDefaults(productId, autoVariantId)
+                }}
                 placeholder={t("receiving.productSearchPlaceholder")}
                 invalid={!line.productId}
                 emptyMessage={t("receiving.noProductMatch")}
@@ -664,10 +703,50 @@ export default function StockReceivingPage() {
               <input type="date" value={line.expiryDate} onChange={event => updateLine({ expiryDate: event.target.value })} style={{ ...inputStyle, borderColor: line.expiryDate ? "var(--border)" : "#fca5a5" }} />
             </Field>
             <Field label={t("receiving.costPriceLabel")}>
-              <input type="number" min="0" step="0.01" value={line.costPrice} onChange={event => updateLine({ costPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.costPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
+              <input
+                type="number" min="0" step="0.01" value={line.costPrice}
+                onChange={event => {
+                  const costPrice = event.target.value
+                  const recalculated = computeSellingPrice(costPrice, line.profitMultiplier)
+                  updateLine(recalculated != null ? { costPrice, sellingPrice: recalculated } : { costPrice })
+                }}
+                style={{ ...inputStyle, borderColor: toMoney(line.costPrice) >= 0 ? "var(--border)" : "#fca5a5" }}
+              />
+            </Field>
+            <Field label={t("receiving.profitMultiplierLabel")} hint={t("receiving.profitMultiplierHint")}>
+              <input
+                type="number" min="0" step="0.01" placeholder={t("receiving.profitMultiplierPlaceholder")} value={line.profitMultiplier}
+                onChange={event => {
+                  const profitMultiplier = event.target.value
+                  const recalculated = computeSellingPrice(line.costPrice, profitMultiplier)
+                  updateLine(recalculated != null ? { profitMultiplier, sellingPrice: recalculated } : { profitMultiplier })
+                }}
+                style={inputStyle}
+              />
+              <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                {["1.3", "1.4", "1.5"].map(preset => (
+                  <button
+                    key={preset} type="button"
+                    onClick={() => {
+                      const recalculated = computeSellingPrice(line.costPrice, preset)
+                      updateLine(recalculated != null ? { profitMultiplier: preset, sellingPrice: recalculated } : { profitMultiplier: preset })
+                    }}
+                    style={{
+                      fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit",
+                      border: line.profitMultiplier === preset ? "1px solid var(--primary)" : "1px solid var(--border)",
+                      background: line.profitMultiplier === preset ? "var(--primary)" : "var(--surface)",
+                      color: line.profitMultiplier === preset ? "#fff" : "var(--ink-mid)",
+                    }}
+                  >×{preset}</button>
+                ))}
+              </div>
             </Field>
             <Field label={t("receiving.sellingPriceLabel")}>
-              <input type="number" min="0" step="0.01" value={line.sellingPrice} onChange={event => updateLine({ sellingPrice: event.target.value })} style={{ ...inputStyle, borderColor: toMoney(line.sellingPrice) >= 0 ? "var(--border)" : "#fca5a5" }} />
+              <input
+                type="number" min="0" step="0.01" value={line.sellingPrice}
+                onChange={event => updateLine({ sellingPrice: event.target.value, profitMultiplier: "" })}
+                style={{ ...inputStyle, borderColor: toMoney(line.sellingPrice) >= 0 ? "var(--border)" : "#fca5a5" }}
+              />
             </Field>
           </div>
 

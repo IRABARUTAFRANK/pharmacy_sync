@@ -6844,3 +6844,2476 @@ $$;
 
 revoke all on function public.list_compliance_transactions(date, date, integer) from public, anon;
 grant execute on function public.list_compliance_transactions(date, date, integer) to authenticated;
+
+-- ============================================================================
+-- INSURANCE FIXED VARIANT PRICES
+-- ============================================================================
+-- Per-provider, per-exact-variant FIXED selling price for insurance sales,
+-- completely independent of the branch's own wholesale-cost-based
+-- stock_batches.selling_price. Real pharmacist feedback: insurance providers
+-- negotiate one fixed price per medicine (per exact strength/form, since
+-- "Amoxicillin 500mg" and "Amoxicillin 250mg" are billed separately), and
+-- that price has nothing to do with what any given branch paid for its own
+-- stock. A row existing here for (provider, variant) means "this is what
+-- that provider pays for that exact item" -- complete_sale() (redeclared
+-- below) prices the line from here instead of the batch's selling_price
+-- when a match exists, then still applies insurance_product_coverage's
+-- normal percentage split on top of THIS price, not the walk-in one.
+-- No row here for a given (provider, variant) just falls back to the
+-- existing walk-in-price behavior, unchanged.
+create table if not exists public.insurance_variant_prices (
+  insurance_provider_id uuid not null references public.insurance_providers(id),
+  product_variant_id uuid not null references public.product_variants(id),
+  fixed_price numeric(12,2) not null check(fixed_price >= 0),
+  primary key(insurance_provider_id, product_variant_id)
+);
+
+alter table public.insurance_variant_prices enable row level security;
+grant select on public.insurance_variant_prices to authenticated;
+
+drop policy if exists "insurance variant prices readable" on public.insurance_variant_prices;
+create policy "insurance variant prices readable" on public.insurance_variant_prices for select to authenticated using (true);
+
+-- Sets (or changes) the fixed price for one (provider, variant) pair.
+-- Mirrors admin_set_insurance_coverage()'s upsert shape exactly.
+create or replace function public.admin_set_insurance_variant_price(
+  p_provider_id uuid, p_product_variant_id uuid, p_fixed_price numeric
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  if p_fixed_price is null or p_fixed_price < 0 then
+    raise exception 'Fixed price must be zero or greater';
+  end if;
+  insert into public.insurance_variant_prices (insurance_provider_id, product_variant_id, fixed_price)
+  values (p_provider_id, p_product_variant_id, p_fixed_price)
+  on conflict (insurance_provider_id, product_variant_id) do update set fixed_price = excluded.fixed_price;
+end;
+$$;
+
+-- Removes the fixed price, so the variant reverts to walk-in pricing for
+-- that provider.
+create or replace function public.admin_clear_insurance_variant_price(p_provider_id uuid, p_product_variant_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform public.assert_super_admin();
+  delete from public.insurance_variant_prices
+  where insurance_provider_id = p_provider_id and product_variant_id = p_product_variant_id;
+end;
+$$;
+
+revoke all on function public.admin_set_insurance_variant_price(uuid, uuid, numeric) from public, anon;
+grant execute on function public.admin_set_insurance_variant_price(uuid, uuid, numeric) to authenticated;
+revoke all on function public.admin_clear_insurance_variant_price(uuid, uuid) from public, anon;
+grant execute on function public.admin_clear_insurance_variant_price(uuid, uuid) to authenticated;
+
+-- ============================================================================
+-- complete_sale() — price insurance sales from insurance_variant_prices
+-- ============================================================================
+-- Re-declared solely to add v_effective_price: every one of the four pricing
+-- branches below (pack whole/pieces, box whole, box packs, box pieces) used
+-- to price a line straight from v_barcode.selling_price (the walk-in price)
+-- unconditionally, insurance or not. Now, for an insurance sale, each line
+-- first checks insurance_variant_prices for that provider + the line's exact
+-- product_variant_id; if a fixed price is on file, the line is priced from
+-- that instead, and insurance_product_coverage's percentage split (already
+-- existing, unchanged) is applied on top of it. No match (including every
+-- walk-in sale, since p_insurance_provider_id is null) falls back to
+-- v_barcode.selling_price exactly as before. Everything else in this
+-- function is unchanged from the prior declaration.
+create or replace function public.complete_sale(
+  p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null,
+  p_payment_method text default null, p_discount_id uuid default null
+)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  v_receipt_prefix text;
+  line jsonb;
+  v_code text;
+  v_mode text;
+  v_quantity integer;
+  v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_effective_price numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+  v_discount record;
+  v_discount_amount numeric := 0;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_payment_method is not null and p_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported payment method %', p_payment_method;
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  if p_discount_id is not null then
+    select * into v_discount from public.discounts where id = p_discount_id;
+    if v_discount.id is null then raise exception 'Unknown discount'; end if;
+    if (v_discount.valid_from is not null and v_discount.valid_from > current_date)
+       or (v_discount.valid_to is not null and v_discount.valid_to < current_date) then
+      raise exception 'This discount is not currently valid';
+    end if;
+  end if;
+
+  select coalesce(receipt_number_prefix, 'RCT') into v_receipt_prefix from public.branches where id = v_branch;
+  v_receipt_number := format('%s-%s-%s', v_receipt_prefix, to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id, sb.expiry_date
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.expiry_date < current_date then
+      raise exception 'Barcode %: this batch expired on % and cannot be sold', v_code, v_barcode.expiry_date;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    -- Fixed insurance price, if one is on file for this exact provider +
+    -- variant; otherwise the normal walk-in price, unchanged.
+    if p_insurance_provider_id is null then
+      v_effective_price := v_barcode.selling_price;
+    else
+      select fixed_price into v_effective_price
+        from public.insurance_variant_prices
+        where insurance_provider_id = p_insurance_provider_id and product_variant_id = v_barcode.product_variant_id;
+      if v_effective_price is null then
+        v_effective_price := v_barcode.selling_price;
+      end if;
+    end if;
+
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
+
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
+
+      v_line_total := v_effective_price * v_child_quantity;
+      v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+      v_subtotal := v_line_total - v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_line_total := v_effective_price * v_quantity;
+        v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+        v_subtotal := v_line_total - v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
+  end loop;
+
+  -- Discount comes off the patient's own portion only (post-insurance),
+  -- capped so it can never push what the patient owes below zero. What
+  -- insurance is billed (v_covered_total, and the claim's own
+  -- coverage_percentage_applied below) is computed from the real gross
+  -- v_total and never touched by a pharmacy-side discount.
+  if p_discount_id is not null then
+    v_discount_amount := case
+      when v_discount.discount_type = 'percentage' then round((v_total - v_covered_total) * v_discount.value / 100, 2)
+      else least(v_discount.value, greatest(v_total - v_covered_total, 0))
+    end;
+  end if;
+
+  update public.sales
+  set total_amount = v_total - v_discount_amount, discount_id = p_discount_id, payment_method = p_payment_method
+  where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total - v_discount_amount, v_covered_total, (v_total - v_discount_amount) - v_covered_total;
+end;
+$$;
+
+revoke all on function public.complete_sale(jsonb, uuid, uuid, text, uuid) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid, uuid, text, uuid) to authenticated;
+
+-- ── lookup_barcode(): add cost_price, for the sale cart's bargain/profit check ──
+-- Needed so the Sales page can show a cashier, live, whether a bargained
+-- price still clears what the branch actually paid for this exact batch,
+-- before they commit to it. complete_sale() does its own separate, row-locked
+-- lookup and is unaffected by this. create or replace cannot change a
+-- function's return columns, so the old signature has to be dropped first --
+-- this is the FINAL declaration of lookup_barcode() in this file.
+drop function if exists public.lookup_barcode(text);
+create function public.lookup_barcode(p_code text)
+returns table(
+  barcode_id uuid, code text, barcode_type text, status text,
+  quantity_available integer, pieces_per_pack integer, child_count integer,
+  child_pieces_per_pack integer, active_child_count integer,
+  parent_code text, stock_batch_id uuid, batch_number text, expiry_date date,
+  delivery_code text, selling_price numeric, cost_price numeric, product_id uuid, product_name text,
+  tax_rate_id uuid, dosage text, form text, manufacturer_name text, supplier_name text
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    bc.id,
+    bc.code::text,
+    bc.barcode_type::text,
+    bc.status::text,
+    bc.quantity_available,
+    bc.pieces_per_pack,
+    bc.child_count,
+    case when bc.barcode_type = 'box' then (
+      select max(cpp.pieces_per_pack)::integer
+      from public.barcodes cpp
+      where cpp.parent_barcode_id = bc.id
+        and cpp.barcode_type = 'pack'
+        and cpp.status = 'active'
+        and cpp.quantity_available > 0
+    ) end as child_pieces_per_pack,
+    case when bc.barcode_type = 'box' then (
+      select count(*)::integer
+      from public.barcodes cpp
+      where cpp.parent_barcode_id = bc.id
+        and cpp.barcode_type = 'pack'
+        and cpp.status = 'active'
+        and cpp.quantity_available > 0
+    ) end as active_child_count,
+    parent.code::text,
+    sb.id,
+    sb.batch_number::text,
+    sb.expiry_date,
+    sb.delivery_code::text,
+    sb.selling_price,
+    sb.cost_price,
+    p.id,
+    p.name::text,
+    p.tax_rate_id,
+    pv.dosage::text,
+    pv.form::text,
+    sb.manufacturer_name::text,
+    s.supplier_name::text
+  from public.barcodes bc
+  join public.stock_batches sb on sb.id = bc.stock_batch_id
+  join public.product_variants pv on pv.id = sb.product_variant_id
+  join public.products p on p.id = pv.product_id
+  left join public.barcodes parent on parent.id = bc.parent_barcode_id
+  left join public.suppliers s on s.id = sb.supplier_id
+  where upper(bc.code) = upper(btrim(p_code))
+    and (
+      public.is_super_admin()
+      or sb.branch_id = public.current_branch_id()
+    )
+  limit 1
+$$;
+
+grant execute on function public.lookup_barcode(text) to authenticated;
+
+-- ============================================================================
+-- complete_sale() — accept a cashier-bargained final price (walk-in only)
+-- ============================================================================
+-- Re-declared to add p_bargain_final_price: a real-world pharmacist workflow
+-- where a customer haggles down to a specific number ("give me this for
+-- 500"), rather than a named percentage/fixed discount from the discounts
+-- catalog. When provided, the discount applied is simply
+-- greatest(v_total - p_bargain_final_price, 0) -- computed from the
+-- server's own authoritative v_total, never trusting a client-sent discount
+-- amount directly. Rejected outright for an insurance sale (this is a
+-- walk-in-only negotiation -- insurance pricing is already fixed/negotiated
+-- separately via insurance_variant_prices) or alongside a catalog
+-- p_discount_id (avoids ambiguous stacking; pick one or the other).
+-- Everything else is unchanged from the prior declaration.
+create or replace function public.complete_sale(
+  p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null,
+  p_payment_method text default null, p_discount_id uuid default null, p_bargain_final_price numeric default null
+)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  v_receipt_prefix text;
+  line jsonb;
+  v_code text;
+  v_mode text;
+  v_quantity integer;
+  v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_effective_price numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+  v_discount record;
+  v_discount_amount numeric := 0;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_payment_method is not null and p_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported payment method %', p_payment_method;
+  end if;
+
+  if p_bargain_final_price is not null then
+    if p_insurance_provider_id is not null then
+      raise exception 'A bargained price only applies to walk-in sales, not insurance sales';
+    end if;
+    if p_discount_id is not null then
+      raise exception 'Use either a bargained price or a discount code, not both';
+    end if;
+    if p_bargain_final_price < 0 then
+      raise exception 'Bargained price cannot be negative';
+    end if;
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  if p_discount_id is not null then
+    select * into v_discount from public.discounts where id = p_discount_id;
+    if v_discount.id is null then raise exception 'Unknown discount'; end if;
+    if (v_discount.valid_from is not null and v_discount.valid_from > current_date)
+       or (v_discount.valid_to is not null and v_discount.valid_to < current_date) then
+      raise exception 'This discount is not currently valid';
+    end if;
+  end if;
+
+  select coalesce(receipt_number_prefix, 'RCT') into v_receipt_prefix from public.branches where id = v_branch;
+  v_receipt_number := format('%s-%s-%s', v_receipt_prefix, to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id, sb.expiry_date
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.expiry_date < current_date then
+      raise exception 'Barcode %: this batch expired on % and cannot be sold', v_code, v_barcode.expiry_date;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    -- Fixed insurance price, if one is on file for this exact provider +
+    -- variant; otherwise the normal walk-in price, unchanged.
+    if p_insurance_provider_id is null then
+      v_effective_price := v_barcode.selling_price;
+    else
+      select fixed_price into v_effective_price
+        from public.insurance_variant_prices
+        where insurance_provider_id = p_insurance_provider_id and product_variant_id = v_barcode.product_variant_id;
+      if v_effective_price is null then
+        v_effective_price := v_barcode.selling_price;
+      end if;
+    end if;
+
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
+
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
+
+      v_line_total := v_effective_price * v_child_quantity;
+      v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+      v_subtotal := v_line_total - v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_line_total := v_effective_price * v_quantity;
+        v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+        v_subtotal := v_line_total - v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
+  end loop;
+
+  -- Discount comes off the patient's own portion only (post-insurance),
+  -- capped so it can never push what the patient owes below zero. What
+  -- insurance is billed (v_covered_total, and the claim's own
+  -- coverage_percentage_applied below) is computed from the real gross
+  -- v_total and never touched by a pharmacy-side discount.
+  if p_discount_id is not null then
+    v_discount_amount := case
+      when v_discount.discount_type = 'percentage' then round((v_total - v_covered_total) * v_discount.value / 100, 2)
+      else least(v_discount.value, greatest(v_total - v_covered_total, 0))
+    end;
+  elsif p_bargain_final_price is not null then
+    -- v_covered_total is always 0 here (insurance + bargain are mutually
+    -- exclusive, enforced above), so this is just v_total - the agreed price.
+    v_discount_amount := greatest(v_total - p_bargain_final_price, 0);
+  end if;
+
+  update public.sales
+  set total_amount = v_total - v_discount_amount, discount_id = p_discount_id, payment_method = p_payment_method
+  where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total - v_discount_amount, v_covered_total, (v_total - v_discount_amount) - v_covered_total;
+end;
+$$;
+
+drop function if exists public.complete_sale(jsonb, uuid, uuid, text, uuid);
+revoke all on function public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric) to authenticated;
+
+-- ============================================================================
+-- RECEIPT NOTE — an optional, per-sale free-text note the pharmacist can
+-- add for the customer, shown on the printed receipt underneath the
+-- itemized total. Nothing on the receipt is removed or restructured to make
+-- room for it -- it's a purely additive line, blank/absent by default.
+-- ============================================================================
+alter table public.sales add column if not exists receipt_note varchar(500);
+
+-- sales has no direct UPDATE grant (only complete_sale() writes it, and only
+-- at creation -- see the "SALES / INSURANCE / RECEIPTS" RLS block earlier in
+-- this file), so this is the one narrow, branch-scoped way to edit the note
+-- on an existing sale after the fact.
+create or replace function public.set_sale_receipt_note(p_sale_id uuid, p_note text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = (select auth.uid()) and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may edit a receipt';
+  end if;
+
+  update public.sales
+  set receipt_note = nullif(btrim(coalesce(p_note, '')), '')
+  where id = p_sale_id and branch_id = v_branch;
+
+  if not found then
+    raise exception 'Sale not found for this branch';
+  end if;
+end;
+$$;
+
+revoke all on function public.set_sale_receipt_note(uuid, text) from public, anon;
+grant execute on function public.set_sale_receipt_note(uuid, text) to authenticated;
+
+-- get_public_receipt() — carry receipt_note through to the public "scan to
+-- view online" QR too, so what a customer sees online matches what was
+-- printed. Re-declared (not a new function) since it's a create or replace
+-- on the same signature; everything else here is identical to
+-- 2026-09-07_public_receipt_lookup.sql's own declaration -- see that file
+-- for the full rationale on why this is a single narrow RPC rather than an
+-- RLS policy.
+create or replace function public.get_public_receipt(p_sale_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch_id uuid;
+  v_cashier_id uuid;
+  v_patient_id uuid;
+  v_receipt_note text;
+
+  v_receipt_number text;
+  v_issued_at timestamptz;
+
+  v_branch_name text;
+  v_branch_tin text;
+  v_branch_address text;
+  v_branch_phone text;
+  v_branch_logo_path text;
+  v_branch_bank_account_number text;
+  v_branch_bank_account_name text;
+  v_branch_momo_pay_number text;
+
+  v_cashier_name text;
+
+  v_patient_name text;
+  v_patient_gender text;
+  v_patient_age integer;
+  v_patient_contact text;
+
+  v_provider_id uuid;
+  v_provider_name text;
+
+  v_items jsonb;
+  v_subtotal numeric;
+  v_tax_total numeric;
+  v_insurance_total numeric;
+begin
+  select s.branch_id, s.cashier_id, s.patient_id, s.receipt_note
+    into v_branch_id, v_cashier_id, v_patient_id, v_receipt_note
+    from public.sales s
+    where s.id = p_sale_id;
+
+  if not found then
+    return null;
+  end if;
+
+  select r.receipt_number, r.issued_at
+    into v_receipt_number, v_issued_at
+    from public.receipts r
+    where r.sale_id = p_sale_id;
+
+  if not found then
+    return null;
+  end if;
+
+  select b.name, b.tin, b.address, b.phone, b.logo_path,
+         b.bank_account_number, b.bank_account_name, b.momo_pay_number
+    into v_branch_name, v_branch_tin, v_branch_address, v_branch_phone, v_branch_logo_path,
+         v_branch_bank_account_number, v_branch_bank_account_name, v_branch_momo_pay_number
+    from public.branches b
+    where b.id = v_branch_id;
+
+  select u.full_name into v_cashier_name
+    from public.users u
+    where u.id = v_cashier_id;
+
+  if v_patient_id is not null then
+    select p.full_name, p.gender, p.age, p.tin_or_phone
+      into v_patient_name, v_patient_gender, v_patient_age, v_patient_contact
+      from public.patients p
+      where p.id = v_patient_id;
+  end if;
+
+  select ic.insurance_provider_id into v_provider_id
+    from public.insurance_claims ic
+    where ic.sale_id = p_sale_id;
+
+  if v_provider_id is not null then
+    select ip.name into v_provider_name
+      from public.insurance_providers ip
+      where ip.id = v_provider_id;
+  end if;
+
+  select
+    coalesce(jsonb_agg(
+      jsonb_build_object(
+        'code', bc.code,
+        'productName', coalesce(pr.name, 'Unknown product'),
+        'dosage', pv.dosage,
+        'form', pv.form,
+        'quantity', si.quantity,
+        'unitPrice', si.unit_price,
+        'subtotal', si.subtotal,
+        'taxRatePercentage', tr.rate_percentage,
+        'taxAmount', round(si.subtotal * tr.rate_percentage) / 100,
+        'insuranceCovered', si.insurance_covered_amount,
+        'patientOwed', si.subtotal + round(si.subtotal * tr.rate_percentage) / 100 - si.insurance_covered_amount
+      )
+      order by si.id
+    ), '[]'::jsonb),
+    coalesce(sum(si.subtotal), 0),
+    coalesce(sum(round(si.subtotal * tr.rate_percentage) / 100), 0),
+    coalesce(sum(si.insurance_covered_amount), 0)
+    into v_items, v_subtotal, v_tax_total, v_insurance_total
+    from public.sale_items si
+    join public.barcodes bc on bc.id = si.barcode_id
+    join public.tax_rates tr on tr.id = si.tax_rate_id
+    join public.stock_batches sb on sb.id = bc.stock_batch_id
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products pr on pr.id = pv.product_id
+    where si.sale_id = p_sale_id;
+
+  return jsonb_build_object(
+    'saleId', p_sale_id,
+    'receiptNumber', v_receipt_number,
+    'issuedAt', v_issued_at,
+    'branchName', coalesce(v_branch_name, '—'),
+    'branchTin', v_branch_tin,
+    'branchAddress', v_branch_address,
+    'branchPhone', v_branch_phone,
+    'branchLogoPath', v_branch_logo_path,
+    'branchBankAccountNumber', v_branch_bank_account_number,
+    'branchBankAccountName', v_branch_bank_account_name,
+    'branchMomoPayNumber', v_branch_momo_pay_number,
+    'cashierName', coalesce(v_cashier_name, '—'),
+    'patientName', v_patient_name,
+    'patientGender', v_patient_gender,
+    'patientAge', v_patient_age,
+    'patientContact', v_patient_contact,
+    'insuranceProviderName', v_provider_name,
+    'items', v_items,
+    'subtotal', v_subtotal,
+    'taxTotal', v_tax_total,
+    'insuranceCoveredTotal', v_insurance_total,
+    'patientOwedTotal', v_subtotal + v_tax_total - v_insurance_total,
+    'grandTotal', v_subtotal + v_tax_total,
+    'ebmSdcId', null,
+    'ebmMrcNo', null,
+    'ebmReceiptSignature', null,
+    'ebmInvoiceNumber', null,
+    'receiptNote', v_receipt_note
+  );
+end;
+$$;
+
+revoke all on function public.get_public_receipt(uuid) from public;
+grant execute on function public.get_public_receipt(uuid) to anon, authenticated;
+
+-- ============================================================================
+-- PATIENT INSURANCE NUMBER
+-- ============================================================================
+-- The patient's own insurance membership/policy number -- distinct from
+-- insurance_providers.tin (the insurer's own business tax ID) and from
+-- patients.tin (the patient's own, unrelated tax ID). Optional, since a
+-- walk-in cash patient has none. Follows the exact pattern
+-- 2026-09-07_patient_and_insurer_tin.sql already established for tin: a new
+-- nullable column, threaded through upsert_patient() (never blanked by a
+-- visit that doesn't retype it), and returned alongside everything else by
+-- the two read RPCs.
+
+alter table public.patients add column if not exists insurance_number varchar(50);
+
+-- Old signature dropped: adding a new trailing parameter is otherwise a
+-- distinct overload, not a replacement, so a not-yet-updated client would
+-- keep calling a version that silently has nowhere to put this value.
+drop function if exists public.upsert_patient(text, text, integer, text, text);
+
+create or replace function public.upsert_patient(
+  p_full_name text, p_gender text, p_age integer, p_phone text, p_tin text default null, p_insurance_number text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user   uuid := (select auth.uid());
+  v_branch uuid;
+  v_phone  text := nullif(btrim(coalesce(p_phone, '')), '');
+  v_tin    text := nullif(btrim(coalesce(p_tin, '')), '');
+  v_ins    text := nullif(btrim(coalesce(p_insurance_number, '')), '');
+  v_id     uuid;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then raise exception 'Only an active branch user may record a patient'; end if;
+  if nullif(btrim(coalesce(p_full_name, '')), '') is null then raise exception 'A patient name is required'; end if;
+  if v_phone is null then raise exception 'A phone number is required'; end if;
+  if p_gender is not null and p_gender not in ('male','female','other') then raise exception 'Unknown gender'; end if;
+
+  insert into public.patients (branch_id, full_name, gender, age, tin_or_phone, phone, tin, insurance_number, created_by)
+  values (v_branch, btrim(p_full_name), p_gender, p_age, v_phone, v_phone, v_tin, v_ins, v_user)
+  on conflict (branch_id, tin_or_phone)
+  do update set
+    full_name  = excluded.full_name,
+    gender     = excluded.gender,
+    age        = excluded.age,
+    phone      = excluded.phone,
+    -- Never blank an existing value just because this visit did not retype it.
+    tin              = coalesce(excluded.tin, public.patients.tin),
+    insurance_number = coalesce(excluded.insurance_number, public.patients.insurance_number),
+    updated_at = now()
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.upsert_patient(text, text, integer, text, text, text) from public, anon;
+grant execute on function public.upsert_patient(text, text, integer, text, text, text) to authenticated;
+
+drop function if exists public.find_patient_by_identifier(text);
+
+create or replace function public.find_patient_by_identifier(p_identifier text)
+returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text, phone text, tin text, insurance_number text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select p.id, p.full_name::text, p.gender::text, p.age,
+         p.tin_or_phone::text, p.phone::text, p.tin::text, p.insurance_number::text
+  from public.patients p
+  where p.branch_id = public.current_branch_id()
+    and (p.tin_or_phone = btrim(p_identifier)
+      or p.phone        = btrim(p_identifier)
+      or p.tin          = btrim(p_identifier))
+  limit 1
+$$;
+
+revoke all on function public.find_patient_by_identifier(text) from public, anon;
+grant execute on function public.find_patient_by_identifier(text) to authenticated;
+
+drop function if exists public.list_branch_patients();
+
+create or replace function public.list_branch_patients()
+returns table(
+  id uuid, full_name text, gender text, age integer, tin_or_phone text,
+  phone text, tin text, insurance_number text, visit_count integer, last_visit_at timestamptz, lifetime_spend numeric
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    p.id, p.full_name::text, p.gender::text, p.age, p.tin_or_phone::text,
+    p.phone::text, p.tin::text, p.insurance_number::text,
+    count(s.id)::integer, max(s.sold_at), coalesce(sum(s.total_amount), 0)
+  from public.patients p
+  left join public.sales s on s.patient_id = p.id
+  where p.branch_id = public.current_branch_id()
+  group by p.id, p.full_name, p.gender, p.age, p.tin_or_phone, p.phone, p.tin, p.insurance_number
+  order by max(s.sold_at) desc nulls last, p.full_name
+$$;
+
+revoke all on function public.list_branch_patients() from public, anon;
+grant execute on function public.list_branch_patients() to authenticated;
+
+-- get_public_receipt() — expose the real discount amount and the true
+-- final charged total. Until now this RPC's subtotal/taxTotal/
+-- insuranceCoveredTotal were summed straight from sale_items and never
+-- compared against sales.total_amount, so any sale that used a discount
+-- code or a cashier-bargained final price (see complete_sale()) showed a
+-- "grand total" that was too HIGH -- the pre-discount line-item sum, not
+-- what was actually charged. Mirrors the exact same fix just made in
+-- getSaleReceipt() (src/lib/sales.ts).
+create or replace function public.get_public_receipt(p_sale_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch_id uuid;
+  v_cashier_id uuid;
+  v_patient_id uuid;
+  v_receipt_note text;
+  v_total_amount numeric;
+
+  v_receipt_number text;
+  v_issued_at timestamptz;
+
+  v_branch_name text;
+  v_branch_tin text;
+  v_branch_address text;
+  v_branch_phone text;
+  v_branch_logo_path text;
+  v_branch_bank_account_number text;
+  v_branch_bank_account_name text;
+  v_branch_momo_pay_number text;
+
+  v_cashier_name text;
+
+  v_patient_name text;
+  v_patient_gender text;
+  v_patient_age integer;
+  v_patient_contact text;
+
+  v_provider_id uuid;
+  v_provider_name text;
+
+  v_items jsonb;
+  v_subtotal numeric;
+  v_tax_total numeric;
+  v_insurance_total numeric;
+  v_discount_amount numeric;
+  v_final_owed numeric;
+begin
+  select s.branch_id, s.cashier_id, s.patient_id, s.receipt_note, s.total_amount
+    into v_branch_id, v_cashier_id, v_patient_id, v_receipt_note, v_total_amount
+    from public.sales s
+    where s.id = p_sale_id;
+
+  if not found then
+    return null;
+  end if;
+
+  select r.receipt_number, r.issued_at
+    into v_receipt_number, v_issued_at
+    from public.receipts r
+    where r.sale_id = p_sale_id;
+
+  if not found then
+    return null;
+  end if;
+
+  select b.name, b.tin, b.address, b.phone, b.logo_path,
+         b.bank_account_number, b.bank_account_name, b.momo_pay_number
+    into v_branch_name, v_branch_tin, v_branch_address, v_branch_phone, v_branch_logo_path,
+         v_branch_bank_account_number, v_branch_bank_account_name, v_branch_momo_pay_number
+    from public.branches b
+    where b.id = v_branch_id;
+
+  select u.full_name into v_cashier_name
+    from public.users u
+    where u.id = v_cashier_id;
+
+  if v_patient_id is not null then
+    select p.full_name, p.gender, p.age, p.tin_or_phone
+      into v_patient_name, v_patient_gender, v_patient_age, v_patient_contact
+      from public.patients p
+      where p.id = v_patient_id;
+  end if;
+
+  select ic.insurance_provider_id into v_provider_id
+    from public.insurance_claims ic
+    where ic.sale_id = p_sale_id;
+
+  if v_provider_id is not null then
+    select ip.name into v_provider_name
+      from public.insurance_providers ip
+      where ip.id = v_provider_id;
+  end if;
+
+  select
+    coalesce(jsonb_agg(
+      jsonb_build_object(
+        'code', bc.code,
+        'productName', coalesce(pr.name, 'Unknown product'),
+        'dosage', pv.dosage,
+        'form', pv.form,
+        'quantity', si.quantity,
+        'unitPrice', si.unit_price,
+        'subtotal', si.subtotal,
+        'taxRatePercentage', tr.rate_percentage,
+        'taxAmount', round(si.subtotal * tr.rate_percentage) / 100,
+        'insuranceCovered', si.insurance_covered_amount,
+        'patientOwed', si.subtotal + round(si.subtotal * tr.rate_percentage) / 100 - si.insurance_covered_amount
+      )
+      order by si.id
+    ), '[]'::jsonb),
+    coalesce(sum(si.subtotal), 0),
+    coalesce(sum(round(si.subtotal * tr.rate_percentage) / 100), 0),
+    coalesce(sum(si.insurance_covered_amount), 0)
+    into v_items, v_subtotal, v_tax_total, v_insurance_total
+    from public.sale_items si
+    join public.barcodes bc on bc.id = si.barcode_id
+    join public.tax_rates tr on tr.id = si.tax_rate_id
+    join public.stock_batches sb on sb.id = bc.stock_batch_id
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products pr on pr.id = pv.product_id
+    where si.sale_id = p_sale_id;
+
+  v_final_owed := coalesce(v_total_amount, v_subtotal + v_tax_total - v_insurance_total);
+  v_discount_amount := greatest(0, (v_subtotal + v_tax_total - v_insurance_total) - v_final_owed);
+
+  return jsonb_build_object(
+    'saleId', p_sale_id,
+    'receiptNumber', v_receipt_number,
+    'issuedAt', v_issued_at,
+    'branchName', coalesce(v_branch_name, '—'),
+    'branchTin', v_branch_tin,
+    'branchAddress', v_branch_address,
+    'branchPhone', v_branch_phone,
+    'branchLogoPath', v_branch_logo_path,
+    'branchBankAccountNumber', v_branch_bank_account_number,
+    'branchBankAccountName', v_branch_bank_account_name,
+    'branchMomoPayNumber', v_branch_momo_pay_number,
+    'cashierName', coalesce(v_cashier_name, '—'),
+    'patientName', v_patient_name,
+    'patientGender', v_patient_gender,
+    'patientAge', v_patient_age,
+    'patientContact', v_patient_contact,
+    'insuranceProviderName', v_provider_name,
+    'items', v_items,
+    'subtotal', v_subtotal,
+    'taxTotal', v_tax_total,
+    'insuranceCoveredTotal', v_insurance_total,
+    'discountAmount', v_discount_amount,
+    'patientOwedTotal', v_final_owed,
+    'grandTotal', v_subtotal + v_tax_total,
+    'ebmSdcId', null,
+    'ebmMrcNo', null,
+    'ebmReceiptSignature', null,
+    'ebmInvoiceNumber', null,
+    'receiptNote', v_receipt_note
+  );
+end;
+$$;
+
+revoke all on function public.get_public_receipt(uuid) from public;
+grant execute on function public.get_public_receipt(uuid) to anon, authenticated;
+
+-- ============================================================================
+-- EXPIRING-SOON NOTIFICATION (the actual missing piece)
+-- ============================================================================
+-- Already-expired stock was already fully handled before this block:
+-- check_expired_stock() auto-writes it off (real stock_adjustments row +
+-- notification + flips status to 'expired'), and complete_sale() separately,
+-- unconditionally, hard-blocks selling anything past its expiry_date --
+-- both were already live. What did NOT exist was a proactive warning
+-- BEFORE that point -- branches.expiry_alert_threshold_days has existed as a
+-- setting since the Inventory tab's "Stock Levels" work, but nothing ever
+-- actually read it to raise a notification; it only ever drove passive
+-- dashboard/report display. This adds that missing check, reusing the exact
+-- same setting rather than inventing a second one.
+--
+-- One-shot per batch (like check_expired_stock(), unlike out_of_stock's
+-- repeating reminder): expiry_warned_at is set the first time a batch is
+-- found inside the warning window, so it is never re-notified on every
+-- 30-second poll. A batch that still has zero sellable stock left (already
+-- sold out) is skipped -- nothing useful to warn about there.
+
+alter table public.stock_batches add column if not exists expiry_warned_at timestamptz;
+
+create or replace function public.check_expiring_soon_stock()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_threshold integer;
+  v_flagged integer := 0;
+  rec record;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  select coalesce(expiry_alert_threshold_days, 60) into v_threshold
+    from public.branches where id = v_branch;
+
+  for rec in
+    select sb.id as stock_batch_id, sb.expiry_date, p.name as product_name, pv.dosage
+    from public.stock_batches sb
+    join public.product_variants pv on pv.id = sb.product_variant_id
+    join public.products p on p.id = pv.product_id
+    where sb.branch_id = v_branch
+      and sb.expiry_warned_at is null
+      and sb.expiry_date >= current_date
+      and sb.expiry_date <= current_date + v_threshold
+      and exists (
+        select 1 from public.barcodes bc
+        where bc.stock_batch_id = sb.id and bc.status = 'active' and bc.quantity_available > 0
+      )
+  loop
+    update public.stock_batches set expiry_warned_at = now() where id = rec.stock_batch_id;
+
+    insert into public.notifications (branch_id, source_type, source_id, message)
+    values (
+      v_branch, 'expiring_soon', rec.stock_batch_id,
+      format('%s expires on %s -- consider prioritizing it for sale or requesting a return.',
+        concat_ws(' ', rec.product_name, rec.dosage), rec.expiry_date)
+    );
+
+    v_flagged := v_flagged + 1;
+  end loop;
+
+  return v_flagged;
+end;
+$$;
+
+revoke all on function public.check_expiring_soon_stock() from public, anon;
+grant execute on function public.check_expiring_soon_stock() to authenticated;
+
+-- ============================================================================
+-- complete_sale() — a patient is mandatory for an insurance sale
+-- ============================================================================
+-- Real-world requirement: an insurance claim with no named patient behind it
+-- isn't billable/auditable, so a cashier can no longer pick a provider and
+-- check out on a bare "self-pay" style patient_id of null. Walk-in sales are
+-- completely unaffected -- p_patient_id stays optional whenever
+-- p_insurance_provider_id is null. Everything else below is byte-for-byte
+-- the prior declaration; the only change is the new check right after the
+-- provider is looked up.
+create or replace function public.complete_sale(
+  p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null,
+  p_payment_method text default null, p_discount_id uuid default null, p_bargain_final_price numeric default null
+)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  v_receipt_prefix text;
+  line jsonb;
+  v_code text;
+  v_mode text;
+  v_quantity integer;
+  v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_effective_price numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+  v_discount record;
+  v_discount_amount numeric := 0;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_payment_method is not null and p_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported payment method %', p_payment_method;
+  end if;
+
+  if p_bargain_final_price is not null then
+    if p_insurance_provider_id is not null then
+      raise exception 'A bargained price only applies to walk-in sales, not insurance sales';
+    end if;
+    if p_discount_id is not null then
+      raise exception 'Use either a bargained price or a discount code, not both';
+    end if;
+    if p_bargain_final_price < 0 then
+      raise exception 'Bargained price cannot be negative';
+    end if;
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+    if p_patient_id is null then
+      raise exception 'A patient must be recorded for an insurance sale';
+    end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  if p_discount_id is not null then
+    select * into v_discount from public.discounts where id = p_discount_id;
+    if v_discount.id is null then raise exception 'Unknown discount'; end if;
+    if (v_discount.valid_from is not null and v_discount.valid_from > current_date)
+       or (v_discount.valid_to is not null and v_discount.valid_to < current_date) then
+      raise exception 'This discount is not currently valid';
+    end if;
+  end if;
+
+  select coalesce(receipt_number_prefix, 'RCT') into v_receipt_prefix from public.branches where id = v_branch;
+  v_receipt_number := format('%s-%s-%s', v_receipt_prefix, to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id, sb.expiry_date
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.expiry_date < current_date then
+      raise exception 'Barcode %: this batch expired on % and cannot be sold', v_code, v_barcode.expiry_date;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    -- Fixed insurance price, if one is on file for this exact provider +
+    -- variant; otherwise the normal walk-in price, unchanged.
+    if p_insurance_provider_id is null then
+      v_effective_price := v_barcode.selling_price;
+    else
+      select fixed_price into v_effective_price
+        from public.insurance_variant_prices
+        where insurance_provider_id = p_insurance_provider_id and product_variant_id = v_barcode.product_variant_id;
+      if v_effective_price is null then
+        v_effective_price := v_barcode.selling_price;
+      end if;
+    end if;
+
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
+
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
+
+      v_line_total := v_effective_price * v_child_quantity;
+      v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+      v_subtotal := v_line_total - v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_line_total := v_effective_price * v_quantity;
+        v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+        v_subtotal := v_line_total - v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
+  end loop;
+
+  -- Discount comes off the patient's own portion only (post-insurance),
+  -- capped so it can never push what the patient owes below zero. What
+  -- insurance is billed (v_covered_total, and the claim's own
+  -- coverage_percentage_applied below) is computed from the real gross
+  -- v_total and never touched by a pharmacy-side discount.
+  if p_discount_id is not null then
+    v_discount_amount := case
+      when v_discount.discount_type = 'percentage' then round((v_total - v_covered_total) * v_discount.value / 100, 2)
+      else least(v_discount.value, greatest(v_total - v_covered_total, 0))
+    end;
+  elsif p_bargain_final_price is not null then
+    -- v_covered_total is always 0 here (insurance + bargain are mutually
+    -- exclusive, enforced above), so this is just v_total - the agreed price.
+    v_discount_amount := greatest(v_total - p_bargain_final_price, 0);
+  end if;
+
+  update public.sales
+  set total_amount = v_total - v_discount_amount, discount_id = p_discount_id, payment_method = p_payment_method
+  where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total - v_discount_amount, v_covered_total, (v_total - v_discount_amount) - v_covered_total;
+end;
+$$;
+
+revoke all on function public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric) to authenticated;
+
+-- ============================================================================
+-- INSURANCE PRICE LIST IMPORT — admin console upload (CSV/Excel)
+-- ============================================================================
+-- Lets an admin re-run the RHIA/MMI-style bulk import from the app itself
+-- (Insurance tab -> "Upload Price List") instead of a one-off script, since
+-- every insurer reissues their reimbursable-medicines list roughly every six
+-- months. The browser (src/lib/insuranceImport.ts) does the file parsing,
+-- header detection, and column-mapping guess; this function only ever
+-- receives already-shaped rows and does the same idempotent upsert the first
+-- RHIA import did by hand.
+--
+-- Product identity across re-imports is `[INS:<provider_id>:<drug_code>]` in
+-- products.description -- NOT a free-text tag, so the admin never has to
+-- know or type anything about it: picking the insurer from the dropdown IS
+-- the identity. Re-uploading that same insurer's next revision six months
+-- from now matches existing products by this marker and updates them in
+-- place (new price, refreshed name) instead of creating duplicates.
+--
+-- One-time migration below: the very first RHIA import (done directly
+-- against this database before this RPC existed) used a different marker
+-- shape, '[RHIA:<drug_code>]'. Rewritten here to the '[INS:<provider_id>:...'
+-- shape so it lines up with everything this function does from now on --
+-- otherwise a future re-upload of MMI's list through the app would treat all
+-- 1,446 of those products as new instead of updating them.
+update public.products
+set description = regexp_replace(description, '^\[RHIA:([^\]]+)\]', '[INS:5f42d232-5078-46ed-83d4-a6b987f309f8:\1]')
+where description like '[RHIA:%';
+
+create or replace function public.admin_import_insurance_price_list(
+  p_provider_id uuid, p_tax_rate_id uuid, p_rows jsonb
+)
+returns table(
+  created_products integer, updated_products integer,
+  created_variants integer, reused_variants integer, prices_set integer
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_product_id uuid;
+  v_variant_id uuid;
+  v_description text;
+  r record;
+  v_created_products int := 0;
+  v_updated_products int := 0;
+  v_created_variants int := 0;
+  v_reused_variants int := 0;
+  v_prices_set int := 0;
+begin
+  perform public.assert_super_admin();
+
+  if not exists (select 1 from public.tax_rates where id = p_tax_rate_id) then
+    raise exception 'Unknown tax rate';
+  end if;
+  if not exists (select 1 from public.insurance_providers where id = p_provider_id) then
+    raise exception 'Unknown insurance provider';
+  end if;
+  if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) = 0 then
+    raise exception 'At least one row is required';
+  end if;
+
+  for r in
+    select
+      nullif(btrim(coalesce(row_data->>'drugCode', '')), '') as drug_code,
+      coalesce(nullif(row_data->>'productType', ''), 'medicine') as product_type,
+      nullif(btrim(coalesce(row_data->>'productName', '')), '') as product_name,
+      nullif(btrim(coalesce(row_data->>'genericName', '')), '') as generic_name,
+      nullif(btrim(coalesce(row_data->>'dosage', '')), '') as dosage,
+      nullif(btrim(coalesce(row_data->>'form', '')), '') as form,
+      nullif(btrim(coalesce(row_data->>'unit', '')), '') as unit,
+      (row_data->>'price')::numeric as price
+    from jsonb_array_elements(p_rows) as row_data
+  loop
+    -- Defensive only -- the client (buildImportPreview()) has already
+    -- filtered out rows missing these, this just guards a hand-built payload.
+    if r.drug_code is null or r.product_name is null or r.price is null then
+      continue;
+    end if;
+
+    v_description := '[INS:' || p_provider_id::text || ':' || r.drug_code || '] ' || coalesce(r.generic_name, r.product_name);
+
+    select id into v_product_id from public.products where description = v_description limit 1;
+
+    if v_product_id is null then
+      insert into public.products (tax_rate_id, product_type, name, generic_name, description)
+      values (
+        p_tax_rate_id, case when r.product_type in ('medicine','supply','other') then r.product_type else 'medicine' end,
+        r.product_name, r.generic_name, v_description
+      )
+      returning id into v_product_id;
+      v_created_products := v_created_products + 1;
+    else
+      update public.products
+        set tax_rate_id = p_tax_rate_id,
+            product_type = case when r.product_type in ('medicine','supply','other') then r.product_type else 'medicine' end,
+            name = r.product_name, generic_name = r.generic_name
+        where id = v_product_id;
+      v_updated_products := v_updated_products + 1;
+    end if;
+
+    select id into v_variant_id from public.product_variants
+      where product_id = v_product_id
+        and coalesce(dosage, '') = coalesce(r.dosage, '')
+        and coalesce(form, '') = coalesce(r.form, '')
+      limit 1;
+
+    if v_variant_id is null then
+      insert into public.product_variants (product_id, dosage, form, unit)
+      values (v_product_id, r.dosage, r.form, r.unit)
+      returning id into v_variant_id;
+      v_created_variants := v_created_variants + 1;
+    else
+      v_reused_variants := v_reused_variants + 1;
+    end if;
+
+    insert into public.insurance_variant_prices (insurance_provider_id, product_variant_id, fixed_price)
+    values (p_provider_id, v_variant_id, r.price)
+    on conflict (insurance_provider_id, product_variant_id)
+      do update set fixed_price = excluded.fixed_price;
+    v_prices_set := v_prices_set + 1;
+  end loop;
+
+  return query select v_created_products, v_updated_products, v_created_variants, v_reused_variants, v_prices_set;
+end;
+$$;
+
+revoke all on function public.admin_import_insurance_price_list(uuid, uuid, jsonb) from public, anon;
+grant execute on function public.admin_import_insurance_price_list(uuid, uuid, jsonb) to authenticated;
+
+-- ============================================================================
+-- complete_sale() — pharmacist-entered per-sale patient coverage percentage
+-- ============================================================================
+-- Real pharmacist feedback: insurance coverage is a property of the PATIENT'S
+-- own plan, not of the product -- two patients on the same insurer buying the
+-- same medicine can owe 10% and 25% respectively depending on their personal
+-- plan/category. insurance_product_coverage (a per-provider, per-PRODUCT
+-- override) and insurance_providers.default_coverage_percentage stay exactly
+-- as they were and still apply whenever nothing else is specified -- this
+-- just adds a per-sale override on top: the pharmacist types what the
+-- PATIENT pays (e.g. "10"), and every line in this sale uses
+-- 100 - p_patient_coverage_percentage as insurance's share instead of the
+-- per-product/provider lookup. Only meaningful for an insurance sale; passing
+-- it on a walk-in sale is rejected the same way a bargained price is
+-- rejected on an insurance sale. Everything else below is byte-for-byte the
+-- prior declaration.
+--
+-- Adding a new trailing parameter (even with a default) makes Postgres treat
+-- this as a DIFFERENT overload rather than replacing the prior one in place
+-- (the same reason every earlier complete_sale() signature change in this
+-- file drops the old one first) -- without this, a 6-arg and 7-arg
+-- complete_sale would exist side by side.
+drop function if exists public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric);
+create or replace function public.complete_sale(
+  p_lines jsonb, p_insurance_provider_id uuid default null, p_patient_id uuid default null,
+  p_payment_method text default null, p_discount_id uuid default null, p_bargain_final_price numeric default null,
+  p_patient_coverage_percentage numeric default null
+)
+returns table(
+  sale_id uuid, receipt_number text, total_amount numeric,
+  insurance_covered_total numeric, patient_owed_total numeric
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+#variable_conflict use_column
+declare
+  v_branch uuid;
+  v_user uuid := (select auth.uid());
+  v_sale uuid := gen_random_uuid();
+  v_receipt_number text;
+  v_receipt_prefix text;
+  line jsonb;
+  v_code text;
+  v_mode text;
+  v_quantity integer;
+  v_barcode record;
+  v_child record;
+  v_child_quantity integer;
+  v_packs_remaining integer;
+  v_pieces_remaining integer;
+  v_product_id uuid;
+  v_tax_rate_id uuid;
+  v_tax_pct numeric;
+  v_coverage_pct numeric;
+  v_effective_price numeric;
+  v_subtotal numeric;
+  v_tax_amount numeric;
+  v_line_total numeric;
+  v_line_covered numeric;
+  v_total numeric := 0;
+  v_covered_total numeric := 0;
+  v_seen_codes text[] := array[]::text[];
+  v_provider_name text;
+  v_discount record;
+  v_discount_amount numeric := 0;
+begin
+  select u.branch_id into v_branch from public.users u where u.id = v_user and u.is_active;
+  if v_branch is null then
+    raise exception 'Only an active branch user may complete a sale';
+  end if;
+  if exists (select 1 from public.branches b where b.id = v_branch and b.status <> 'active') then
+    raise exception 'This pharmacy is not active';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) = 0 then
+    raise exception 'At least one item is required to complete a sale';
+  end if;
+
+  if p_payment_method is not null and p_payment_method not in ('cash','mtn_momo','airtel_money','card') then
+    raise exception 'Unsupported payment method %', p_payment_method;
+  end if;
+
+  if p_bargain_final_price is not null then
+    if p_insurance_provider_id is not null then
+      raise exception 'A bargained price only applies to walk-in sales, not insurance sales';
+    end if;
+    if p_discount_id is not null then
+      raise exception 'Use either a bargained price or a discount code, not both';
+    end if;
+    if p_bargain_final_price < 0 then
+      raise exception 'Bargained price cannot be negative';
+    end if;
+  end if;
+
+  if p_patient_coverage_percentage is not null then
+    if p_insurance_provider_id is null then
+      raise exception 'A patient coverage percentage only applies to an insurance sale';
+    end if;
+    if p_patient_coverage_percentage < 0 or p_patient_coverage_percentage > 100 then
+      raise exception 'Patient coverage percentage must be between 0 and 100';
+    end if;
+  end if;
+
+  if p_insurance_provider_id is not null then
+    select name into v_provider_name from public.insurance_providers where id = p_insurance_provider_id;
+    if v_provider_name is null then raise exception 'Unknown insurance provider'; end if;
+    if p_patient_id is null then
+      raise exception 'A patient must be recorded for an insurance sale';
+    end if;
+  end if;
+
+  if p_patient_id is not null and not exists (
+    select 1 from public.patients where id = p_patient_id and branch_id = v_branch
+  ) then
+    raise exception 'Unknown patient for this branch';
+  end if;
+
+  if p_discount_id is not null then
+    select * into v_discount from public.discounts where id = p_discount_id;
+    if v_discount.id is null then raise exception 'Unknown discount'; end if;
+    if (v_discount.valid_from is not null and v_discount.valid_from > current_date)
+       or (v_discount.valid_to is not null and v_discount.valid_to < current_date) then
+      raise exception 'This discount is not currently valid';
+    end if;
+  end if;
+
+  select coalesce(receipt_number_prefix, 'RCT') into v_receipt_prefix from public.branches where id = v_branch;
+  v_receipt_number := format('%s-%s-%s', v_receipt_prefix, to_char(now(), 'YYYYMMDD'), upper(substr(replace(gen_random_uuid()::text,'-',''),1,6)));
+
+  insert into public.sales (id, branch_id, cashier_id, patient_id, total_amount)
+  values (v_sale, v_branch, v_user, p_patient_id, 0);
+
+  for line in select * from jsonb_array_elements(p_lines) loop
+    v_code := upper(btrim(coalesce(line->>'code', '')));
+    if v_code = '' then raise exception 'Each line needs a barcode code'; end if;
+    if v_code = any(v_seen_codes) then
+      raise exception 'Barcode % was scanned twice in the same sale', v_code;
+    end if;
+    v_seen_codes := array_append(v_seen_codes, v_code);
+
+    select bc.*, sb.selling_price, sb.product_variant_id, sb.expiry_date
+      into v_barcode
+      from public.barcodes bc
+      join public.stock_batches sb on sb.id = bc.stock_batch_id
+      where upper(bc.code) = v_code and sb.branch_id = v_branch
+      for update of bc;
+
+    if not found then
+      raise exception 'Barcode % was not found for this branch', v_code;
+    end if;
+    if v_barcode.expiry_date < current_date then
+      raise exception 'Barcode %: this batch expired on % and cannot be sold', v_code, v_barcode.expiry_date;
+    end if;
+    if v_barcode.status <> 'active' then
+      raise exception 'Barcode % is % and cannot be sold', v_code, v_barcode.status;
+    end if;
+
+    v_mode := lower(coalesce(nullif(line->>'sell_mode', ''), 'whole'));
+    v_quantity := nullif(line->>'quantity', '')::integer;
+
+    select pv.product_id into v_product_id from public.product_variants pv where pv.id = v_barcode.product_variant_id;
+    select p.tax_rate_id into v_tax_rate_id from public.products p where p.id = v_product_id;
+    select t.rate_percentage into v_tax_pct from public.tax_rates t where t.id = v_tax_rate_id;
+
+    if p_insurance_provider_id is null then
+      v_coverage_pct := 0;
+    elsif p_patient_coverage_percentage is not null then
+      -- Pharmacist-entered override for this specific sale/patient visit --
+      -- real coverage varies by the PATIENT'S own plan, not by product, so
+      -- this takes priority over any per-product/provider default below.
+      v_coverage_pct := 100 - p_patient_coverage_percentage;
+    else
+      select coverage_percentage into v_coverage_pct
+        from public.insurance_product_coverage
+        where insurance_provider_id = p_insurance_provider_id and product_id = v_product_id;
+      if v_coverage_pct is null then
+        select default_coverage_percentage into v_coverage_pct
+          from public.insurance_providers where id = p_insurance_provider_id;
+      end if;
+    end if;
+
+    -- Fixed insurance price, if one is on file for this exact provider +
+    -- variant; otherwise the normal walk-in price, unchanged.
+    if p_insurance_provider_id is null then
+      v_effective_price := v_barcode.selling_price;
+    else
+      select fixed_price into v_effective_price
+        from public.insurance_variant_prices
+        where insurance_provider_id = p_insurance_provider_id and product_variant_id = v_barcode.product_variant_id;
+      if v_effective_price is null then
+        v_effective_price := v_barcode.selling_price;
+      end if;
+    end if;
+
+    if v_barcode.barcode_type = 'pack' then
+      if coalesce(v_barcode.quantity_available, 0) < 1 then
+        raise exception 'Barcode % has already been sold', v_code;
+      end if;
+      if v_mode not in ('whole', 'pieces') then
+        raise exception 'Barcode % is a pack; sell_mode must be whole or pieces', v_code;
+      end if;
+
+      v_child_quantity := coalesce(v_quantity, v_barcode.pieces_per_pack);
+      if v_mode = 'whole' then
+        v_child_quantity := v_barcode.pieces_per_pack;
+      end if;
+      if v_child_quantity < 1 then
+        raise exception 'Barcode % needs a quantity of at least 1 piece', v_code;
+      end if;
+      if v_child_quantity > v_barcode.pieces_per_pack then
+        raise exception 'Barcode % only has % piece(s) left', v_code, v_barcode.pieces_per_pack;
+      end if;
+
+      v_line_total := v_effective_price * v_child_quantity;
+      v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+      v_subtotal := v_line_total - v_tax_amount;
+      v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+      insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+      values (v_sale, v_barcode.id, v_tax_rate_id, v_child_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+      if v_child_quantity = v_barcode.pieces_per_pack then
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+      else
+        update public.barcodes set pieces_per_pack = pieces_per_pack - v_child_quantity where id = v_barcode.id;
+      end if;
+
+      v_total := v_total + v_line_total;
+      v_covered_total := v_covered_total + v_line_covered;
+
+    elsif v_barcode.barcode_type = 'box' then
+      if v_mode not in ('whole', 'packs', 'pieces') then
+        raise exception 'Barcode % is a carton; sell_mode must be whole, packs or pieces', v_code;
+      end if;
+
+      select count(*), coalesce(sum(pieces_per_pack), 0)
+        into v_packs_remaining, v_pieces_remaining
+        from public.barcodes
+        where parent_barcode_id = v_barcode.id
+          and barcode_type = 'pack'
+          and status = 'active'
+          and quantity_available > 0;
+
+      if v_packs_remaining = 0 then
+        raise exception 'Carton % has no packs left to sell', v_code;
+      end if;
+
+      if v_mode = 'whole' then
+        for v_child in
+          select bc.id, bc.pieces_per_pack
+          from public.barcodes bc
+          where bc.parent_barcode_id = v_barcode.id
+            and bc.barcode_type = 'pack'
+            and bc.status = 'active'
+            and bc.quantity_available > 0
+          order by bc.created_at
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+
+      elsif v_mode = 'packs' then
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a pack quantity of at least 1', v_code;
+        end if;
+        if v_quantity > v_packs_remaining then
+          raise exception 'Carton % only has % pack(s) left', v_code, v_packs_remaining;
+        end if;
+
+        for v_child in
+          select id, pieces_per_pack from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack desc, created_at
+          limit v_quantity
+          for update
+        loop
+          v_line_total := v_effective_price * v_child.pieces_per_pack;
+          v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+          v_subtotal := v_line_total - v_tax_amount;
+          v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+          insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+          values (v_sale, v_child.id, v_tax_rate_id, v_child.pieces_per_pack, v_effective_price, v_subtotal, v_line_covered);
+
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+
+          v_total := v_total + v_line_total;
+          v_covered_total := v_covered_total + v_line_covered;
+        end loop;
+
+        if v_quantity = v_packs_remaining then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+        end if;
+
+      else -- pieces from carton
+        if v_quantity is null or v_quantity < 1 then
+          raise exception 'Carton % needs a piece quantity of at least 1', v_code;
+        end if;
+
+        select id, pieces_per_pack into v_child
+          from public.barcodes
+          where parent_barcode_id = v_barcode.id
+            and barcode_type = 'pack'
+            and status = 'active'
+            and quantity_available > 0
+          order by pieces_per_pack asc, created_at
+          limit 1
+          for update;
+
+        if v_child.pieces_per_pack is null then
+          raise exception 'Carton % has no packs left to sell', v_code;
+        end if;
+        if v_quantity > v_child.pieces_per_pack then
+          raise exception 'Carton %: the openable pack only has % piece(s) left -- sell fewer pieces or use packs mode', v_code, v_child.pieces_per_pack;
+        end if;
+
+        v_line_total := v_effective_price * v_quantity;
+        v_tax_amount := round(v_line_total * coalesce(v_tax_pct, 0) / (100 + coalesce(v_tax_pct, 0)), 2);
+        v_subtotal := v_line_total - v_tax_amount;
+        v_line_covered := round(v_line_total * coalesce(v_coverage_pct, 0) / 100, 2);
+
+        insert into public.sale_items (sale_id, barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount)
+        values (v_sale, v_child.id, v_tax_rate_id, v_quantity, v_effective_price, v_subtotal, v_line_covered);
+
+        if v_quantity = v_child.pieces_per_pack then
+          update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_child.id;
+          if v_packs_remaining = 1 then
+            update public.barcodes set quantity_available = 0, status = 'sold_out' where id = v_barcode.id;
+          end if;
+        else
+          update public.barcodes set pieces_per_pack = pieces_per_pack - v_quantity where id = v_child.id;
+        end if;
+
+        v_total := v_total + v_line_total;
+        v_covered_total := v_covered_total + v_line_covered;
+      end if;
+
+    else
+      raise exception 'Barcode % has unknown type %', v_code, v_barcode.barcode_type;
+    end if;
+  end loop;
+
+  -- Discount comes off the patient's own portion only (post-insurance),
+  -- capped so it can never push what the patient owes below zero. What
+  -- insurance is billed (v_covered_total, and the claim's own
+  -- coverage_percentage_applied below) is computed from the real gross
+  -- v_total and never touched by a pharmacy-side discount.
+  if p_discount_id is not null then
+    v_discount_amount := case
+      when v_discount.discount_type = 'percentage' then round((v_total - v_covered_total) * v_discount.value / 100, 2)
+      else least(v_discount.value, greatest(v_total - v_covered_total, 0))
+    end;
+  elsif p_bargain_final_price is not null then
+    -- v_covered_total is always 0 here (insurance + bargain are mutually
+    -- exclusive, enforced above), so this is just v_total - the agreed price.
+    v_discount_amount := greatest(v_total - p_bargain_final_price, 0);
+  end if;
+
+  update public.sales
+  set total_amount = v_total - v_discount_amount, discount_id = p_discount_id, payment_method = p_payment_method
+  where id = v_sale;
+
+  insert into public.receipts (sale_id, receipt_number) values (v_sale, v_receipt_number);
+
+  if p_insurance_provider_id is not null and v_covered_total > 0 then
+    insert into public.insurance_claims (sale_id, insurance_provider_id, coverage_percentage_applied, claim_amount)
+    values (
+      v_sale, p_insurance_provider_id,
+      round(v_covered_total / nullif(v_total, 0) * 100, 2),
+      v_covered_total
+    );
+  end if;
+
+  return query select v_sale, v_receipt_number, v_total - v_discount_amount, v_covered_total, (v_total - v_discount_amount) - v_covered_total;
+end;
+$$;
+
+revoke all on function public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric, numeric) from public, anon;
+grant execute on function public.complete_sale(jsonb, uuid, uuid, text, uuid, numeric, numeric) to authenticated;
+
+-- ============================================================================
+-- LOW STOCK (below reorder point) — recurring reminder, same shape as
+-- check_out_of_stock_alerts() above
+-- ============================================================================
+-- check_out_of_stock_alerts() only ever fires at exactly zero stock -- there
+-- was nothing warning a branch BEFORE it ran out, only after. This mirrors
+-- that function exactly (same re-fire condition: silent while the last
+-- notification for this variant is still unread, re-fires once
+-- out_of_stock_reminder_hours has passed since it WAS read and the item is
+-- still below its reorder point) but for "still has stock, just not enough" --
+-- qty_available > 0 and < the product's reorder point (a per-product
+-- reorder_points row for this branch, or branches.default_reorder_min when
+-- none is set, exactly how ai_stock_status()'s 'low' status is computed).
+-- Deliberately excludes qty_available = 0: that is check_out_of_stock_alerts()'s
+-- job, not this one's -- otherwise a fully out-of-stock item would fire both.
+create or replace function public.check_low_stock_alerts()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_branch uuid := public.current_branch_id();
+  v_interval interval;
+  v_default_reorder_min integer;
+  v_created integer := 0;
+  rec record;
+  v_last record;
+begin
+  if v_branch is null then
+    return 0;
+  end if;
+
+  select (out_of_stock_reminder_hours || ' hours')::interval, default_reorder_min
+    into v_interval, v_default_reorder_min
+    from public.branches where id = v_branch;
+
+  for rec in
+    with stock as (
+      select
+        pv.id as variant_id, p.name as product_name, pv.dosage,
+        coalesce(sum(bc.quantity_available * bc.pieces_per_pack) filter (where bc.barcode_type = 'pack'), 0) as qty_available,
+        coalesce(rp.min_quantity, v_default_reorder_min) as min_quantity
+      from public.stock_batches sb
+      join public.product_variants pv on pv.id = sb.product_variant_id
+      join public.products p on p.id = pv.product_id
+      left join public.barcodes bc on bc.stock_batch_id = sb.id
+      left join public.reorder_points rp on rp.product_id = pv.product_id and rp.branch_id = v_branch
+      where sb.branch_id = v_branch
+      group by pv.id, p.name, pv.dosage, rp.min_quantity
+    )
+    select variant_id, product_name, dosage, qty_available, min_quantity
+    from stock
+    where qty_available > 0 and qty_available < min_quantity
+  loop
+    select id, is_read, created_at into v_last
+      from public.notifications
+      where branch_id = v_branch and source_type = 'low_stock' and source_id = rec.variant_id
+      order by created_at desc
+      limit 1;
+
+    if not found then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (
+        v_branch, 'low_stock', rec.variant_id,
+        format('%s is below its reorder point (%s left, minimum %s).', concat_ws(' ', rec.product_name, rec.dosage), rec.qty_available, rec.min_quantity)
+      );
+      v_created := v_created + 1;
+    elsif v_last.is_read and v_last.created_at < now() - v_interval then
+      insert into public.notifications (branch_id, source_type, source_id, message)
+      values (
+        v_branch, 'low_stock', rec.variant_id,
+        format('%s is still below its reorder point (%s left, minimum %s).', concat_ws(' ', rec.product_name, rec.dosage), rec.qty_available, rec.min_quantity)
+      );
+      v_created := v_created + 1;
+    end if;
+  end loop;
+
+  return v_created;
+end;
+$$;
+
+revoke all on function public.check_low_stock_alerts() from public, anon;
+grant execute on function public.check_low_stock_alerts() to authenticated;
+
+-- ============================================================================
+-- ONBOARDING CHECKLIST — real usage, not a client-side "did they click next"
+-- flag
+-- ============================================================================
+-- Backs the "Getting Started" card on the Overview dashboard: five genuinely
+-- useful first tasks for a brand-new branch, each one a plain existence check
+-- against the real tables that action actually writes to. Unlike the
+-- one-shot GuidedTour (lib/tour.tsx, a client-only localStorage flag), this
+-- reflects what the branch has actually DONE, so it stays correct even if
+-- opened from a different device/browser than the one where the work happened.
+create or replace function public.get_onboarding_progress()
+returns table(
+  received_stock boolean, completed_sale boolean, set_reorder_point boolean,
+  added_patient boolean, invited_staff boolean
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    exists(select 1 from public.stock_batches sb where sb.branch_id = public.current_branch_id()),
+    exists(select 1 from public.sales s where s.branch_id = public.current_branch_id()),
+    exists(select 1 from public.reorder_points rp where rp.branch_id = public.current_branch_id()),
+    exists(select 1 from public.patients p where p.branch_id = public.current_branch_id()),
+    (select count(*) from public.users u where u.branch_id = public.current_branch_id() and u.is_active) > 1
+$$;
+
+revoke all on function public.get_onboarding_progress() from public, anon;
+grant execute on function public.get_onboarding_progress() to authenticated;
+
+-- ============================================================================
+-- ONBOARDING CHECKLIST — three more real-usage signals for the App.tsx
+-- feature-discovery popup (FEATURE_DISCOVERY)
+-- ============================================================================
+-- Same function, three more columns -- a new output column changes the
+-- function's return type, so (same reasoning as complete_sale()'s own
+-- signature-change comment above) the prior 5-column declaration has to be
+-- dropped first or both would exist side by side as distinct overloads.
+--
+-- These three are deliberately NOT added to the Getting Started checklist on
+-- Overview -- that stays the five core "set up your branch" tasks. These are
+-- "did you know" feature-discovery signals instead (see App.tsx's
+-- FEATURE_DISCOVERY list): one popup at a time, picked from whichever of all
+-- eight signals is still false, so growing this list doesn't make popups
+-- show up more often -- it only broadens what might be picked.
+drop function if exists public.get_onboarding_progress();
+create or replace function public.get_onboarding_progress()
+returns table(
+  received_stock boolean, completed_sale boolean, set_reorder_point boolean,
+  added_patient boolean, invited_staff boolean, used_discount boolean,
+  created_category boolean, used_insurance boolean
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    exists(select 1 from public.stock_batches sb where sb.branch_id = public.current_branch_id()),
+    exists(select 1 from public.sales s where s.branch_id = public.current_branch_id()),
+    exists(select 1 from public.reorder_points rp where rp.branch_id = public.current_branch_id()),
+    exists(select 1 from public.patients p where p.branch_id = public.current_branch_id()),
+    (select count(*) from public.users u where u.branch_id = public.current_branch_id() and u.is_active) > 1,
+    exists(select 1 from public.sales s where s.branch_id = public.current_branch_id() and s.discount_id is not null),
+    exists(select 1 from public.product_categories pc where pc.branch_id = public.current_branch_id()),
+    exists(
+      select 1 from public.insurance_claims ic
+      join public.sales s on s.id = ic.sale_id
+      where s.branch_id = public.current_branch_id()
+    )
+$$;
+
+revoke all on function public.get_onboarding_progress() from public, anon;
+grant execute on function public.get_onboarding_progress() to authenticated;

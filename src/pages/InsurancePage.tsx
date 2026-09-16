@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts"
-import { CenterAlert, ColumnPicker, SectionHeader, StatusBadge } from "../components"
+import { Btn, CenterAlert, ColumnPicker, ExportModal, Modal, SectionHeader, StatusBadge } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import { useGlobalSearch } from "../lib/search"
@@ -149,6 +149,21 @@ function ClaimsTable({ claims, providers }: { claims: BranchInsuranceClaim[]; pr
     return next
   })
 
+  // Each insurer gets its own claim document -- they're separate businesses,
+  // each needing their own itemized list to process reimbursement, not a file
+  // with every insurer's claims mixed together. So downloading always asks
+  // which provider first (pre-filled from the on-screen filter, if one is
+  // active) rather than exporting whatever happens to be showing.
+  const [downloadProviderId, setDownloadProviderId] = useState<string | null>(null)
+  const [downloadReady, setDownloadReady] = useState(false)
+  const downloadClaims = downloadReady ? claims.filter(c => c.providerId === downloadProviderId) : []
+  const downloadProviderName = providerById.get(downloadProviderId ?? "")?.name ?? ""
+
+  function openDownloadPicker() {
+    setDownloadProviderId(providerFilter || providers[0]?.id || "")
+    setDownloadReady(false)
+  }
+
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden", marginTop: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, padding: 16 }}>
@@ -163,6 +178,9 @@ function ClaimsTable({ claims, providers }: { claims: BranchInsuranceClaim[]; pr
             {Object.entries(STATUS_STYLE).map(([value, s]) => <option key={value} value={value}>{s.label}</option>)}
           </select>
           <ColumnPicker columns={CLAIM_COLUMNS} visible={visibleColumns} onToggle={toggleColumn} />
+          <Btn small variant="secondary" onClick={openDownloadPicker}>
+            ↓ {t("insurancePage.downloadClaims")}
+          </Btn>
         </div>
       </div>
       <div style={{ overflowX: "auto" }}>
@@ -196,6 +214,55 @@ function ClaimsTable({ claims, providers }: { claims: BranchInsuranceClaim[]; pr
       <div style={{ padding: "10px 16px", borderTop: "1px solid var(--bg-alt)", fontSize: 11, color: "var(--ink-faint)" }}>
         {t("insurancePage.footerClaimsCount", { count: filtered.length })} · {t("insurancePage.footerColumnsVisible", { visible: visibleColumns.size, total: CLAIM_COLUMNS.length })}
       </div>
+
+      {downloadProviderId !== null && !downloadReady && (
+        <Modal title={t("insurancePage.downloadClaims")} onClose={() => setDownloadProviderId(null)} width={420}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--ink-muted)", lineHeight: 1.5 }}>{t("insurancePage.downloadPickerIntro")}</p>
+            {providers.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: "var(--ink-muted)" }}>{t("insurancePage.downloadNoProviders")}</p>
+            ) : (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                  {t("insurancePage.downloadPickerLabel")}
+                </div>
+                <select value={downloadProviderId} onChange={e => setDownloadProviderId(e.target.value)}
+                  style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit", background: "var(--bg)" }}>
+                  {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <Btn variant="secondary" onClick={() => setDownloadProviderId(null)}>{t("insurancePage.downloadCancel")}</Btn>
+              <Btn variant="primary" onClick={() => setDownloadReady(true)} style={providers.length === 0 ? { opacity: 0.5, pointerEvents: "none" } : {}}>
+                {t("insurancePage.downloadContinue")}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {downloadReady && downloadProviderId !== null && (
+        <ExportModal
+          title={t("insurancePage.downloadExportTitle", { provider: downloadProviderName })}
+          docTitle={t("insurancePage.downloadExportTitle", { provider: downloadProviderName })}
+          filenameBase={`claims-${downloadProviderName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`}
+          sections={[{
+            title: t("insurancePage.downloadExportTitle", { provider: downloadProviderName }),
+            headers: [
+              t("insurancePage.colReceiptNumber"), t("insurancePage.colPatient"), t("insurancePage.colPatientInsuranceNumber"),
+              t("insurancePage.colSubmittedAt"), t("insurancePage.colCoverage"), t("insurancePage.colSaleTotal"),
+              t("insurancePage.colAmount"), t("insurancePage.colStatus"),
+            ],
+            rows: downloadClaims.map(c => [
+              c.receiptNumber ?? "—", c.patientName ?? "—", c.patientInsuranceNumber ?? "—",
+              new Date(c.submittedAt).toLocaleDateString(), `${c.coveragePercentageApplied}%`, c.saleTotal,
+              c.claimAmount, STATUS_STYLE[c.status].label,
+            ]),
+          }]}
+          onClose={() => { setDownloadReady(false); setDownloadProviderId(null) }}
+        />
+      )}
     </div>
   )
 }
