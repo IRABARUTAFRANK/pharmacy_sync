@@ -1,0 +1,232 @@
+[
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "7394bb17-0c48-41d8-8061-41f2a6784b5b",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-24T19:10:46.726452+00:00",
+    "total_amount": 100
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "2b70a376-92af-49da-bb61-2d39a2eaebfb",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T08:53:38.36702+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "2e42025d-8f6f-42ab-a9f8-2582c0540712",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T08:54:47.249279+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "3af33752-bb18-4c34-baac-992c70d33261",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T08:59:13.976396+00:00",
+    "total_amount": 9100
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "b90e60c9-79ec-4ee8-800a-236ea281c2fc",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T10:17:45.928983+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "b4d3e7f9-8f27-4c17-97e9-9057972ae9c4",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T10:28:48.68463+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "38d79999-c6dc-4d6d-a96e-a95d81168d7f",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T10:38:23.930208+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "3be90112-9b77-43a7-8a55-ed8fab07bb6a",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T10:52:40.639751+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "5afe5f52-571e-4efc-bd08-e010bf7e5a27",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T10:53:46.500731+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "65f8fb8b-9808-4b51-b6fa-60a3655189a7",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T13:22:16.13836+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "4e23a58b-1d29-4285-b8e7-675e437d41e8",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-27T13:43:49.246459+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "cb3ab157-4ff3-47d7-8b93-5e1770770c0b",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-28T06:49:00.699898+00:00",
+    "total_amount": 169920
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "01cd2f3b-92ee-4df5-9659-4bb9005835c3",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-28T06:54:05.717641+00:00",
+    "total_amount": 3540
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "36d09231-7177-4395-9309-e4db3bd224b0",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-28T06:57:37.362065+00:00",
+    "total_amount": 2124
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "d93439ee-b553-46a4-ae54-4c2015dff291",
+    "patient_id": "a3fc750c-9cc8-407a-83a1-f9366358014f",
+    "payment_method": null,
+    "sold_at": "2026-08-28T06:59:51.163762+00:00",
+    "total_amount": 1416
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "4674a2e2-722c-4b9e-9baa-4c4f9f684305",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-28T07:03:56.576239+00:00",
+    "total_amount": 708
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "36d49a3d-72a1-4c17-83e1-ea5760702b46",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-28T08:42:19.085992+00:00",
+    "total_amount": 144000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "95a58305-a732-4cc5-9666-71315cb9c135",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-29T06:21:57.520099+00:00",
+    "total_amount": 3000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "0d177836-94ad-4798-a5cc-a1861b8f8b16",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-29T08:18:35.767712+00:00",
+    "total_amount": 4366
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "9f3de8f5-1187-4587-9cc0-4234280d465f",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-08-31T06:58:25.660728+00:00",
+    "total_amount": 2000
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "a2e730ef-12af-41b7-aa62-402d77f8d2fc",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-09-05T12:38:17.288038+00:00",
+    "total_amount": 4364
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "4bd2920d-aafa-4d6e-90bd-a8962981f12f",
+    "patient_id": null,
+    "payment_method": null,
+    "sold_at": "2026-09-06T07:43:45.778029+00:00",
+    "total_amount": 4364
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "cashier_id": "b7b024c3-1754-4fb4-b994-694914806914",
+    "discount_id": null,
+    "id": "56f7dbeb-e9b0-43b4-8da5-e2f805f99763",
+    "patient_id": "340fafe8-99f8-42de-9682-f1f810de8e1d",
+    "payment_method": null,
+    "sold_at": "2026-09-06T07:47:22.45821+00:00",
+    "total_amount": 4364
+  }
+]

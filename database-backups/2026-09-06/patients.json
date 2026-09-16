@@ -1,0 +1,24 @@
+[
+  {
+    "age": 10,
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T06:59:50.842533+00:00",
+    "created_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "full_name": "rhema",
+    "gender": "male",
+    "id": "a3fc750c-9cc8-407a-83a1-f9366358014f",
+    "tin_or_phone": "07893456834",
+    "updated_at": "2026-08-28T06:59:50.842533+00:00"
+  },
+  {
+    "age": 20,
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T07:47:21.938458+00:00",
+    "created_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "full_name": "IRABARUTA Frank",
+    "gender": "male",
+    "id": "340fafe8-99f8-42de-9682-f1f810de8e1d",
+    "tin_or_phone": "0796404883",
+    "updated_at": "2026-09-06T07:47:21.938458+00:00"
+  }
+]

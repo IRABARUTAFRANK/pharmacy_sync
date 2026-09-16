@@ -1,0 +1,835 @@
+[
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "80bdc343-1844-4007-a003-1bfdea88d8f9",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "51a93850-72ec-474b-a684-062569d77fdb",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "1669bc42-a38d-48b1-a840-f57536aa1916",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "59451a5a-5486-45c4-bae2-f8ad84995415",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "0508e46d-93d6-4a88-90ad-a6be29af4413",
+    "name": "Allergy & Antihistamines"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "cb4e248a-12cd-4878-a5e9-b803832231aa",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "8c3f002c-3a2e-4d4d-9738-29ed86a57cc0",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "df4d6a0e-84f5-48f9-a52a-746a9ef5661a",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "c31b36b8-c56c-43bb-84ac-3677487f2fe9",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "5719248f-442f-46e0-b905-ec46588410a2",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "aa4785a2-1950-40aa-8de0-b90f36533ca4",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "89d635d9-a4dd-44a6-89d3-56b7fee4bec4",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "d4e0c624-1230-4c6a-b4fa-92ffbf61b193",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "b8b089de-4f53-44da-b438-0ef61960c9d8",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "34eb9e5d-2d43-4c31-8971-052e0cf67283",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "8e615f93-b1c1-45aa-aafe-172db8496429",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "b94c9ff0-a0dd-4780-881b-ca2a54fd95c0",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "93f93168-d161-4e77-b6d7-97df12c615af",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "1c10a32b-8865-4984-a0a3-b42e7e89501f",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "ae5b5d03-32dd-43ff-8cc9-68617e68558c",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000001",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "3175b9a9-c555-44eb-976b-21ef50c08908",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "6f090ed4-450c-4b6e-8726-263da08df5a5",
+    "name": "Allergy & Antihistamines"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "baf47e26-e620-4e73-8d60-a231bf7ce0b7",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "41c7a7e6-ea61-4b40-97aa-dd8f40cf69fe",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "11275f59-98ad-48de-a02c-68080d234a2d",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "01ccaadd-ccee-440f-9203-0d97a359ce3d",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "7e304210-1c64-42ee-b1d2-e0938f79b9d5",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "0481602c-bc16-4117-8198-fc3e913bf493",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "cf7683f5-a131-408e-a0c6-d5faca2b8624",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "ba8e6439-4721-4b69-9ea2-70fee8001b31",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "3189b8e2-251c-49ad-94ab-81a053a213e0",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "6875599e-77fb-4316-9c7f-f14cc42caa7c",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "849a6ee4-84c6-4b51-a056-3639d3752f7c",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "ca316615-00ea-423c-8a98-8db51b65c2e8",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "b447869e-27f1-46d9-97aa-907385c799fc",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "0192b6cf-776a-4046-a679-852a24dc1b21",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "ce07a270-5859-40c2-a55b-1b0f7821fff7",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "a0000000-0000-0000-0000-000000000002",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "22a98c4c-f9c1-4fcf-8c25-c365f8f6f3b4",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "78bfcef2-6b39-4082-979e-ef5506e34321",
+    "name": "Allergy & Antihistamines"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "b1f46343-b970-453c-a8f4-9d8743698514",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "4aed20aa-c59e-4564-9901-a64452b04c7d",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "88b4029a-2af7-4746-bda0-2d1d2e9c6e7c",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "2d54bed1-6018-4afe-9203-7b19dd7856b7",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "9ead297a-b0b4-4306-8d41-a8d8d9bb77e4",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "c21e1c8c-c3b2-4244-bb40-1582b75a9936",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "646340e5-ed3c-4198-91c6-4885336afff2",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "ebf074ab-858f-4a8b-aa89-aa6f1cd1ffb2",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "4c191b85-98c1-4088-8cf8-35ff2e8c29cf",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "5431900a-acc9-422e-bdc4-2989c48061f2",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "b5886504-386e-46d7-b4d9-baa6e591db9b",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "a600909f-6719-4f06-8da5-299a10eedece",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "b9c139fc-e7d5-4c51-84bf-14166357d9bf",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "f42f384b-dc2c-49a4-8e66-880c390f073e",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "6088ec8d-3558-49d9-a4c7-db647d8d6f66",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "3af3f59e-7108-4c87-a3ec-c8c33a4b0574",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "a2f7cc80-7d05-46bf-b983-55fdac9e14cb",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "02266616-afe5-4118-8900-059712727d3d",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "d9e53cd8-bac3-4a15-9da7-0718eaba3da6",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "78991fb6-edcb-49d1-8e11-08b824ac5c7f",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "c56e08c0-22a3-44e3-8e1e-ab344e99694f",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "4811267d-2000-4bf0-8d16-adbc5effd4ee",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "fb2b95ef-294e-4cd0-b4e6-36f72c3ab3d2",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "b75fb2cb-d7b1-44ab-88e4-3aed6098e445",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "8be71954-3ca6-4b7f-a847-73fd2dec9c64",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "82fd1148-95b9-4978-8199-c3d7ddac6acb",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "55fd29ab-b601-4a13-9032-ce1194dab236",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "471397ba-04ad-43c7-a829-b0fc650c06cf",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "901fea37-e3d4-41d1-b447-568e885a377f",
+    "name": "Allergy & Antihistamines"
+  },
+  {
+    "branch_id": "98e3a7cb-d179-4db3-937b-8b05794a00ff",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "c4d2a9b4-8777-4602-93b8-984466dc9274",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "341bd30b-b4cc-4642-9b0b-383b6b2168b4",
+    "name": "Allergy & Antihistamines"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "c02033c3-739e-4e2d-a20d-0133941ee398",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "3f89a63a-3bff-4ffc-a717-752e1461c54c",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "04955bdd-63d1-4016-8da7-57ebe72fd6dd",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "96933143-4275-4fb0-a058-b63841fea6d3",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "51b7ed59-11e1-4ebe-8314-9aec127eb3fa",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "e34987ef-d119-4a05-8305-ac1b0911b2d5",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "a59fac19-c327-450e-b1bd-0c5187a8f296",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "baf682e3-e71a-45d3-bd2b-a9ae49089d3a",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "890881f9-3c65-4517-aacf-8d81fd07711a",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "647dbf46-38e7-4a3a-b5d0-646c5346f31d",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "b6733c3d-8776-46d2-855c-4365f151d361",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "13f05e16-58f7-4156-bb80-7b6a3df9721c",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "8cbee677-330e-4e03-9c46-9acea8d81ce5",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "3bd80581-0971-41ee-a4e3-5d3c65056d5f",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "633f59e5-4604-4575-94ee-aeaf8da2f20a",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "9f4f6f7b-31b3-4319-9e02-31a097b18e61",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "86e22763-d171-457d-aacf-7ddc0181515a",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "57a9f2e7-f26e-45c3-8590-991b40d1ca24",
+    "name": "Allergy & Antihistamines"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "12e7457a-865d-4f7a-9ba7-deff45521bca",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "5364ed41-473e-4e19-bbbb-b75f5cdd9936",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "664f81d3-9e0b-4b9f-84b7-73c329560405",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "82072c26-e2b5-49c7-9728-4ee399ef846d",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "33d80872-97e5-4e90-8871-ca083f57400b",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "b748f251-864d-4d10-92c0-434c89e41fed",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "29994035-f7f4-4516-a4aa-6ea17d90e3b1",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "4af9c753-102f-439e-ab55-3b36a035c621",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "f417830b-589b-4272-a29f-3e067eaa073d",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "4e0c7140-b5df-4f48-8ce8-4ceb4c3d2842",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "5fceeb84-e07e-4a86-97d7-f1b171cc659c",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "1048e9e0-572c-4d6d-986b-2eb40c5b15e7",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "7cd202fa-406d-415b-bbb5-2eda54820574",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "bdb15a1a-b787-44b4-90e5-8955ba0c6c15",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "a6d3be6b-7030-4833-bd51-4381197cb5ef",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "3dc31372-6527-4ac3-b099-78f9d716d5cc",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "b977d68f-90e7-4a60-9d1d-828ccc35e784",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Malaria prevention and treatment",
+    "id": "cb8d6e6d-5f2e-4e63-aecb-fb354084d4e5",
+    "name": "Antimalarials"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Reproductive health products",
+    "id": "8dadcc17-737d-447b-b8e7-443812b80978",
+    "name": "Contraceptives & Family Planning"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Respiratory and cold symptom relief",
+    "id": "003c6efb-4805-4d45-a1d3-082d11ccbe0b",
+    "name": "Cough, Cold & Flu"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Blood sugar management",
+    "id": "1fe33532-cab4-4964-9322-5e6284748a70",
+    "name": "Diabetes Care"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Antacids and gastrointestinal medicines",
+    "id": "e0e6ff6b-8aae-4104-a9af-204f81a10732",
+    "name": "Digestive Health"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Ophthalmic and ENT products",
+    "id": "c2d6d82f-e041-4de9-99cf-48b3229d70e1",
+    "name": "Eye & Ear Care"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Bandages, antiseptics, and wound supplies",
+    "id": "6b1a742b-5f97-44d5-aa78-b2de5a9d386f",
+    "name": "First Aid & Wound Care"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Non-conventional remedies",
+    "id": "f3252634-e73e-4d7c-882c-2ce8bcdbd28f",
+    "name": "Herbal & Traditional Medicine"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Products for mothers and infants",
+    "id": "48b3e9a1-af56-4cdb-a6e3-32c005fab4fd",
+    "name": "Maternal & Child Health"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Analgesics and antipyretics",
+    "id": "2ccf0fd6-2108-47ec-9086-5f62c74591cf",
+    "name": "Pain Relief & Fever"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "General hygiene and personal care items",
+    "id": "b1cad7a9-717f-4ca9-b0e9-4ea5aed96d75",
+    "name": "Personal Care & Hygiene"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Topical and skin treatment products",
+    "id": "c8ca123d-bbe1-4a4a-b17d-4b65971a53e7",
+    "name": "Skin Care & Dermatology"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Nutritional support products",
+    "id": "d5acd29e-812e-47bc-bb53-ec3b68779196",
+    "name": "Vitamins & Supplements"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "PPE, gloves, syringes, and general supplies",
+    "id": "3521f04b-48e1-4ccb-b1a2-e2373c2f79dc",
+    "name": "Medical Supplies"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Heart and blood pressure medicines",
+    "id": "1c1747e7-bed3-475b-a501-38cfd59a0c87",
+    "name": "Cardiovascular"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Prescription antibacterial medicines",
+    "id": "458ede2c-6c91-4aec-aa88-9e9d5fd00ae9",
+    "name": "Antibiotics"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T05:49:43.660699+00:00",
+    "description": "Allergy relief medicines",
+    "id": "d4e5f88f-b2e7-4eb5-998a-618dac2cea10",
+    "name": "Allergy & Antihistamines"
+  }
+]

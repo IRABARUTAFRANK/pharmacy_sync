@@ -1,0 +1,614 @@
+[
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-27T14:19:21.140285+00:00",
+    "id": "fde7e43f-c63f-4815-b882-b946e9e6fe27",
+    "is_read": true,
+    "message": "Damage: removed 3 piece(s) of Amoxicillin 250 (mmx)",
+    "source_id": "15ca6270-4a4f-4e64-8d5c-6014b14671f4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-27T08:59:17.290387+00:00",
+    "id": "47a08cec-0370-4734-b5c5-965469b8f1b2",
+    "is_read": true,
+    "message": "Adhesive Bandage is out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-27T15:25:38.134044+00:00",
+    "id": "4f585ef9-10d0-4dca-985b-ceb06412cb32",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T06:13:24.40521+00:00",
+    "id": "3e41beb0-7e35-4efa-b45f-0bc9297cfcb6",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "5e579533-9353-4448-8dd7-ce6dd87e41e1",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (7WYP6TSA) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "9cd330cd-2cec-4821-ae90-2d2499afc9f7",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "b030b324-a8f8-49da-af99-f248824ff752",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (DKDEBCTY) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "aa245c53-0a98-419d-a4c9-dad3723fe134",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "55a4edf3-cbed-4ae0-9b8e-0980963698b9",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (NBD3X6WT) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "1685889e-2871-478c-bab7-ac61e093638e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "343e47c4-1da8-4f0f-bd29-5c4a86273c06",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (9WRMX85G) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "9fda9bc5-77a1-4a19-a15f-ab3cac89e28b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "863769ba-baed-48fc-9dfa-b14efc4c5157",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (ZEXZTZQE) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "f132f735-7f27-4c60-bcfa-7bfb07906d84",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "ff6eea71-e4e6-44ec-ae6b-2972c029eae0",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (ZC7ZPQQQ) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "2ee2b8c3-1ac0-46de-9884-615799354ace",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "1a6387cf-c45b-4966-9709-61a3c5b3641a",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (9DQW7EZJ) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "4a024772-3abd-4f38-9140-70d7d6169805",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "9a1d9027-e1db-4615-b84c-e3578d9b1ae9",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (G7R3PH6T) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "3f6977a8-e05b-4bb9-b2c3-3a4903fb23dc",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "9e814894-0342-437d-abb8-b804e01cb776",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (5WKXA52E) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "90553518-810e-40bb-8d46-c631bac2fa49",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "3ba0f20f-9dfb-415c-9372-3216c22f72ef",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (NL5VW7SU) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "a248bdb1-1099-4ed1-bebf-505eca08b344",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T07:13:35.137243+00:00",
+    "id": "5bf89af0-9151-4ced-b9fb-538dc65e1540",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (GQTW2CX6) expired on 2026-08-27 and was automatically written off.",
+    "source_id": "abfe714e-9a88-4716-84a8-74fe134d816c",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T12:13:39.783916+00:00",
+    "id": "3ed654cc-5c08-4b64-bd5d-e4f02f3ef85c",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-28T18:14:00.995417+00:00",
+    "id": "3e4c6cd8-d80f-4303-ab04-2d1c4a761e9e",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.870066+00:00",
+    "id": "2b26125c-fd81-49b5-bf83-282abca22f13",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (PECMH3CD) expired on 2026-08-28 and was automatically written off.",
+    "source_id": "87ba5029-4eff-4553-a33a-4b104c5fe065",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.870066+00:00",
+    "id": "557cbaad-6cba-479d-9a8d-5b4960c4ca15",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (AYCXYMJU) expired on 2026-08-28 and was automatically written off.",
+    "source_id": "24c38ae9-58f3-4b44-bb6a-023edd822e06",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.870066+00:00",
+    "id": "5ccba182-8626-4fed-851a-47d15a30b81a",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (BHXL84BU) expired on 2026-08-28 and was automatically written off.",
+    "source_id": "4afc21ba-16b2-4df4-843b-7f1b872f434e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.870066+00:00",
+    "id": "9dedb5a2-6565-4917-a32a-339bc86a8b05",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (NRLEZRHU) expired on 2026-08-28 and was automatically written off.",
+    "source_id": "23f64095-f0a8-4e16-826d-f151e76e2524",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.870066+00:00",
+    "id": "c9a1619f-ab27-47b3-ad13-221994dcff75",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (QDQUHR6N) expired on 2026-08-28 and was automatically written off.",
+    "source_id": "5d6ba77a-e759-4144-854b-24f269229fc8",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.870066+00:00",
+    "id": "f3e36ea2-c274-4482-b3d1-5d5d89b7de9c",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 500 (ZS8CUDGT) expired on 2026-08-28 and was automatically written off.",
+    "source_id": "fd4b617f-db36-44de-b3ae-01459c52b08c",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T05:50:16.602823+00:00",
+    "id": "fc603d4a-ee26-4db0-a3d6-244fdc36af99",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-29T11:57:01.778473+00:00",
+    "id": "6ac3f4f2-3f51-4450-a198-ca0eebf90a78",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-30T18:16:29.837366+00:00",
+    "id": "85c2b078-84ba-4beb-a880-7c1add73954c",
+    "is_read": true,
+    "message": "Expired Writeoff: Coartem 20/120 (9R5P4LA3) expired on 2026-08-29 and was automatically written off.",
+    "source_id": "e116cbc9-3695-4555-9fd2-1ec7781c2aee",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-30T18:16:29.297143+00:00",
+    "id": "9782a7be-de1d-4f5c-b251-6177ceeb08a2",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-30T18:16:29.837366+00:00",
+    "id": "9c70c651-9304-42bc-a2d8-d2ceee93eaa9",
+    "is_read": true,
+    "message": "Expired Writeoff: Coartem 20/120 (W7LCB9PZ) expired on 2026-08-29 and was automatically written off.",
+    "source_id": "c0b2c9fa-243c-4e93-a0dd-75d0732bf47f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-08-31T07:00:09.808754+00:00",
+    "id": "01e38ae8-dfc8-4d09-8d5c-c8333239da68",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "0d542c1c-e684-4316-8aea-160ae286c34f",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (M443766B) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "c0023c4a-617a-4718-9d51-771b23facf68",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "1d8ff587-555f-4430-baed-b8766805c724",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (N6CEQNPP) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "0534f480-7eb5-410d-b23f-a25c8ae0a15b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "8c2cb4e0-20f7-4c32-bc92-b0bbb6ce87ea",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (F25C3PMY) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "594d9a9b-6384-4d40-a64c-555af0e61331",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "bc6877c0-bcf5-4b52-9ff8-ec0db7bc6131",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (PWPF7HDH) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "8251e6cb-4e22-4768-84c9-2f133754b34d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "c66e76f8-7451-43dd-8056-6b13797643e7",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (MFJ5HMFD) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "8518dc57-df1b-49eb-845c-965609a709a6",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "e1a2e944-58b5-48bd-a968-e9489bfe7bcc",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (S3GZ9NVJ) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "98ec8b23-078e-40f8-b76d-58b51a38449e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "0807dea5-df9d-48d3-a655-381a5cab4f1f",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (2R4JGQWF) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "4429e3ef-fb18-4059-af79-8acc2936dfd0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-05T07:53:20.042397+00:00",
+    "id": "0b419164-7efa-4554-9ae4-2279fdb6ac62",
+    "is_read": true,
+    "message": "Expired Writeoff: Amlodipine 5 (URDG9DU5) expired on 2026-09-04 and was automatically written off.",
+    "source_id": "81801515-49a2-4ba9-84c8-3dde50e85ca5",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-05T07:53:20.042397+00:00",
+    "id": "56956871-7592-46b2-867b-eb881ce0d5f4",
+    "is_read": true,
+    "message": "Expired Writeoff: Amlodipine 5 (SRA5QAQU) expired on 2026-09-04 and was automatically written off.",
+    "source_id": "076d5032-cd07-49f6-8a95-e08235c77fa4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "72b1f94f-5e4b-4bdb-9c95-5a71234632aa",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (7Y62A2D7) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "f95cf31b-d3b4-4ceb-a931-aaf23d43eed0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-01T08:56:30.859024+00:00",
+    "id": "86be00b9-e350-4644-bfc3-41ea698532c9",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (7ECMU3X6) expired on 2026-08-31 and was automatically written off.",
+    "source_id": "b36b8b36-452e-430f-bf49-af7d26e3d6ff",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-05T07:53:20.042397+00:00",
+    "id": "8f712d1f-1b43-4690-81f6-6454ae2e1b46",
+    "is_read": true,
+    "message": "Expired Writeoff: Amlodipine 5 (PA9WQ5YU) expired on 2026-09-04 and was automatically written off.",
+    "source_id": "97b3feb4-d531-4d4b-8fba-42f4da0d3081",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-05T07:53:20.042397+00:00",
+    "id": "a26e05d1-b42c-4405-a0e5-894755185ceb",
+    "is_read": true,
+    "message": "Expired Writeoff: Amlodipine 5 (WEADULNJ) expired on 2026-09-04 and was automatically written off.",
+    "source_id": "0e231d93-8ffe-4352-b631-9861dcdee56d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-05T07:53:20.042397+00:00",
+    "id": "b4348466-69b0-4bab-9bd6-3d13febc63cc",
+    "is_read": true,
+    "message": "Expired Writeoff: Amlodipine 5 (YN33LJE9) expired on 2026-09-04 and was automatically written off.",
+    "source_id": "495387dc-c40c-4c43-88ae-367f91daa429",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-05T07:53:50.464437+00:00",
+    "id": "8d5a3bf7-0f73-421c-a7d5-8f3b0ffcf6e9",
+    "is_read": true,
+    "message": "Adhesive Bandage is still out of stock.",
+    "source_id": "4ec3ab90-b46e-41bc-bf78-7c3bef64c65a",
+    "source_type": "out_of_stock"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "416ddc7d-b2a7-40a5-b597-a8d81620af92",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (NK3M64QF) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "b01a0b54-3271-401c-8c64-c5a44ac726f0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "47b6ada7-c877-4227-afe8-7b0a693110be",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (WM56DWSH) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "c518215b-81a1-420d-84ff-c4df04e379dc",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "4a73dcb0-8f01-4cbf-b763-22a27a346a0e",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (S6ZESGU8) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "ee92a6b0-8dc1-49e4-b823-f58c687b64bc",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "4d0ef25f-1e09-401e-a9be-4c5eb2439fb2",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (VFZHZQQK) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "acb133a4-28a1-4c36-b3c8-90606aa95a73",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "5066477d-9100-43df-8349-1f09e6269db1",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (56EPTABY) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "2ad0e6f8-b323-4e56-9730-974df6f54d84",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "0d418c25-eed1-4c96-b3d4-bea2a166fcff",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (A9BA6EEY) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "cfc2b509-2728-49f5-843e-2890c7c284d4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "251bef2a-e2e7-4837-a63b-e6338ac7776b",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (WPHL33US) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "93b38027-c984-42f0-86ab-1cdd55716bbd",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "2ce6f684-c19b-4af9-978a-1f9e02d76e01",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (TR5J37HJ) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "f06ca1d8-9f14-41b4-8313-1260624af55b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "2dd971df-479b-4aec-8000-e83e2b28de99",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (8XEQXSQU) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "8c1ab19f-88f4-48b5-bd05-03b9315569d3",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "48a1320f-84b5-4250-a424-d0b3d834d917",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (BRHKDB74) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "6ca78e66-15e1-43c0-82ed-b4914230f309",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "5c2a04d3-b8b7-4167-b3db-59c6cc9ceee7",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (92STG3KW) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "a6a4c2f6-5cfa-4186-bcab-5892e2e57e14",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "73147b99-6255-4cd9-bdcf-c640831403ec",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (YCFWPKPF) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "82eefe42-9b9d-4185-b706-6c400148b241",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "74d01264-88ec-42a0-a0ca-5348f4500946",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (YCZWAW84) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "4818eae6-0308-4104-93a6-ca44a90881b0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "7dbd344e-51b9-4574-99bb-2fe710c6f4b1",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (GT3VBFHQ) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "7490f47d-5708-4eb1-9410-dcd32d22e7c8",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "898c3ac4-f955-4132-b70c-0e231ae55030",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (GWYYPS7E) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "d6b0be7b-20e2-44b0-b1b9-0f407b69c38b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "8ba4cda6-9966-4556-a7d4-0f0912de5323",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (FMF2VB9S) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "ab23efc4-0cf9-4dbf-8470-70fce0f820f6",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "8cd1b9a0-5a6d-4bfc-8bb1-ea8ce3cc1695",
+    "is_read": true,
+    "message": "Expired Writeoff: Amoxicillin 250 (ASPY769G) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "941016c9-eab2-45cc-8b66-243b302959c0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "a3a01bc1-937f-4754-ad27-b1df1a5dba1d",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (32XPZGSP) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "9104da7d-806d-43b1-9672-8f382e41f78f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "b0f29a3b-f0df-4cba-9872-d36e892ed362",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (9K838EGH) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "26b68532-9e97-4291-a863-c871f8d63f6d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "b55eab4f-c3f5-452a-8681-a4ce7246746d",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (4YX8TH2H) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "dfd2264c-d504-476e-b6e0-59f1c1e6344d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "bf1e826a-c844-4a32-aea3-84d3716d597e",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (4G7HA5CM) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "f2a18eee-a6c2-48b4-9b5a-4f2df72dd007",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "cd84b536-d75b-477d-9f0e-88429c5cf675",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (X7RHTGHX) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "f46e9cdd-7940-441d-abae-b41cbc24b1fc",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "d9dd798b-a00e-4b1e-a985-ebc0cd3a5acc",
+    "is_read": true,
+    "message": "Expired Writeoff: Betadine (UK2LCPLA) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "c908b153-cab7-4067-a63f-ec4328ab5c27",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "917bd89d-468a-4ca3-a423-3371e81a54d4",
+    "created_at": "2026-09-06T03:56:05.761735+00:00",
+    "id": "f59f3e75-49ee-4571-b0d9-67538bf6657d",
+    "is_read": true,
+    "message": "Expired Writeoff: Amlodipine 5 (WLGBYWDG) expired on 2026-09-05 and was automatically written off.",
+    "source_id": "ed78bd0d-b29a-4f0c-be34-25adc50c5e35",
+    "source_type": "stock_adjustment"
+  }
+]

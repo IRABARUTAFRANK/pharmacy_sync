@@ -1,0 +1,582 @@
+[
+  {
+    "adjusted_at": "2026-08-27T14:19:21.140285+00:00",
+    "adjustment_type": "damage",
+    "barcode_id": null,
+    "id": "15ca6270-4a4f-4e64-8d5c-6014b14671f4",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "mmx",
+    "stock_batch_id": "3836c65a-c71a-4ba5-be63-2f297292a0f2"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "4fc75350-0744-469c-bb43-b084e7420e41",
+    "id": "9cd330cd-2cec-4821-ae90-2d2499afc9f7",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "843a7334-0483-46e5-a631-256f8c3e2bf0",
+    "id": "aa245c53-0a98-419d-a4c9-dad3723fe134",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "5c972c39-787b-4724-be7d-346a172ab15f",
+    "id": "1685889e-2871-478c-bab7-ac61e093638e",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "320f4d7e-b614-4a4f-9014-596fa23db12a",
+    "id": "9fda9bc5-77a1-4a19-a15f-ab3cac89e28b",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "f766393b-353c-42c9-bbc8-e7ff58b57141",
+    "id": "f132f735-7f27-4c60-bcfa-7bfb07906d84",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "7519bc8a-4387-4e8c-afca-432a3576cf44",
+    "id": "2ee2b8c3-1ac0-46de-9884-615799354ace",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "e278c79f-4fcb-4bfa-9161-0e6e87c85383",
+    "id": "4a024772-3abd-4f38-9140-70d7d6169805",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "f3464d71-0f9c-47ed-b11f-4600dd4f6a38",
+    "id": "3f6977a8-e05b-4bb9-b2c3-3a4903fb23dc",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "a86c593c-1dbd-4219-b45e-03ea02f2b4da",
+    "id": "90553518-810e-40bb-8d46-c631bac2fa49",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "74a815ab-e7d4-4551-95a3-455f3fce3ddf",
+    "id": "a248bdb1-1099-4ed1-bebf-505eca08b344",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-28T07:13:35.137243+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "cc4818bc-fb83-4588-9a40-c8983e60833d",
+    "id": "abfe714e-9a88-4716-84a8-74fe134d816c",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-27",
+    "stock_batch_id": "2155c6cd-af13-4c9f-8078-9557a8d2909e"
+  },
+  {
+    "adjusted_at": "2026-08-29T05:50:16.870066+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "77e83805-813e-49f7-acfa-b8f5d3f1e582",
+    "id": "87ba5029-4eff-4553-a33a-4b104c5fe065",
+    "performed_by": "b2fbdd0f-904d-4fa0-aeab-b3ee12326e69",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-08-28",
+    "stock_batch_id": "a37f5537-a65a-44b5-a22f-c16ebc3436ef"
+  },
+  {
+    "adjusted_at": "2026-08-29T05:50:16.870066+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "0f5f404d-8b03-4d56-bfed-0f491df17cd7",
+    "id": "23f64095-f0a8-4e16-826d-f151e76e2524",
+    "performed_by": "b2fbdd0f-904d-4fa0-aeab-b3ee12326e69",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-28",
+    "stock_batch_id": "a37f5537-a65a-44b5-a22f-c16ebc3436ef"
+  },
+  {
+    "adjusted_at": "2026-08-29T05:50:16.870066+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "fbed7424-5c9e-4fe2-b21b-f85f67696a8e",
+    "id": "fd4b617f-db36-44de-b3ae-01459c52b08c",
+    "performed_by": "b2fbdd0f-904d-4fa0-aeab-b3ee12326e69",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-28",
+    "stock_batch_id": "a37f5537-a65a-44b5-a22f-c16ebc3436ef"
+  },
+  {
+    "adjusted_at": "2026-08-29T05:50:16.870066+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "38f3c56a-fe0f-4951-8891-e2fee18a55e4",
+    "id": "24c38ae9-58f3-4b44-bb6a-023edd822e06",
+    "performed_by": "b2fbdd0f-904d-4fa0-aeab-b3ee12326e69",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-28",
+    "stock_batch_id": "a37f5537-a65a-44b5-a22f-c16ebc3436ef"
+  },
+  {
+    "adjusted_at": "2026-08-29T05:50:16.870066+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "c299eaef-a589-40ee-b892-dc6cc4e9e669",
+    "id": "4afc21ba-16b2-4df4-843b-7f1b872f434e",
+    "performed_by": "b2fbdd0f-904d-4fa0-aeab-b3ee12326e69",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-28",
+    "stock_batch_id": "a37f5537-a65a-44b5-a22f-c16ebc3436ef"
+  },
+  {
+    "adjusted_at": "2026-08-29T05:50:16.870066+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "3b57d775-e85c-48e6-8366-7ecb8b19901f",
+    "id": "5d6ba77a-e759-4144-854b-24f269229fc8",
+    "performed_by": "b2fbdd0f-904d-4fa0-aeab-b3ee12326e69",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-28",
+    "stock_batch_id": "a37f5537-a65a-44b5-a22f-c16ebc3436ef"
+  },
+  {
+    "adjusted_at": "2026-08-30T18:16:29.837366+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "53f6bfb8-c4fe-4ec7-9eaa-f96d7c0f0680",
+    "id": "c0b2c9fa-243c-4e93-a0dd-75d0732bf47f",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 4,
+    "reason": "Automatically written off -- batch expired on 2026-08-29",
+    "stock_batch_id": "1f6efde2-499d-4009-98a1-c79249df74ca"
+  },
+  {
+    "adjusted_at": "2026-08-30T18:16:29.837366+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "c7f1ea13-c41d-4970-9cf7-806032bef6b9",
+    "id": "e116cbc9-3695-4555-9fd2-1ec7781c2aee",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 4,
+    "reason": "Automatically written off -- batch expired on 2026-08-29",
+    "stock_batch_id": "1f6efde2-499d-4009-98a1-c79249df74ca"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "60d2b51b-483a-4c41-b03a-06886bdeac45",
+    "id": "c0023c4a-617a-4718-9d51-771b23facf68",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "0150ef80-aded-4994-9381-8b319e9d6021",
+    "id": "0534f480-7eb5-410d-b23f-a25c8ae0a15b",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "964a649e-fc8f-442a-aee1-125038afd77e",
+    "id": "8251e6cb-4e22-4768-84c9-2f133754b34d",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "00cd5dfc-8ec1-4238-9007-d0aabf9f4a49",
+    "id": "8518dc57-df1b-49eb-845c-965609a709a6",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "8d7944d8-0202-474b-9772-8c23bef08fa4",
+    "id": "594d9a9b-6384-4d40-a64c-555af0e61331",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "3b9bc4b9-68b0-4693-947f-af80c41dbb7e",
+    "id": "98ec8b23-078e-40f8-b76d-58b51a38449e",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "5b9f149c-a661-4663-a84d-c1833fbb9105",
+    "id": "b36b8b36-452e-430f-bf49-af7d26e3d6ff",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "4791cbef-fbff-479e-b86b-c8d1ec7c7b97",
+    "id": "f95cf31b-d3b4-4ceb-a931-aaf23d43eed0",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-01T08:56:30.859024+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "828f0c69-851e-4750-9480-2a52a56043e8",
+    "id": "4429e3ef-fb18-4059-af79-8acc2936dfd0",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-08-31",
+    "stock_batch_id": "95fb5d77-49d1-42af-806d-a18a24eb6c89"
+  },
+  {
+    "adjusted_at": "2026-09-05T07:53:20.042397+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "183bf190-585a-4441-8ac8-0c47dcb97e0a",
+    "id": "076d5032-cd07-49f6-8a95-e08235c77fa4",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-04",
+    "stock_batch_id": "7e10c60e-5c51-49cd-a6ac-eea7aad03979"
+  },
+  {
+    "adjusted_at": "2026-09-05T07:53:20.042397+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "e5d6de5a-9e21-40d9-80b3-bbe02287cd6e",
+    "id": "495387dc-c40c-4c43-88ae-367f91daa429",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-04",
+    "stock_batch_id": "7e10c60e-5c51-49cd-a6ac-eea7aad03979"
+  },
+  {
+    "adjusted_at": "2026-09-05T07:53:20.042397+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "bf109aa7-369c-424c-8499-cba9ae467dce",
+    "id": "0e231d93-8ffe-4352-b631-9861dcdee56d",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-04",
+    "stock_batch_id": "7e10c60e-5c51-49cd-a6ac-eea7aad03979"
+  },
+  {
+    "adjusted_at": "2026-09-05T07:53:20.042397+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "e5da25e0-0fc4-4986-a6d8-899316d65457",
+    "id": "81801515-49a2-4ba9-84c8-3dde50e85ca5",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-04",
+    "stock_batch_id": "7e10c60e-5c51-49cd-a6ac-eea7aad03979"
+  },
+  {
+    "adjusted_at": "2026-09-05T07:53:20.042397+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "c2655616-ba1b-4ba7-9282-5472d50857b4",
+    "id": "97b3feb4-d531-4d4b-8fba-42f4da0d3081",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-04",
+    "stock_batch_id": "7e10c60e-5c51-49cd-a6ac-eea7aad03979"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "6dcfe7e5-7e0b-46e2-90a8-9289a547ffbf",
+    "id": "ab23efc4-0cf9-4dbf-8470-70fce0f820f6",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "93429524-c504-4872-9662-cbb61292bbca",
+    "id": "acb133a4-28a1-4c36-b3c8-90606aa95a73",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "b5231a0f-057c-4bf2-a47c-0b85c721ff2c",
+    "id": "dfd2264c-d504-476e-b6e0-59f1c1e6344d",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "22a3b4e7-bd3b-4749-a6f4-4334bf3d7bdc",
+    "id": "f2a18eee-a6c2-48b4-9b5a-4f2df72dd007",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "775c0a58-43fc-4cf5-b4e1-183352f1249e",
+    "id": "9104da7d-806d-43b1-9672-8f382e41f78f",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "4e083095-0e24-41c9-b56c-2589229d4f01",
+    "id": "a6a4c2f6-5cfa-4186-bcab-5892e2e57e14",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "04b56127-7811-41b5-b569-7b05f81beba4",
+    "id": "c908b153-cab7-4067-a63f-ec4328ab5c27",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "6190c195-6723-42d5-aae3-741de50f1385",
+    "id": "b01a0b54-3271-401c-8c64-c5a44ac726f0",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "ace65a70-c438-496f-bfa7-d1c6eabf74aa",
+    "id": "ee92a6b0-8dc1-49e4-b823-f58c687b64bc",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "d13788f5-437e-40de-bda7-c9b124895624",
+    "id": "c518215b-81a1-420d-84ff-c4df04e379dc",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "6c3d7342-83ae-4d70-97ea-bba5380dbe3b",
+    "id": "82eefe42-9b9d-4185-b706-6c400148b241",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "e959b039-99cf-4857-ac38-8f15eee79e1c",
+    "id": "7490f47d-5708-4eb1-9410-dcd32d22e7c8",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "c93f5a51-d826-4fbe-ad7f-16ca6541a9c2",
+    "id": "2ad0e6f8-b323-4e56-9730-974df6f54d84",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "52a8287b-7646-4bde-9d09-280c7cee748f",
+    "id": "f46e9cdd-7940-441d-abae-b41cbc24b1fc",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "39760c48-bf64-49be-a58a-dccf0b025306",
+    "id": "93b38027-c984-42f0-86ab-1cdd55716bbd",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "2cf36c21-bdca-4630-8214-82e6db49bafb",
+    "id": "26b68532-9e97-4291-a863-c871f8d63f6d",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "021d1f55-9776-481a-9161-0397defed753",
+    "id": "4818eae6-0308-4104-93a6-ca44a90881b0",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "4d784a62-fc32-4c2e-b5c3-89b3b63acbb5",
+    "id": "f06ca1d8-9f14-41b4-8313-1260624af55b",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "75103461-cedb-4476-b799-3acb209020b6",
+    "id": "cfc2b509-2728-49f5-843e-2890c7c284d4",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "959046b6-a357-4822-9bfc-db61e43a6383"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "5c5090c1-39de-409f-b51e-378d530014fc",
+    "id": "ed78bd0d-b29a-4f0c-be34-25adc50c5e35",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "626a84fa-eec8-4fed-8f48-808598337ddd"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "7e76266a-4a49-427d-b8f4-025de4efd119",
+    "id": "8c1ab19f-88f4-48b5-bd05-03b9315569d3",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 1,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "3836c65a-c71a-4ba5-be63-2f297292a0f2"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "d7172a46-f717-4990-a7f0-68a3da7688f1",
+    "id": "d6b0be7b-20e2-44b0-b1b9-0f407b69c38b",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "3836c65a-c71a-4ba5-be63-2f297292a0f2"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "6879e2a0-aed9-4cb1-a6bc-f7f432835288",
+    "id": "941016c9-eab2-45cc-8b66-243b302959c0",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "3836c65a-c71a-4ba5-be63-2f297292a0f2"
+  },
+  {
+    "adjusted_at": "2026-09-06T03:56:05.761735+00:00",
+    "adjustment_type": "expired_writeoff",
+    "barcode_id": "e7b7e0dc-f098-4d70-8595-5760114b75da",
+    "id": "6ca78e66-15e1-43c0-82ed-b4914230f309",
+    "performed_by": "b7b024c3-1754-4fb4-b994-694914806914",
+    "quantity": 3,
+    "reason": "Automatically written off -- batch expired on 2026-09-05",
+    "stock_batch_id": "3836c65a-c71a-4ba5-be63-2f297292a0f2"
+  }
+]
