@@ -27,6 +27,60 @@ export function errorMessage(reason: unknown, fallback = "Something went wrong."
   return fallback
 }
 
+// PostgREST caps how many rows a single unbounded `.select()` returns (the
+// project's own "Max Rows" setting -- confirmed at this project's default of
+// 1000 in Project Settings -> Data API) -- it does NOT raise an error when a
+// query hits that cap, it just silently returns fewer rows than actually
+// exist. A `.select("*")` with no `.range()`/`.limit()` on a table that
+// keeps growing (barcodes especially -- one row per physical pack/box ever
+// received, so a single delivery of a few hundred cartons can produce
+// thousands of rows on its own) will eventually hit this and quietly show
+// incomplete data with no error anywhere to explain why. Raising the
+// project's Max Rows setting only moves the ceiling, it doesn't remove it --
+// this fetches every row by paging through with `.range()`, so no single
+// request is ever bigger than `pageSize`, and the result is always complete
+// regardless of how large the table has grown, no matter what Max Rows is
+// set to.
+//
+// pageSize (2000) is just the requested page size, not a correctness
+// requirement -- if Max Rows is lower (the 1000 default), PostgREST caps
+// every request's actual response to Max Rows regardless of what was asked
+// for, and the loop below advances by however many rows actually came back
+// each time and only stops on a genuinely empty page, so this stays
+// correct -- just slower, more round trips -- at any Max Rows setting.
+// Raising Max Rows to something like 5000 (Project Settings -> Data API)
+// mainly buys fewer round trips, not correctness.
+//
+// `build` must apply the SAME stable `.order()` the caller would have used
+// on an unbounded select -- range-based paging without a stable order can
+// return duplicate or skipped rows, since Postgres doesn't guarantee row
+// order without one. Ordering by a table's own primary key (id) is always
+// safe even when it's a UUID with no natural sequence.
+export async function fetchAllRows<T>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = 2000,
+): Promise<T[]> {
+  const all: T[] = []
+  let from = 0
+  for (;;) {
+    const { data, error } = await build(from, from + pageSize - 1)
+    if (error) throw error
+    const rows = data ?? []
+    // Stop only on a genuinely empty page, and advance by however many rows
+    // actually came back (not by pageSize) -- if Max Rows is lower than
+    // pageSize, PostgREST silently caps EVERY request to Max Rows
+    // regardless of what range was asked for, so a request for 2000 rows
+    // with Max Rows at 1000 comes back as exactly 1000 rows even when the
+    // table holds more. Treating "got fewer than pageSize" as "reached the
+    // end" would misread that as done and truncate at 1000 -- the exact bug
+    // this function exists to fix. Only an empty page is a reliable signal
+    // there's nothing left, whatever Max Rows actually is.
+    if (rows.length === 0) return all
+    all.push(...rows)
+    from += rows.length
+  }
+}
+
 // Spread into an .rpc() args object for any "view another branch" call
 // (see App.tsx's `viewingBranch`). Omits the key entirely rather than
 // sending `p_branch_id: null` -- PostgREST resolves an RPC call by which

@@ -508,3 +508,36 @@ export async function adminListAllBranches(): Promise<AllBranchRecord[]> {
     createdAt: row.created_at,
   }))
 }
+
+export interface AdminOrganizationRecord {
+  id: string
+  legalName: string
+  tradeName: string | null
+  tin: string | null
+  status: "active" | "suspended"
+  branchCount: number
+  createdAt: string
+}
+
+// Every organization on the platform, for the super-admin console's
+// Organizations tab -- branch-level detail for one org comes from filtering
+// the already-fetched adminListAllBranches() by organizationId, not a
+// second RPC.
+export async function adminListOrganizations(): Promise<AdminOrganizationRecord[]> {
+  const { data, error } = await supabaseAdmin.rpc("admin_list_organizations")
+  if (error) raise(error)
+  return ((data ?? []) as any[]).map(row => ({
+    id: row.id, legalName: row.legal_name, tradeName: row.trade_name, tin: row.tin,
+    status: row.status, branchCount: row.branch_count, createdAt: row.created_at,
+  }))
+}
+
+// The organization-level kill switch (blocks the org from adding new
+// branches -- see pharmacy_organizations.status's own header comment in
+// PROPOSAL_multi_branch_organizations.sql for why this is deliberately
+// separate from locking any one branch, not a cascading suspend of every
+// branch underneath it).
+export async function adminSetOrganizationStatus(organizationId: string, status: "active" | "suspended"): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("admin_set_organization_status", { p_organization_id: organizationId, p_status: status })
+  if (error) raise(error)
+}

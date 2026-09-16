@@ -226,6 +226,20 @@ button:focus:not(:focus-visible) { outline: none; }
 @keyframes slide-in-right  { from { opacity: 0; transform: translateX(30px); }      to { opacity: 1; transform: none; } }
 @keyframes slide-in-left   { from { opacity: 0; transform: translateX(-30px); }     to { opacity: 1; transform: none; } }
 
+/* Pharmacy map pin (src/lib/maps.ts's PHARMACY_ICON) -- a rotated-square
+   "teardrop" shape (Leaflet's own default marker image, but distinctive:
+   a pill emoji identifies "pharmacy branch" at a glance instead of a
+   generic location pin). Used by every marker on both map components
+   (BranchLocationMap, BranchesMiniMap). */
+.pharmacy-pin-wrap { background: none; border: none; }
+.pharmacy-pin {
+  width: 30px; height: 30px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);
+  background: var(--primary, #1e5fa8); border: 2.5px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  display: flex; align-items: center; justify-content: center;
+}
+.pharmacy-pin-glyph { transform: rotate(45deg); font-size: 14px; line-height: 1; }
+
 /* Public landing page + branch sign-in (BranchAccessPage). Same rule applies:
    plain CSS keyframes only, no animation library. */
 @keyframes psync-rise  { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
@@ -245,6 +259,15 @@ button:focus:not(:focus-visible) { outline: none; }
 @keyframes modal-panel-in    { from { opacity: 0; transform: scale(0.96) translateY(6px); } to { opacity: 1; transform: none; } }
 .modal-backdrop { animation: modal-backdrop-in 0.18s ease both; }
 .modal-panel    { animation: modal-panel-in 0.2s cubic-bezier(.22,.68,0,1.2) both; }
+
+/* Notification toast stack (App.tsx's ToastStack/ToastCard) -- a newly
+   arrived alert slides in from the right and fades, same timing/easing
+   family as modal-panel-in, then slides back out + fades on dismiss
+   (manual or auto-timeout) before actually being removed from the DOM. */
+@keyframes toast-in  { from { opacity: 0; transform: translateX(24px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(24px) scale(0.98); } }
+.toast-card-in  { animation: toast-in 0.22s cubic-bezier(.22,.68,0,1.2) both; }
+.toast-card-out { animation: toast-out 0.2s ease both; }
 
 /* Dashboard cards that are clickable (Card in components.tsx, when given an
    onClick) get the same hover-lift feel as the marketing page's
@@ -308,6 +331,8 @@ button:focus:not(:focus-visible) { outline: none; }
   @keyframes psync-spin      { from { transform: none; } to { transform: none; } }
   @keyframes modal-backdrop-in { from { opacity: 1; } to { opacity: 1; } }
   @keyframes modal-panel-in    { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
+  @keyframes toast-in          { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
+  @keyframes toast-out         { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
   @keyframes fadeIn             { from { opacity: 1; } to { opacity: 1; } }
   .dashboard-card-clickable:hover { transform: none; }
 }

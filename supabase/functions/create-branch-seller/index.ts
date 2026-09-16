@@ -21,16 +21,21 @@
 //
 // Third, additive path: role 'org_manager' -- an org-level grant, not a
 // branch role, so it is handled entirely separately from the two paths
-// above rather than folded into isOrgStaffingPath (an org_manager's home
-// branch may legitimately BE the caller's own branch). Requires the caller
-// to already be org_owner of branchId's organization, and enforces the same
-// one-org_manager-per-org cap invite_organization_member() enforces on the
-// OTP-invite path in 2026-09-09_organization_roles_v2.sql. On success this
-// inserts into BOTH public.users (role stored as 'manager', mirroring how
-// activate_organization_invite() already maps org_owner/org_manager invites
-// down to a branch role) and public.organization_members (role
-// 'org_manager'), and logs the grant via log_org_manager_grant() so the
-// audit trail matches every other role change in this schema.
+// above rather than folded into isOrgStaffingPath. An org_manager does NOT
+// need to come from an existing branch (or be tied to one at all) -- the
+// org_owner never picks a branch for them; organizationId is resolved from
+// the CALLER's own org_owner membership, and branchId is only an escape
+// hatch for a caller who owns more than one organization. Requires the
+// caller to already be org_owner of that organization, and enforces the
+// same one-org_manager-per-org cap invite_organization_member() enforces on
+// the OTP-invite path in 2026-09-09_organization_roles_v2.sql. On success
+// this inserts into BOTH public.users (role stored as 'manager' at an
+// auto-picked, purely technical anchor branch -- public.users.branch_id is
+// NOT NULL by schema, but list_branch_staff() excludes anyone holding an
+// active org_manager membership from every branch's roster, so this never
+// surfaces as "their branch" anywhere) and public.organization_members
+// (role 'org_manager'), and logs the grant via log_org_manager_grant() so
+// the audit trail matches every other role change in this schema.
 //
 // Deploy with (from the project root, after `supabase login` and
 // `supabase link --project-ref <ref>`):
@@ -110,22 +115,42 @@ Deno.serve(async (req) => {
   // may legitimately be the caller's own branch, which the isOrgStaffingPath
   // check further down would otherwise misclassify). See the header comment.
   if (role === "org_manager") {
-    if (!requestedBranchId) return json({ error: "A home branch is required" }, 400)
-
-    const { data: targetBranch } = await adminClient
-      .from("branches")
-      .select("id, organization_id, status")
-      .eq("id", requestedBranchId)
-      .maybeSingle()
-    if (!targetBranch || !targetBranch.organization_id) {
-      return json({ error: "That branch was not found or does not belong to an organization" }, 404)
+    // org_manager is never tied to a branch -- the org_owner picks no
+    // branch for them at all. requestedBranchId is left as an escape hatch
+    // (unused by the current UI) only for a caller who owns more than one
+    // organization, to say which one; everyone else omits it entirely and
+    // organizationId is found from the caller's own org_owner membership.
+    let organizationId: string
+    if (requestedBranchId) {
+      const { data: targetBranch } = await adminClient
+        .from("branches")
+        .select("id, organization_id, status")
+        .eq("id", requestedBranchId)
+        .maybeSingle()
+      if (!targetBranch || !targetBranch.organization_id) {
+        return json({ error: "That branch was not found or does not belong to an organization" }, 404)
+      }
+      if (targetBranch.status !== "active") return json({ error: "This branch is not active" }, 403)
+      organizationId = targetBranch.organization_id
+    } else {
+      const { data: ownedOrgs } = await adminClient
+        .from("organization_members")
+        .select("organization_id")
+        .eq("user_id", callerAuth.user.id)
+        .eq("role", "org_owner")
+      if (!ownedOrgs || ownedOrgs.length === 0) {
+        return json({ error: "Only the organization owner may assign an organization manager" }, 403)
+      }
+      if (ownedOrgs.length > 1) {
+        return json({ error: "You own more than one organization -- try again from that organization's own page" }, 400)
+      }
+      organizationId = ownedOrgs[0].organization_id
     }
-    if (targetBranch.status !== "active") return json({ error: "This branch is not active" }, 403)
 
     const { data: membership } = await adminClient
       .from("organization_members")
       .select("role")
-      .eq("organization_id", targetBranch.organization_id)
+      .eq("organization_id", organizationId)
       .eq("user_id", callerAuth.user.id)
       .maybeSingle()
     if (!membership || membership.role !== "org_owner") {
@@ -135,7 +160,7 @@ Deno.serve(async (req) => {
     const { count: existingManagerCount } = await adminClient
       .from("organization_members")
       .select("user_id", { count: "exact", head: true })
-      .eq("organization_id", targetBranch.organization_id)
+      .eq("organization_id", organizationId)
       .eq("role", "org_manager")
     if ((existingManagerCount ?? 0) > 0) {
       return json({ error: "This organization already has an organization manager -- remove them first" }, 409)
@@ -143,6 +168,24 @@ Deno.serve(async (req) => {
 
     const { data: existingUser } = await adminClient.from("users").select("id").eq("email", email).maybeSingle()
     if (existingUser) return json({ error: "This email is already in use" }, 409)
+
+    // public.users.branch_id is NOT NULL by schema, but an org_manager isn't
+    // really "of" any branch -- this is a technical anchor only, picked
+    // automatically (any branch in the organization works equally, so the
+    // org_owner is never asked to choose one). list_branch_staff() excludes
+    // anyone holding an active org_manager membership from every branch's
+    // roster, so this placeholder never surfaces as "their branch" anywhere.
+    const anchorBranchId = requestedBranchId ?? (await (async () => {
+      const { data: anyBranch } = await adminClient
+        .from("branches")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      return anyBranch?.id ?? null
+    })())
+    if (!anchorBranchId) return json({ error: "This organization has no branches yet" }, 400)
 
     const { data: created, error: createError } = await adminClient.auth.admin.createUser({
       email,
@@ -156,10 +199,11 @@ Deno.serve(async (req) => {
 
     // role stored as 'manager' on public.users, mirroring how
     // activate_organization_invite() already maps an org_owner/org_manager
-    // invite down to a branch role for their home branch.
+    // invite down to a branch role -- inert here since branch_id is just
+    // the technical anchor above, never a real staffing assignment.
     const { error: insertError } = await adminClient.from("users").insert({
       id: created.user.id,
-      branch_id: requestedBranchId,
+      branch_id: anchorBranchId,
       full_name: fullName,
       email,
       role: "manager",
@@ -171,7 +215,7 @@ Deno.serve(async (req) => {
     }
 
     const { error: memberError } = await adminClient.from("organization_members").insert({
-      organization_id: targetBranch.organization_id,
+      organization_id: organizationId,
       user_id: created.user.id,
       role: "org_manager",
     })
@@ -187,7 +231,7 @@ Deno.serve(async (req) => {
     // Best-effort audit row, attributed to the caller's own JWT -- same
     // pattern as log_first_branch_login below for the branch-staffing path.
     await callerClient.rpc("log_org_manager_grant", {
-      p_organization_id: targetBranch.organization_id,
+      p_organization_id: organizationId,
       p_target_user_id: created.user.id,
     })
 

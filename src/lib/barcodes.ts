@@ -1,5 +1,5 @@
 import type { TranslationKey } from "./i18n/en"
-import { supabase } from "./supabase"
+import { fetchAllRows, supabase } from "./supabase"
 
 // Read-only barcode history for the Barcode Manager screen. Barcodes are only ever
 // created server-side by receive_stock_delivery(); nothing here writes.
@@ -134,12 +134,20 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
   const batchIds = (batches ?? []).map(batch => batch.id)
   if (batchIds.length === 0) return []
 
-  const [barcodesResult, variantsResult, productsResult] = await Promise.all([
-    supabase.from("barcodes").select("id, code, barcode_type, pieces_per_pack, child_count, stock_batch_id").in("stock_batch_id", batchIds).order("code"),
+  // Paginated, not a plain .select() -- a single delivery of a few hundred
+  // cartons easily produces several thousand barcode rows (one per box plus
+  // one per pack inside it), which silently truncates against PostgREST's
+  // row cap on an unbounded select. See fetchAllRows() for why this can't
+  // just be a bigger .limit() instead.
+  const [barcodes, variantsResult, productsResult] = await Promise.all([
+    fetchAllRows((from, to) =>
+      supabase.from("barcodes")
+        .select("id, code, barcode_type, pieces_per_pack, child_count, stock_batch_id")
+        .in("stock_batch_id", batchIds).order("code").range(from, to),
+    ),
     supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
     supabase.from("products").select("id, name"),
   ])
-  if (barcodesResult.error) throw barcodesResult.error
   if (variantsResult.error) throw variantsResult.error
   if (productsResult.error) throw productsResult.error
 
@@ -147,7 +155,7 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
   const variantById = new Map((variantsResult.data ?? []).map(variant => [variant.id, variant]))
   const productById = new Map((productsResult.data ?? []).map(product => [product.id, product]))
 
-  return (barcodesResult.data ?? []).map(barcode => {
+  return barcodes.map(barcode => {
     const batch = batchById.get(barcode.stock_batch_id)
     const variant = batch ? variantById.get(batch.product_variant_id) : undefined
     const product = variant ? productById.get(variant.product_id) : undefined
@@ -166,17 +174,20 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
   })
 }
 
+// Every table here grows without bound over the branch's lifetime --
+// barcodes especially, one row per physical pack/box ever received. Each
+// is paginated via fetchAllRows() rather than a plain .select(), so this
+// always reflects everything the branch actually has instead of silently
+// truncating once the branch has been operating long enough to exceed
+// PostgREST's row cap on an unbounded select.
 export async function loadBarcodeDataset(): Promise<BarcodeDataset> {
-  const results = await Promise.all([
-    supabase.from("barcodes").select("*").order("code"),
-    supabase.from("stock_batches").select("*"),
-    supabase.from("product_variants").select("*"),
-    supabase.from("products").select("*"),
-    supabase.from("suppliers").select("id, supplier_name"),
+  const [barcodes, batches, variants, products, suppliers] = await Promise.all([
+    fetchAllRows<any>((from, to) => supabase.from("barcodes").select("*").order("code").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("stock_batches").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("product_variants").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("products").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("suppliers").select("id, supplier_name").order("id").range(from, to)),
   ])
-  const failed = results.find(result => result.error)
-  if (failed?.error) throw failed.error
-  const [barcodes, batches, variants, products, suppliers] = results.map(result => result.data ?? []) as any[][]
 
   const batchById = new Map(batches.map(batch => [batch.id, batch]))
   const variantById = new Map(variants.map(variant => [variant.id, variant]))

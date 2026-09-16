@@ -232,10 +232,15 @@ export interface InsuranceProvider {
 //                   transfers as an owner, but cannot add branches, manage
 //                   org membership, or edit org settings.
 //   manager      -- ("branch manager") full operational control of their
-//                   OWN branch only: inventory, receiving, sales, reports,
-//                   analytics, compliance, insurance, transactions/history.
+//                   OWN branch: inventory, receiving, sales, reports,
+//                   analytics, compliance, insurance, transactions/history,
+//                   plus Branch Settings for staff/seller management and
+//                   day-to-day config -- but not the Finance tab or the
+//                   Profile tab's Legal card (billing/legal stays owner-only,
+//                   enforced server-side in update_branch_details()), and
+//                   never a role change or touching a fellow manager.
 //   owner        -- everything `manager` has for their own branch, plus
-//                   Branch Settings and can found/lead an organization.
+//                   billing/legal settings and can found/lead an organization.
 //   seller       -- ("sales person") Sales/POS, Alerts, Patients, Help only
 //                   -- no financial totals, analytics, or branch settings.
 export const NAV_ITEMS: NavItem[] = [
@@ -258,9 +263,10 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager', 'seller'] },
   { id: 'patients',    label: 'Patients',              icon: '🩺', roles: ['owner', 'manager', 'seller'] },
   { id: 'help',        label: 'Help & Support',       icon: '💬', roles: ['owner', 'manager', 'seller'] },
-  // ── Owner only ───────────────────────────────────────────────
-  { id: 'branch',      label: 'Branch Settings',      icon: '⚙️', roles: ['owner'] },
-  { id: 'history',     label: 'History',              icon: '🕓', roles: ['owner'] },
+  // ── Owner / manager -- BranchSettingsPage itself hides the Finance tab
+  // and the Legal card from a manager; see the role prop it's given below. ──
+  { id: 'branch',      label: 'Branch Settings',      icon: '⚙️', roles: ['owner', 'manager'] },
+  { id: 'history',     label: 'History',              icon: '🕓', roles: ['owner', 'manager'] },
   // App.tsx additionally hides this from a manager until
   // getMyOrganization() confirms they hold an org_owner/org_manager role
   // somewhere (an owner always sees it, so they can found a new

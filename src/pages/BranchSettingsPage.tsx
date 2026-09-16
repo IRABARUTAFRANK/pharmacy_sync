@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { Btn, Card, CenterAlert, Modal, SectionHeader, StatusBadge } from "../components"
 import { useTranslation } from "../lib/i18n"
 import type { TranslationKey } from "../lib/i18n/en"
 import { branchLogoUrl, getMyBranchDetails, updateBranchDetails, uploadBranchLogo, type BranchLanguage, type PaymentMethod } from "../lib/branch"
+import L from "leaflet"
+import { geocodeAddress, getCurrentDeviceLocation, googleMapsLinkFor, OSM_ATTRIBUTION, OSM_TILE_URL, PHARMACY_ICON, reverseGeocode, type GeocodeResult } from "../lib/maps"
 import { updatePassword } from "../lib/auth"
 import { createBranchDiscount, listBranchDiscounts, type BranchDiscount, type DiscountType } from "../lib/sales"
 import { createBranchCategory, listBranchCategories, updateBranchCategory, type BranchCategory } from "../lib/categories"
 import { inviteStaff, listBranchStaff, setStaffActive, updateStaffRole, type BranchUserRole, type StaffMember, type StaffRole } from "../lib/staff"
 import { errorMessage } from "../lib/supabase"
+import type { Role } from "../data"
 import { PasswordInput } from "./AuthShell"
 
 // Same shape as Overview's own widget-visibility switch, kept page-local like
@@ -58,6 +61,57 @@ function CardHeader({ icon, title, subtitle }: { icon: string; title: string; su
       </div>
     </div>
   )
+}
+
+// Falls back to Kigali when no pin has ever been set -- just a sensible
+// starting view for the very first placement, not a meaningful default
+// location (nothing is saved until the admin actually clicks/drags/uses
+// their device location).
+const DEFAULT_MAP_CENTER: L.LatLngTuple = [-1.9441, 30.0619]
+
+// A draggable-pin picker built on Leaflet + OpenStreetMap tiles -- free,
+// no API key, no account, no billing (see src/lib/maps.ts's own header for
+// why this replaced an earlier Google Maps version). The map/marker are
+// created once on mount and kept in sync with external latitude/longitude
+// changes (e.g. "Use my current location") by the second effect, rather
+// than being torn down and rebuilt on every coordinate change.
+function BranchLocationMap({ latitude, longitude, onChange }: {
+  latitude: number | null; longitude: number | null; onChange: (lat: number, lng: number) => void
+}) {
+  const mapDivRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<L.Map | null>(null)
+  const markerRef = useRef<L.Marker | null>(null)
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+
+  useEffect(() => {
+    if (!mapDivRef.current) return
+    const center: L.LatLngTuple = latitude != null && longitude != null ? [latitude, longitude] : DEFAULT_MAP_CENTER
+    const map = L.map(mapDivRef.current, { attributionControl: true }).setView(center, latitude != null ? 15 : 7)
+    L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    const marker = L.marker(center, { draggable: true, icon: PHARMACY_ICON }).addTo(map)
+    marker.on("dragend", () => {
+      const pos = marker.getLatLng()
+      onChangeRef.current(pos.lat, pos.lng)
+    })
+    map.on("click", (e: L.LeafletMouseEvent) => {
+      marker.setLatLng(e.latlng)
+      onChangeRef.current(e.latlng.lat, e.latlng.lng)
+    })
+    mapRef.current = map
+    markerRef.current = marker
+    return () => { map.remove(); mapRef.current = null; markerRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!mapRef.current || !markerRef.current || latitude == null || longitude == null) return
+    const pos: L.LatLngTuple = [latitude, longitude]
+    mapRef.current.setView(pos, 15)
+    markerRef.current.setLatLng(pos)
+  }, [latitude, longitude])
+
+  return <div ref={mapDivRef} style={{ width: "100%", height: 220, borderRadius: 10, overflow: "hidden", background: "var(--bg)" }} />
 }
 
 // One row per setting, matching the reference layout: label + description +
@@ -166,7 +220,7 @@ function Avatar({ fullName, role }: { fullName: string; role: BranchUserRole }) 
   )
 }
 
-function InviteStaffModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+function InviteStaffModal({ onClose, onCreated, branchId }: { onClose: () => void; onCreated: () => void; branchId?: string }) {
   const { t } = useTranslation()
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
@@ -182,7 +236,7 @@ function InviteStaffModal({ onClose, onCreated }: { onClose: () => void; onCreat
     setBusy(true)
     setError(null)
     try {
-      await inviteStaff(fullName.trim(), email.trim(), password, role)
+      await inviteStaff(fullName.trim(), email.trim(), password, role, branchId)
       onCreated()
     } catch (reason) {
       const raw = errorMessage(reason, t("branchSettings.usersInviteError"))
@@ -230,7 +284,7 @@ function InviteStaffModal({ onClose, onCreated }: { onClose: () => void; onCreat
   </Modal>
 }
 
-function ChangeRoleModal({ member, onClose, onChanged }: { member: StaffMember; onClose: () => void; onChanged: () => void }) {
+function ChangeRoleModal({ member, onClose, onChanged, branchId }: { member: StaffMember; onClose: () => void; onChanged: () => void; branchId?: string }) {
   const { t } = useTranslation()
   const [role, setRole] = useState<StaffRole>(member.role === "manager" ? "manager" : "seller")
   const [error, setError] = useState<string | null>(null)
@@ -240,7 +294,7 @@ function ChangeRoleModal({ member, onClose, onChanged }: { member: StaffMember; 
     setBusy(true)
     setError(null)
     try {
-      await updateStaffRole(member.id, role)
+      await updateStaffRole(member.id, role, branchId)
       onChanged()
     } catch (reason) {
       setError(errorMessage(reason, t("branchSettings.usersRoleChangeError")))
@@ -316,13 +370,30 @@ function CategoryModal({ initial, onClose, onSaved }: {
 // save here actually persists a new one -- without it, the sidebar would
 // only pick up the change on the next sign-in/reload, same staleness the
 // receipt doesn't have (it re-fetches the branch row fresh every print).
-export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url: string | null) => void }) {
+// A branch manager gets full staff/seller oversight and day-to-day settings
+// here, same page as the owner -- but never the Finance tab (bank/momo
+// payout details) or the Legal card in Profile (license/TIN/EBM), which stay
+// owner-only both here and, more importantly, server-side in
+// update_branch_details() -- this filter is a convenience, not the boundary.
+// `branchId` -- undefined for the normal case (your own branch); an
+// org_owner/org_manager viewing another branch in their organization passes
+// its id here, and every load/save below forwards it to the matching RPC's
+// effective_branch_id() resolution. `role` is already the EFFECTIVE role for
+// that target branch (App.tsx elevates it to "owner" when viewingBranchId
+// differs from the caller's own branch, since effective_branch_id() only
+// ever allows that for an org_owner/org_manager, who has full authority
+// there) -- this page never needs to know the difference itself.
+export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { onLogoSaved?: (url: string | null) => void; role: Role; branchId?: string }) {
   const { t } = useTranslation()
+  const isOwner = role === "owner"
+  const visibleTabs = isOwner ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id !== "finance")
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
 
   const [branchName, setBranchName] = useState("")
   const [address, setAddress] = useState("")
   const [phone, setPhone] = useState("")
+  const [latitude, setLatitude] = useState<number | null>(null)
+  const [longitude, setLongitude] = useState<number | null>(null)
   const [email, setEmail] = useState("")
   const [website, setWebsite] = useState("")
   const [tin, setTin] = useState("")
@@ -393,10 +464,12 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     setLoading(true)
     setError(null)
     try {
-      const details = await getMyBranchDetails()
+      const details = await getMyBranchDetails(branchId)
       setBranchName(details.name)
       setAddress(details.address ?? "")
       setPhone(details.phone ?? "")
+      setLatitude(details.latitude)
+      setLongitude(details.longitude)
       setEmail(details.email ?? "")
       setWebsite(details.website ?? "")
       setTin(details.tin ?? "")
@@ -429,17 +502,17 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, branchId])
 
   useEffect(() => { void refresh() }, [refresh])
 
   const refreshDiscounts = useCallback(async () => {
     try {
-      setDiscounts(await listBranchDiscounts())
+      setDiscounts(await listBranchDiscounts(branchId))
     } catch (reason) {
       setError(errorMessage(reason, t("branchSettings.discountsLoadError")))
     }
-  }, [t])
+  }, [t, branchId])
 
   useEffect(() => { void refreshDiscounts() }, [refreshDiscounts])
 
@@ -447,19 +520,19 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     setStaffLoading(true)
     setStaffError(null)
     try {
-      setStaff(await listBranchStaff())
+      setStaff(await listBranchStaff(branchId))
     } catch (reason) {
       setStaffError(errorMessage(reason, t("branchSettings.usersLoadError")))
     } finally {
       setStaffLoading(false)
     }
-  }, [t])
+  }, [t, branchId])
 
   useEffect(() => { void refreshStaff() }, [refreshStaff])
 
   async function toggleStaffActive(member: StaffMember) {
     try {
-      await setStaffActive(member.id, !member.isActive)
+      await setStaffActive(member.id, !member.isActive, branchId)
       void refreshStaff()
     } catch (reason) {
       setStaffError(errorMessage(reason, t("branchSettings.usersToggleError")))
@@ -470,13 +543,13 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     setCategoriesLoading(true)
     setCategoriesError(null)
     try {
-      setCategories(await listBranchCategories())
+      setCategories(await listBranchCategories(branchId))
     } catch (reason) {
       setCategoriesError(errorMessage(reason, t("branchSettings.categoriesLoadError")))
     } finally {
       setCategoriesLoading(false)
     }
-  }, [t])
+  }, [t, branchId])
 
   useEffect(() => { void refreshCategories() }, [refreshCategories])
 
@@ -489,7 +562,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     setCreatingDiscount(true)
     setError(null)
     try {
-      await createBranchDiscount(newDiscountName.trim(), newDiscountType, value)
+      await createBranchDiscount(newDiscountName.trim(), newDiscountType, value, undefined, undefined, branchId)
       setNewDiscountName("")
       setNewDiscountValue("")
       await refreshDiscounts()
@@ -498,6 +571,80 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
     } finally {
       setCreatingDiscount(false)
     }
+  }
+
+  const [locatingDevice, setLocatingDevice] = useState(false)
+  const [locateError, setLocateError] = useState<string | null>(null)
+  // GPS accuracy radius (meters) from the last device-location reading --
+  // null once any OTHER source (search, click, drag) has since moved the
+  // pin, since it no longer describes where the pin actually is.
+  const [locateAccuracy, setLocateAccuracy] = useState<number | null>(null)
+  const [addressQuery, setAddressQuery] = useState("")
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchResults, setSearchResults] = useState<GeocodeResult[]>([])
+  // Reverse-geocoded confirmation text for whatever the pin's CURRENT
+  // coordinates are -- the "does this actually look right" check, kept in
+  // sync by the debounced effect below regardless of which of the four
+  // ways (device location, search, click, drag) moved the pin.
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null)
+  const [resolvingAddress, setResolvingAddress] = useState(false)
+
+  useEffect(() => {
+    if (latitude == null || longitude == null) { setResolvedAddress(null); return }
+    let cancelled = false
+    setResolvingAddress(true)
+    const timer = setTimeout(() => {
+      reverseGeocode(latitude, longitude)
+        .then(address => { if (!cancelled) setResolvedAddress(address) })
+        .catch(() => { if (!cancelled) setResolvedAddress(null) })
+        .finally(() => { if (!cancelled) setResolvingAddress(false) })
+    }, 600) // debounced -- a drag fires many intermediate positions; only the settled one needs a lookup
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [latitude, longitude])
+
+  async function useCurrentLocation() {
+    setLocatingDevice(true)
+    setLocateError(null)
+    try {
+      const pos = await getCurrentDeviceLocation()
+      setLatitude(pos.lat)
+      setLongitude(pos.lng)
+      setLocateAccuracy(pos.accuracyMeters)
+    } catch (reason) {
+      setLocateError(errorMessage(reason, t("branchSettings.locateError")))
+    } finally {
+      setLocatingDevice(false)
+    }
+  }
+
+  // The precise, address-driven alternative to device GPS -- the actual fix
+  // for "the device may be displaced, not the pharmacy": typing the
+  // pharmacy's real registered address and picking the matching result
+  // pins the exact spot regardless of where whoever is doing the setup
+  // happens to physically be. Only fires on an explicit Search click/Enter
+  // press, never per keystroke -- see geocodeAddress()'s own header for why.
+  async function searchAddress() {
+    if (!addressQuery.trim()) return
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const results = await geocodeAddress(addressQuery)
+      setSearchResults(results)
+      if (results.length === 0) setSearchError(t("branchSettings.locationSearchEmpty"))
+    } catch (reason) {
+      setSearchError(errorMessage(reason, t("branchSettings.locationSearchError")))
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function pickSearchResult(result: GeocodeResult) {
+    setLatitude(result.lat)
+    setLongitude(result.lng)
+    setLocateAccuracy(null) // this pin came from a searched address, not a device reading
+    setSearchResults([])
+    setAddressQuery(result.displayName)
   }
 
   async function pickLogo(file: File | null) {
@@ -535,7 +682,8 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
         posCashEnabled, posMtnMomoEnabled, posAirtelMoneyEnabled, posCardEnabled, posInsuranceEnabled,
         posDefaultPaymentMethod, posRequirePatientName, posAllowDiscounts, posShowPatientHistory,
         expiryAlertThresholdDays, defaultReorderMin,
-      })
+        latitude, longitude,
+      }, branchId)
       setSuccessMsg(t("branchSettings.saveSuccess"))
       setSuccessSeq(seq => seq + 1)
       onLogoSaved?.(logoPath ? branchLogoUrl(logoPath) : null)
@@ -585,7 +733,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
             {t("branchSettings.settingsNavTitle")}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {SETTINGS_TABS.map(tab => (
+            {visibleTabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -638,26 +786,113 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
               </Card>
 
               <Card>
-                <CardHeader icon="📋" title={t("branchSettings.legalTitle")} subtitle={t("branchSettings.legalSubtitle")} />
-                <SettingRow
-                  label={t("branchSettings.licenseNumberLabel")} description={t("branchSettings.licenseNumberHint")}
-                  dbRef="branches.license_number" warning={t("branchSettings.licenseNumberWarning")}
-                >
-                  <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} style={inputStyle} />
-                </SettingRow>
-                <SettingRow label={t("branchSettings.licenseExpiryLabel")} description={t("branchSettings.licenseExpiryHint")} dbRef="branches.license_expiry_date">
-                  <input type="date" value={licenseExpiryDate} onChange={e => setLicenseExpiryDate(e.target.value)} style={inputStyle} />
-                </SettingRow>
-                <SettingRow
-                  label={t("branchSettings.tinLabel")} description={t("branchSettings.tinHint")}
-                  dbRef="branches.tin" warning={t("branchSettings.tinWarning")}
-                >
-                  <input value={tin} onChange={e => setTin(e.target.value)} style={inputStyle} />
-                </SettingRow>
-                <SettingRow label={t("branchSettings.ebmSerialLabel")} description={t("branchSettings.ebmSerialHint")} dbRef="branches.ebm_device_serial" last>
-                  <input value={ebmDeviceSerial} onChange={e => setEbmDeviceSerial(e.target.value)} style={inputStyle} />
-                </SettingRow>
+                <CardHeader icon="📍" title={t("branchSettings.locationTitle")} subtitle={t("branchSettings.locationSubtitle")} />
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* Address search -- the precise, professional way to set
+                      this: typing the pharmacy's real registered address
+                      finds its exact spot regardless of where whoever is
+                      doing the setup happens to physically be standing.
+                      Explicit Search action only (button or Enter), never
+                      live-as-you-type -- see geocodeAddress()'s own comment. */}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      value={addressQuery}
+                      onChange={e => setAddressQuery(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void searchAddress() } }}
+                      placeholder={t("branchSettings.locationSearchPlaceholder")}
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <Btn variant="secondary" small onClick={() => void searchAddress()}>
+                      {searching ? t("branchSettings.locationSearching") : `🔍 ${t("branchSettings.locationSearchButton")}`}
+                    </Btn>
+                  </div>
+                  {searchError && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{searchError}</p>}
+                  {searchResults.length > 0 && (
+                    <div style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                      {searchResults.map((r, i) => (
+                        <button
+                          key={`${r.lat},${r.lng}`}
+                          onClick={() => pickSearchResult(r)}
+                          style={{
+                            display: "block", width: "100%", textAlign: "left", padding: "8px 10px", fontSize: 12,
+                            background: "var(--surface)", border: "none", borderTop: i === 0 ? "none" : "1px solid var(--bg-alt)",
+                            cursor: "pointer", fontFamily: "inherit", color: "var(--ink)",
+                          }}
+                        >
+                          {r.displayName}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>
+                      {latitude != null && longitude != null
+                        ? t("branchSettings.locationSet", { lat: latitude.toFixed(5), lng: longitude.toFixed(5) })
+                        : t("branchSettings.locationNotSet")}
+                    </span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {latitude != null && longitude != null && (
+                        <a href={googleMapsLinkFor(latitude, longitude)} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 600, color: "var(--primary)", alignSelf: "center", textDecoration: "none" }}>
+                          {t("branchSettings.viewOnGoogleMaps")} ↗
+                        </a>
+                      )}
+                      <Btn variant="secondary" small onClick={() => void useCurrentLocation()}>
+                        {locatingDevice ? t("branchSettings.locating") : `📡 ${t("branchSettings.useMyLocation")}`}
+                      </Btn>
+                    </div>
+                  </div>
+                  {locateError && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{locateError}</p>}
+                  {/* A device's GPS can drift, especially indoors or on a
+                      laptop -- flagging a loose reading rather than quietly
+                      trusting it is the actual fix for "the device might be
+                      the one that's displaced, not the pharmacy". */}
+                  {locateAccuracy != null && locateAccuracy > 100 && (
+                    <p style={{ margin: 0, fontSize: 11, color: "#b45309" }}>
+                      ⚠ {t("branchSettings.locationAccuracyWarning", { meters: String(Math.round(locateAccuracy)) })}
+                    </p>
+                  )}
+                  <BranchLocationMap
+                    latitude={latitude} longitude={longitude}
+                    onChange={(lat, lng) => { setLatitude(lat); setLongitude(lng); setLocateAccuracy(null) }}
+                  />
+                  {/* The "does this actually look right" confirmation --
+                      turns the raw coordinates back into a real address so
+                      whoever set the pin can visually verify it against the
+                      pharmacy's actual known address, rather than trusting
+                      two bare numbers. */}
+                  {(resolvingAddress || resolvedAddress) && (
+                    <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>
+                      📍 {resolvingAddress ? t("branchSettings.locationResolving") : t("branchSettings.locationResolved", { address: resolvedAddress ?? "" })}
+                    </p>
+                  )}
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--ink-faint)" }}>{t("branchSettings.locationHint")}</p>
+                </div>
               </Card>
+
+              {isOwner && (
+                <Card>
+                  <CardHeader icon="📋" title={t("branchSettings.legalTitle")} subtitle={t("branchSettings.legalSubtitle")} />
+                  <SettingRow
+                    label={t("branchSettings.licenseNumberLabel")} description={t("branchSettings.licenseNumberHint")}
+                    dbRef="branches.license_number" warning={t("branchSettings.licenseNumberWarning")}
+                  >
+                    <input value={licenseNumber} onChange={e => setLicenseNumber(e.target.value)} style={inputStyle} />
+                  </SettingRow>
+                  <SettingRow label={t("branchSettings.licenseExpiryLabel")} description={t("branchSettings.licenseExpiryHint")} dbRef="branches.license_expiry_date">
+                    <input type="date" value={licenseExpiryDate} onChange={e => setLicenseExpiryDate(e.target.value)} style={inputStyle} />
+                  </SettingRow>
+                  <SettingRow
+                    label={t("branchSettings.tinLabel")} description={t("branchSettings.tinHint")}
+                    dbRef="branches.tin" warning={t("branchSettings.tinWarning")}
+                  >
+                    <input value={tin} onChange={e => setTin(e.target.value)} style={inputStyle} />
+                  </SettingRow>
+                  <SettingRow label={t("branchSettings.ebmSerialLabel")} description={t("branchSettings.ebmSerialHint")} dbRef="branches.ebm_device_serial" last>
+                    <input value={ebmDeviceSerial} onChange={e => setEbmDeviceSerial(e.target.value)} style={inputStyle} />
+                  </SettingRow>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader icon="🌐" title={t("branchSettings.localeTitle")} subtitle={t("branchSettings.localeSubtitle")} />
@@ -894,19 +1129,22 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <Avatar fullName={member.fullName} role={member.role} />
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{member.fullName}</div>
-                          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{member.email}</div>
+                          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
+                            {member.fullName}
+                            {!member.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("branchSettings.inactiveLabel")}</span>}
+                          </div>
+                          <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{member.email ?? "—"}</div>
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <RoleBadge role={member.role} />
-                        {member.role !== "owner" && (
-                          <>
-                            <Btn variant="secondary" small onClick={() => setChangeRoleTarget(member)}>{t("branchSettings.changeRole")}</Btn>
-                            <Btn variant={member.isActive ? "danger" : "secondary"} small onClick={() => void toggleStaffActive(member)}>
-                              {member.isActive ? t("branchSettings.deactivate") : t("branchSettings.activate")}
-                            </Btn>
-                          </>
+                        {member.role !== "owner" && isOwner && (
+                          <Btn variant="secondary" small onClick={() => setChangeRoleTarget(member)}>{t("branchSettings.changeRole")}</Btn>
+                        )}
+                        {member.role !== "owner" && (isOwner || member.role === "seller") && (
+                          <Btn variant={member.isActive ? "danger" : "secondary"} small onClick={() => void toggleStaffActive(member)}>
+                            {member.isActive ? t("branchSettings.deactivate") : t("branchSettings.activate")}
+                          </Btn>
                         )}
                       </div>
                     </div>
@@ -1003,6 +1241,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
       <InviteStaffModal
         onClose={() => setShowInvite(false)}
         onCreated={() => { setShowInvite(false); setSuccessMsg(t("branchSettings.usersInviteSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
+        branchId={branchId}
       />
     )}
     {changeRoleTarget && (
@@ -1010,13 +1249,14 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
         member={changeRoleTarget}
         onClose={() => setChangeRoleTarget(null)}
         onChanged={() => { setChangeRoleTarget(null); setSuccessMsg(t("branchSettings.usersRoleChangeSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
+        branchId={branchId}
       />
     )}
     {showAddCategory && (
       <CategoryModal
         onClose={() => setShowAddCategory(false)}
         onSaved={async (name, description) => {
-          await createBranchCategory(name, description)
+          await createBranchCategory(name, description, branchId)
           setShowAddCategory(false)
           setSuccessMsg(t("branchSettings.categoryAddSuccess"))
           setSuccessSeq(seq => seq + 1)
@@ -1029,7 +1269,7 @@ export default function BranchSettingsPage({ onLogoSaved }: { onLogoSaved?: (url
         initial={editCategoryTarget}
         onClose={() => setEditCategoryTarget(null)}
         onSaved={async (name, description) => {
-          await updateBranchCategory(editCategoryTarget.id, name, description)
+          await updateBranchCategory(editCategoryTarget.id, name, description, branchId)
           setEditCategoryTarget(null)
           setSuccessMsg(t("branchSettings.categorySaveSuccess"))
           setSuccessSeq(seq => seq + 1)

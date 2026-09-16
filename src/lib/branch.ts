@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 const LOGO_BUCKET = "branch-logos"
 
@@ -36,10 +36,12 @@ export interface BranchDetails {
   posShowPatientHistory: boolean
   expiryAlertThresholdDays: number
   defaultReorderMin: number
+  latitude: number | null
+  longitude: number | null
 }
 
-export async function getMyBranchDetails(): Promise<BranchDetails> {
-  const { data, error } = await supabase.rpc("get_my_branch_details")
+export async function getMyBranchDetails(branchId?: string): Promise<BranchDetails> {
+  const { data, error } = await supabase.rpc("get_my_branch_details", { ...branchArg(branchId) })
   if (error) throw error
   const row = (data ?? [])[0]
   return {
@@ -60,6 +62,8 @@ export async function getMyBranchDetails(): Promise<BranchDetails> {
     posShowPatientHistory: row?.pos_show_patient_history ?? true,
     expiryAlertThresholdDays: row?.expiry_alert_threshold_days ?? 60,
     defaultReorderMin: row?.default_reorder_min ?? 0,
+    latitude: row?.latitude ?? null,
+    longitude: row?.longitude ?? null,
   }
 }
 
@@ -91,6 +95,8 @@ export interface UpdateBranchDetailsInput {
   posShowPatientHistory: boolean
   expiryAlertThresholdDays: number
   defaultReorderMin: number
+  latitude: number | null
+  longitude: number | null
 }
 
 // The whole Branch Settings form saves together, one RPC call -- every field
@@ -102,7 +108,7 @@ export interface UpdateBranchDetailsInput {
 // date), it does NOT preserve the old value when omitted the way the other
 // optional fields do -- there's no "empty string" equivalent for a date, so
 // this function must always pass the caller's real current value.
-export async function updateBranchDetails(input: UpdateBranchDetailsInput): Promise<void> {
+export async function updateBranchDetails(input: UpdateBranchDetailsInput, branchId?: string): Promise<void> {
   const { error } = await supabase.rpc("update_branch_details", {
     p_address: input.address, p_phone: input.phone, p_tin: input.tin, p_logo_path: input.logoPath,
     p_bank_account_number: input.bankAccountNumber, p_bank_account_name: input.bankAccountName, p_momo_pay_number: input.momoPayNumber,
@@ -118,6 +124,9 @@ export async function updateBranchDetails(input: UpdateBranchDetailsInput): Prom
     p_pos_show_patient_history: input.posShowPatientHistory,
     p_expiry_alert_threshold_days: input.expiryAlertThresholdDays,
     p_default_reorder_min: input.defaultReorderMin,
+    p_latitude: input.latitude,
+    p_longitude: input.longitude,
+    ...branchArg(branchId),
   })
   if (error) throw error
 }

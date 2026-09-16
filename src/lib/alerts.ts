@@ -1,5 +1,5 @@
 import type { TranslationKey } from "./i18n/en"
-import { supabase } from "./supabase"
+import { fetchAllRows, supabase } from "./supabase"
 
 // Real public.notifications rows (branch-scoped by RLS), replacing the
 // dbNotifications/alertsData mocks that used to back AlertsPage.tsx and
@@ -34,6 +34,9 @@ export const ALERT_SOURCE_TITLE_KEYS: Record<string, TranslationKey> = {
   out_of_stock: "alerts.source.outOfStock",
   license_expiring: "alerts.source.licenseExpiring",
   forecast_completed: "alerts.source.forecastCompleted",
+  restock_recommendation: "alerts.source.restockRecommendation",
+  reorder_point_missing: "alerts.source.reorderPointMissing",
+  branch_location_missing: "alerts.source.branchLocationMissing",
 }
 
 const SEVERITY: Record<string, AlertSeverity> = {
@@ -44,6 +47,9 @@ const SEVERITY: Record<string, AlertSeverity> = {
   out_of_stock: "critical",
   license_expiring: "critical",
   forecast_completed: "info",
+  restock_recommendation: "warning",
+  reorder_point_missing: "info",
+  branch_location_missing: "warning",
 }
 
 interface NotificationRow {
@@ -56,10 +62,15 @@ interface NotificationRow {
   created_at: string
 }
 
+// Paginated -- notifications accumulate for as long as the branch operates
+// (out-of-stock reminders, restock recommendations, stock adjustments,
+// ...), so an unbounded select eventually hits PostgREST's row cap and
+// silently drops the oldest ones instead of erroring.
 export async function loadLiveAlerts(): Promise<LiveAlert[]> {
-  const { data, error } = await supabase.from("notifications").select("*").order("created_at", { ascending: false })
-  if (error) throw error
-  return ((data ?? []) as NotificationRow[]).map(row => ({
+  const data = await fetchAllRows<NotificationRow>((from, to) =>
+    supabase.from("notifications").select("*").order("created_at", { ascending: false }).order("id").range(from, to),
+  )
+  return (data ?? []).map(row => ({
     id: row.id,
     sourceType: row.source_type,
     type: SEVERITY[row.source_type] ?? "info",
@@ -121,5 +132,36 @@ export async function checkLicenseExpiry(): Promise<void> {
 // by sales_forecast_snapshots.notified_at instead of a read/cooldown check).
 export async function checkForecastAccuracyNotifications(): Promise<void> {
   const { error } = await supabase.rpc("check_forecast_accuracy_notifications")
+  if (error) throw error
+}
+
+// Any product with stock at this branch but no reorder_points row gets a
+// one-time nudge, re-fired at most once a week once read -- much less
+// urgent than out-of-stock, so a long cooldown instead of a short one.
+export async function checkMissingReorderPoints(): Promise<void> {
+  const { error } = await supabase.rpc("check_missing_reorder_points")
+  if (error) throw error
+}
+
+// Best-sellers about to run out at their current sales pace (see
+// ai_restock_recommendations() in lib/analytics.ts for the read-only,
+// parameterized version this recurring check is based on). Previously
+// existed server-side but was never callable end-to-end -- see
+// 2026-09-14_reorder_notifications_org_visibility.sql for the constraint fix
+// that let its insert actually succeed for the first time.
+export async function checkRestockRecommendations(): Promise<void> {
+  const { error } = await supabase.rpc("check_restock_recommendations")
+  if (error) throw error
+}
+
+// Nudges the branch owner/manager to set the branch's location (Branch
+// Settings -> Profile -> Location) once the branch is active and it's still
+// unset -- see check_missing_branch_location() in
+// 2026-09-15_branch_geolocation.sql. Re-fires at most weekly while ignored,
+// same cooldown shape as checkMissingReorderPoints() above. The point of
+// the location isn't the map itself -- it's letting a stock transfer
+// request sort candidate branches by distance instead of an unsorted list.
+export async function checkMissingBranchLocation(): Promise<void> {
+  const { error } = await supabase.rpc("check_missing_branch_location")
   if (error) throw error
 }

@@ -26,6 +26,8 @@ export interface OrganizationBranch {
   status: string
   staffCount: number
   createdAt: string
+  latitude: number | null
+  longitude: number | null
 }
 
 export interface OrgBranchSummary {
@@ -47,7 +49,11 @@ export type BranchRole = "owner" | "manager" | "seller"
 export interface OrganizationPerson {
   userId: string
   fullName: string
-  email: string
+  // null when the caller isn't entitled to see this person's email -- an
+  // org_manager viewing the org_owner's row, specifically (role hierarchy:
+  // a role sees every role below it, never the one above -- see
+  // list_organization_people() in 2026-09-14_role_hierarchy_visibility.sql).
+  email: string | null
   scope: "organization" | "branch"
   role: OrgRole | BranchRole
   branchId: string | null
@@ -94,6 +100,20 @@ export async function getMyOrganization(): Promise<OrganizationSummary | null> {
   }
 }
 
+// null unless the caller's own branch belongs to an organization -- true
+// even for a plain branch owner/manager who holds no org_owner/org_manager
+// role themselves. Distinct from getMyOrganization(): that one is null for
+// such a person (they have no organization_members row), which used to mean
+// they had no way to reach the Organization tab at all -- including to
+// respond to a stock request addressed to their own branch. The caller uses
+// this as a fallback organization id for exactly that: branch-to-branch
+// stock requests, which only need "my branch is in an org", not an org role.
+export async function getMyBranchOrganizationId(): Promise<string | null> {
+  const { data, error } = await supabase.rpc("my_branch_organization_id")
+  if (error) throw error
+  return (data as string | null) ?? null
+}
+
 export async function createPharmacyOrganization(legalName: string, tin?: string): Promise<string> {
   const { data, error } = await supabase.rpc("create_pharmacy_organization", {
     p_legal_name: legalName, p_tin: tin?.trim() || null,
@@ -108,6 +128,7 @@ export async function listOrganizationBranches(organizationId: string): Promise<
   return ((data ?? []) as any[]).map(row => ({
     branchId: row.branch_id, name: row.name, address: row.address, phone: row.phone,
     branchCode: row.branch_code, status: row.status, staffCount: row.staff_count, createdAt: row.created_at,
+    latitude: row.latitude ?? null, longitude: row.longitude ?? null,
   }))
 }
 
@@ -158,14 +179,20 @@ export async function listOrganizationPeople(organizationId: string): Promise<Or
 
 // Grants org_manager -- the only role this ever assigns now (ownership only
 // ever moves via transferOrganizationOwnership). 'granted' -- the email
-// already had a login somewhere; org access applies immediately. 'invited'
-// -- a brand-new person; nothing is granted until they complete the emailed
-// OTP flow (requestOrganizationInviteOtp below).
+// already had a login somewhere (e.g. an existing branch_manager being
+// promoted -- their branch role/branch_id is left exactly as-is; they just
+// stop showing up in that branch's own staff roster, see
+// list_branch_staff()); org access applies immediately. 'invited' -- a
+// brand-new person with no existing login at all; nothing is granted until
+// they complete the emailed OTP flow (requestOrganizationInviteOtp below).
+// No branch to pick here either way -- org_manager was never tied to one
+// (the RPC auto-picks its own required technical placeholder for a
+// brand-new invite).
 export async function inviteOrganizationMember(
-  organizationId: string, homeBranchId: string, email: string, fullName: string
+  organizationId: string, email: string, fullName: string
 ): Promise<"granted" | "invited"> {
   const { data, error } = await supabase.rpc("invite_organization_member", {
-    p_organization_id: organizationId, p_branch_id: homeBranchId,
+    p_organization_id: organizationId,
     p_user_email: email, p_full_name: fullName, p_role: "org_manager",
   })
   if (error) throw error
@@ -186,6 +213,26 @@ export async function assignBranchRole(
   })
   if (error) throw error
   return data as "granted" | "invited"
+}
+
+// Moves someone between org-level and branch-level roles in one call --
+// promote a branch manager up to org_manager, or move the current
+// org_manager back down to branch manager/salesperson. Demoting drops
+// their organization_members row entirely and sets their branch role
+// instead; their branch_id is untouched, so they land back at the branch
+// they were already anchored to and reappear in its roster (list_branch_staff()
+// excludes org_manager holders, so removing that grant is what makes them
+// visible there again). Owner-only, and it refuses to touch the org_owner
+// (ownership moves through transferOrganizationOwnership instead).
+export type OrgAssignableRole = "org_manager" | "manager" | "seller"
+
+export async function changeOrganizationMemberRole(
+  organizationId: string, userId: string, newRole: OrgAssignableRole
+): Promise<void> {
+  const { error } = await supabase.rpc("org_change_member_role", {
+    p_organization_id: organizationId, p_user_id: userId, p_new_role: newRole,
+  })
+  if (error) throw error
 }
 
 export async function removeOrganizationMember(organizationId: string, userId: string): Promise<void> {
@@ -246,11 +293,14 @@ export async function verifyOrganizationInviteOtp(email: string, token: string):
 // unstaffed branch (role 'owner' or 'manager') or an already-staffed one
 // (role 'manager'/'seller' only -- the Edge Function rejects a second
 // 'owner', since a branch may only ever have one). 'org_manager' is the
-// fourth, org-level case: an org-wide grant rather than a branch role (see
-// the Edge Function's own header comment) -- branchId there is the new
-// org_manager's home branch, org_owner-only, one-per-organization.
+// fourth, org-level case: an org-wide grant, not a branch role -- it is
+// never actually tied to any branch operationally (org_owner-only,
+// one-per-organization), so branchId is null here; the Edge Function picks
+// a technical placeholder branch on its own (required by a NOT NULL schema
+// column, never surfaced anywhere as "their branch" -- see its own header
+// comment and list_branch_staff's org_manager exclusion).
 export async function staffOrganizationBranch(
-  branchId: string, fullName: string, email: string, password: string, role: "owner" | "manager" | "seller" | "org_manager"
+  branchId: string | null, fullName: string, email: string, password: string, role: "owner" | "manager" | "seller" | "org_manager"
 ): Promise<string> {
   const { data, error } = await supabase.functions.invoke("create-branch-seller", {
     body: { fullName, email, password, role, branchId },

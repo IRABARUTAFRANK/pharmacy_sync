@@ -1,5 +1,5 @@
 import { getMyBranchDetails } from "./branch"
-import { supabase } from "./supabase"
+import { fetchAllRows, supabase } from "./supabase"
 
 export interface InventoryRow {
   product_id: string
@@ -38,18 +38,26 @@ export interface InventoryDataset {
 
 const asNumber = (value: string | number | null | undefined) => Number(value ?? 0)
 
+// stock_batches and barcodes grow without bound over the branch's lifetime
+// (barcodes especially -- one row per physical pack/box ever received, so a
+// single large delivery alone can produce thousands). Both, plus every
+// other table here, are paginated via fetchAllRows() rather than a plain
+// .select() -- an unbounded select silently truncates once a branch has
+// enough history to exceed PostgREST's row cap, with no error to explain
+// why stock or barcodes just stopped showing up.
 export async function loadInventoryDataset(): Promise<InventoryDataset> {
-  const [branch, ...results] = await Promise.all([
+  const [branch, batches, variants, products, barcodes, suppliers, reorderPoints, categories, categorizations, taxRates] = await Promise.all([
     getMyBranchDetails(),
-    supabase.from("stock_batches").select("*").order("received_at", { ascending: false }),
-    supabase.from("product_variants").select("*"), supabase.from("products").select("*"),
-    supabase.from("barcodes").select("*"), supabase.from("suppliers").select("*"),
-    supabase.from("reorder_points").select("*"), supabase.from("product_categories").select("*"),
-    supabase.from("branch_product_categorization").select("*"), supabase.from("tax_rates").select("*"),
+    fetchAllRows<any>((from, to) => supabase.from("stock_batches").select("*").order("received_at", { ascending: false }).order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("product_variants").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("products").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("barcodes").select("*").order("code").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("suppliers").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("reorder_points").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("product_categories").select("*").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("branch_product_categorization").select("*").order("product_id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("tax_rates").select("*").order("id").range(from, to)),
   ])
-  const failed = results.find(result => result.error)
-  if (failed?.error) throw failed.error
-  const [batches, variants, products, barcodes, suppliers, reorderPoints, categories, categorizations, taxRates] = results.map(result => result.data ?? []) as any[][]
   const expiryThresholdDays = branch.expiryAlertThresholdDays
   const defaultReorderMin = branch.defaultReorderMin
   const today = new Date()

@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from "@supabase/supabase-js"
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 export type StaffRole = "manager" | "seller"
 export type BranchUserRole = "owner" | StaffRole
@@ -7,7 +7,12 @@ export type BranchUserRole = "owner" | StaffRole
 export interface StaffMember {
   id: string
   fullName: string
-  email: string
+  // null when the caller isn't entitled to see this person's email -- a
+  // branch manager viewing the branch owner's row, specifically (role
+  // hierarchy: a role sees who's below it, never the credentials of who's
+  // above -- see list_branch_staff() in
+  // 2026-09-15_branch_staff_email_hierarchy.sql).
+  email: string | null
   role: BranchUserRole
   isActive: boolean
   createdAt: string
@@ -26,10 +31,13 @@ export interface SellerActivityRow {
 // OTP activation. Only the service-role Admin API (server-side) can set a
 // password on another user's behalf, so this calls the create-branch-seller
 // Edge Function instead of an RPC. Creating a manager login is owner-only,
-// enforced server-side by the function itself.
-export async function inviteStaff(fullName: string, email: string, password: string, role: StaffRole): Promise<string> {
+// enforced server-side by the function itself. `branchId` lets an
+// org_owner/org_manager staff a branch they're viewing rather than their own
+// -- omitted (undefined), the Edge Function defaults to the caller's own
+// branch, unchanged from before.
+export async function inviteStaff(fullName: string, email: string, password: string, role: StaffRole, branchId?: string): Promise<string> {
   const { data, error } = await supabase.functions.invoke("create-branch-seller", {
-    body: { fullName, email, password, role },
+    body: { fullName, email, password, role, branchId },
   })
   if (error) {
     // A FunctionsHttpError means the function DID run and responded -- e.g. a
@@ -47,30 +55,28 @@ export async function inviteStaff(fullName: string, email: string, password: str
   return data.userId as string
 }
 
-// Plain select, not an RPC -- already covered by the existing "users read own
-// branch" RLS policy (branch_id = current_branch_id() or is_super_admin()).
-// Every role in the branch, not just sellers, so the owner-only Users &
-// Roles roster can show the full team including itself.
-export async function listBranchStaff(): Promise<StaffMember[]> {
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, full_name, email, role, is_active, created_at")
-    .order("role")
-    .order("full_name")
+// Was a plain select relying on the "users read own branch" RLS policy, which
+// has no org-member clause -- that only ever covered your OWN branch, never
+// one an org_owner/org_manager is viewing. Now a real RPC, same
+// effective_branch_id() pattern as every other view-as-branch read. Every
+// role in the branch, not just sellers, so the Users & Roles roster can show
+// the full team including itself.
+export async function listBranchStaff(branchId?: string): Promise<StaffMember[]> {
+  const { data, error } = await supabase.rpc("list_branch_staff", { ...branchArg(branchId) })
   if (error) throw error
-  return (data ?? []).map(row => ({
+  return ((data ?? []) as any[]).map(row => ({
     id: row.id, fullName: row.full_name, email: row.email, role: row.role as BranchUserRole,
     isActive: row.is_active, createdAt: row.created_at,
   }))
 }
 
-export async function setStaffActive(userId: string, isActive: boolean): Promise<void> {
-  const { error } = await supabase.rpc("admin_set_seller_active", { p_user_id: userId, p_is_active: isActive })
+export async function setStaffActive(userId: string, isActive: boolean, branchId?: string): Promise<void> {
+  const { error } = await supabase.rpc("admin_set_seller_active", { p_user_id: userId, p_is_active: isActive, ...branchArg(branchId) })
   if (error) throw error
 }
 
-export async function updateStaffRole(userId: string, role: StaffRole): Promise<void> {
-  const { error } = await supabase.rpc("admin_update_staff_role", { p_user_id: userId, p_role: role })
+export async function updateStaffRole(userId: string, role: StaffRole, branchId?: string): Promise<void> {
+  const { error } = await supabase.rpc("admin_update_staff_role", { p_user_id: userId, p_role: role, ...branchArg(branchId) })
   if (error) throw error
 }
 

@@ -30,7 +30,10 @@ import {
   markOrganizationApplicationCalled,
   expireStaleOrganizationApplications,
   adminListAllBranches,
+  adminListOrganizations,
+  adminSetOrganizationStatus,
   type AllBranchRecord,
+  type AdminOrganizationRecord,
 } from "../lib/onboarding";
 import {
   adminListSupportTickets,
@@ -70,7 +73,7 @@ import { Logo } from "../components";
 import { useTranslation, LanguageSwitcher } from "../lib/i18n";
 import type { TranslationKey } from "../lib/i18n/en";
 
-type NavId = "dashboard" | "approvals" | "branches" | "security" | "tickets" | "products" | "categories" | "productRequests" | "insurance";
+type NavId = "dashboard" | "approvals" | "branches" | "organizations" | "security" | "tickets" | "products" | "categories" | "productRequests" | "insurance";
 
 function statusLabelKey(status: BranchStatus | TicketStatus): TranslationKey {
   const map: Record<string, TranslationKey> = {
@@ -577,6 +580,138 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
       </div>
 
       <DeletedBranchesPanel />
+    </div>
+  );
+}
+
+// Organization-level status only has two values, unlike BranchStatus/
+// TicketStatus's larger set Badge already covers -- a small dedicated
+// component instead of widening that shared one for a status space it
+// doesn't otherwise deal with.
+function OrgStatusBadge({ status }: { status: "active" | "suspended" }) {
+  const { t } = useTranslation();
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-semibold uppercase tracking-wide ${
+      status === "active" ? "bg-blue-100 text-blue-700 border-blue-200" : "bg-red-100 text-red-700 border-red-200"
+    }`}>
+      {status === "active" ? t("admin.statusActive") : t("admin.orgStatusSuspended")}
+    </span>
+  );
+}
+
+// Organizations tab: every organization on the platform as a chain (branch
+// count, TIN, status), with the one admin action that exists for an
+// organization today -- suspend/reactivate (admin_set_organization_status(),
+// mirroring admin_set_branch_lock()'s existing pattern). Branch-level detail
+// for one org reuses `orgBranches` (already fetched for the Approvals tab)
+// filtered by organizationId, rather than a second query.
+function OrganizationsView({ organizations, orgBranches, onChange }: {
+  organizations: AdminOrganizationRecord[]; orgBranches: AllBranchRecord[]; onChange: () => void;
+}) {
+  const { t } = useTranslation();
+  const [detail, setDetail] = useState<AdminOrganizationRecord | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggleStatus(org: AdminOrganizationRecord) {
+    setBusyId(org.id);
+    setError(null);
+    try {
+      await adminSetOrganizationStatus(org.id, org.status === "active" ? "suspended" : "active");
+      onChange();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("admin.orgStatusError"));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (detail) {
+    const orgBranchRows = orgBranches.filter((b) => b.organizationId === detail.id);
+    return (
+      <div className="space-y-6 animate-fade-up">
+        <button onClick={() => setDetail(null)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700">
+          <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.orgBackToList")}
+        </button>
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">{detail.legalName}</h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {detail.tradeName ?? "—"}{detail.tin ? ` · ${t("admin.colOrgTin")}: ${detail.tin}` : ""}
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  {(["admin.colBranchCode", "admin.colPharmacy", "admin.colLocation", "admin.colPhone", "admin.colStatus"] as TranslationKey[]).map((h) => (
+                    <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{t(h)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {orgBranchRows.map((b) => (
+                  <tr key={b.id}>
+                    <td className="px-4 py-3 font-mono text-blue-700 font-semibold">{b.branchCode ?? b.id.slice(0, 8)}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{b.name}</td>
+                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{b.address ?? "—"}</td>
+                    <td className="px-4 py-3 font-mono text-slate-500">{b.phone ?? "—"}</td>
+                    <td className="px-4 py-3"><Badge status={b.status as BranchStatus} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {orgBranchRows.length === 0 && <p className="text-center py-10 text-xs text-slate-400">{t("admin.orgNoBranches")}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-up">
+      <div>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.orgTitle")}</h2>
+        <p className="text-xs text-slate-400 mt-0.5">{t("admin.orgSubtitle", { count: organizations.length })}</p>
+      </div>
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>}
+      <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-100">
+                {(["admin.colOrgLegalName", "admin.colOrgTradeName", "admin.colOrgTin", "admin.colOrgBranchCount", "admin.colStatus"] as TranslationKey[]).map((h) => (
+                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{t(h)}</th>
+                ))}
+                <th />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {organizations.map((o) => (
+                <tr key={o.id} className="hover:bg-blue-50/30 transition-colors">
+                  <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap cursor-pointer" onClick={() => setDetail(o)}>{o.legalName}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{o.tradeName ?? "—"}</td>
+                  <td className="px-4 py-3 font-mono text-slate-500">{o.tin ?? "—"}</td>
+                  <td className="px-4 py-3 font-mono text-slate-700 cursor-pointer" onClick={() => setDetail(o)}>{o.branchCount}</td>
+                  <td className="px-4 py-3"><OrgStatusBadge status={o.status} /></td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => void toggleStatus(o)}
+                      disabled={busyId === o.id}
+                      className={`text-[10px] font-semibold uppercase tracking-wide px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${
+                        o.status === "active" ? "border-red-200 text-red-600 hover:bg-red-50" : "border-blue-200 text-blue-600 hover:bg-blue-50"
+                      }`}
+                    >
+                      {busyId === o.id ? t("admin.orgStatusUpdating") : o.status === "active" ? t("admin.orgSuspend") : t("admin.orgReactivate")}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {organizations.length === 0 && <p className="text-center py-10 text-xs text-slate-400">{t("admin.orgEmpty")}</p>}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2317,6 +2452,7 @@ const NAV: { id: NavId; labelKey: TranslationKey; icon: React.ReactNode }[] = [
   { id: "dashboard", labelKey: "admin.navDashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
   { id: "approvals", labelKey: "admin.navApprovals", icon: <CheckSquare className="w-4 h-4" /> },
   { id: "branches",  labelKey: "admin.navBranches",  icon: <Users className="w-4 h-4" /> },
+  { id: "organizations", labelKey: "admin.navOrganizations", icon: <Building2 className="w-4 h-4" /> },
   { id: "products",  labelKey: "admin.navProducts",  icon: <Package className="w-4 h-4" /> },
   { id: "categories", labelKey: "admin.navCategories", icon: <Tag className="w-4 h-4" /> },
   { id: "productRequests", labelKey: "admin.navProductRequests", icon: <Plus className="w-4 h-4" /> },
@@ -2341,6 +2477,7 @@ export default function AdminPortal() {
   // this console. Filtered to organization-owned branches only, since
   // pharmacy-flow branches are already covered by `branches` above.
   const [orgBranches, setOrgBranches] = useState<AllBranchRecord[]>([]);
+  const [organizations, setOrganizations] = useState<AdminOrganizationRecord[]>([]);
   const [tickets, setTickets]     = useState<AdminTicketRow[]>([]);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2364,22 +2501,37 @@ export default function AdminPortal() {
         expireStaleApplications().catch(() => 0),
         expireStaleOrganizationApplications().catch(() => 0),
       ]);
-      const [apps, orgApps, allBranchRows, ticketRows, requestRows] = await Promise.all([
-        listPharmacyApplications(),
-        listOrganizationApplications(),
-        adminListAllBranches(),
-        adminListSupportTickets(),
-        adminListProductRequests(),
+      // Each list is settled independently on purpose. One failing RPC --
+      // most often a migration that has not been applied to this project
+      // yet -- must never blank the whole console, and (see the check
+      // below) must never be mistaken for a lost session.
+      const [apps, orgApps, allBranchRows, orgRows, ticketRows, requestRows] = await Promise.all([
+        listPharmacyApplications().catch(() => null),
+        listOrganizationApplications().catch(() => null),
+        adminListAllBranches().catch(() => null),
+        adminListOrganizations().catch(() => null),
+        adminListSupportTickets().catch(() => null),
+        adminListProductRequests().catch(() => null),
       ]);
       setExpiredCount(expired + orgExpired);
-      setBranches(apps);
-      setOrgApplications(orgApps);
-      setOrgBranches(allBranchRows.filter((b) => b.organizationId));
-      setTickets(ticketRows);
-      setPendingRequestCount(requestRows.filter((r) => r.status === "pending").length);
-    } catch (reason) {
-      // Session expired or was never a real admin session — drop back to the gate.
-      if (reason instanceof Error && /admin/i.test(reason.message)) setAuthed(false);
+      if (apps) setBranches(apps);
+      if (orgApps) setOrgApplications(orgApps);
+      if (allBranchRows) setOrgBranches(allBranchRows.filter((b) => b.organizationId));
+      if (orgRows) setOrganizations(orgRows);
+      if (ticketRows) setTickets(ticketRows);
+      if (requestRows) setPendingRequestCount(requestRows.filter((r) => r.status === "pending").length);
+
+      // Only an actually-lost session drops back to the gate, and only
+      // after re-asking the server. This used to be a regex for /admin/i
+      // on the error message, which matched the NAME of any admin_* RPC --
+      // so one missing function (admin_list_organizations, before its
+      // migration was applied) read as "not an admin anymore" and signed
+      // the user out seconds after every sign-in, with nothing on screen
+      // explaining why.
+      if (!apps && !allBranchRows && !ticketRows && !(await isSuperAdminSession())) setAuthed(false);
+    } catch {
+      // Unexpected/transport failure -- keep whatever is already on screen
+      // rather than throwing the admin out; the 3s poll retries anyway.
     }
   }, []);
 
@@ -2517,6 +2669,7 @@ export default function AdminPortal() {
               </div>
             )}
             {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
+            {nav === "organizations" && <OrganizationsView organizations={organizations} orgBranches={orgBranches} onChange={refresh} />}
             {nav === "products"  && <ProductsView />}
             {nav === "categories" && <CategoriesView branches={branches} />}
             {nav === "productRequests" && <ProductRequestsView />}

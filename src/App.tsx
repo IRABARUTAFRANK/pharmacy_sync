@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, lazy, Suspense, type ComponentType } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense, type ComponentType } from 'react'
 import { NAV_ITEMS, fmtRWFExact, type Role } from './data'
 import { useTranslation, LanguageSwitcher, hasExplicitLangPreference } from './lib/i18n'
 import { useGlobalSearch } from './lib/search'
@@ -14,9 +14,9 @@ import HistoryPage from './pages/HistoryPage'
 
 import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib/auth'
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
-import { getMyOrganization, listOrganizationBranches, type OrganizationSummary, type OrganizationBranch } from './lib/organization'
+import { getMyBranchOrganizationId, getMyOrganization, listOrganizationBranches, type OrganizationSummary, type OrganizationBranch } from './lib/organization'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
-import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkOutOfStockAlerts, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 import { GuidedTour, hasCompletedTour, markTourComplete } from './lib/tour'
@@ -90,22 +90,50 @@ const PublicReceiptPage    = lazy(() => import('./pages/PublicReceiptPage'))
 //   identical org-wide view at Organization > Dashboard; this just removes
 //   the redundant, now-unstaffed duty of also running their own branch's
 //   day-to-day dashboard once someone else (the org_manager) is doing that.
-//   Only the owner loses it -- an org_manager keeps their own branch-level
-//   Overview. `viewingOtherBranch` (true while drilled into a DIFFERENT
-//   branch from Organization > Branches, see App's `viewingBranch` state)
-//   suppresses this exclusion entirely -- that other branch's dashboard was
-//   never the redundant one, so without this an org_owner who'd delegated
-//   away their own Overview would land on whatever nav item happened to
-//   sort first (Inventory Dashboard) instead of that branch's Overview.
+//   Only the owner loses just this one item, and keeps the rest of their
+//   own branch's nav (Sales, Inventory, Receiving, ...) -- unlike an
+//   org_manager below, the owner's own home branch is genuinely, foundingly
+//   theirs, not a placeholder or a former assignment, so there's no reason
+//   they can't keep personally running it day to day alongside delegating
+//   every OTHER branch. `viewingOtherBranch` (true while drilled into a
+//   DIFFERENT branch from Organization > Branches, see App's `viewingBranch`
+//   state) suppresses this exclusion entirely -- that other branch's
+//   dashboard was never the redundant one, so without this an org_owner
+//   who'd delegated away their own Overview would land on whatever nav item
+//   happened to sort first (Inventory Dashboard) instead of that branch's
+//   Overview.
+//
+//   Every branch-scoped item (all of NAV_ITEMS except 'organization' and
+//   'help') -- hidden entirely for a real, dedicated org_manager, in their
+//   own regular nav. Unlike the org_owner above, an org_manager's own
+//   users.branch_id is NEVER genuinely theirs to run day to day: either a
+//   purely technical placeholder (a brand-new hire, picked automatically --
+//   see 2026-09-15_org_manager_not_tied_to_branch.sql) or a branch they were
+//   just promoted OUT of (an ex-branch_manager) which the org_owner is free
+//   to staff with someone new at any time. Their own-branch dashboard
+//   "sleeping" on promotion IS this rule -- every branch, including a
+//   former one of their own, is reached the same way from here on: through
+//   Organization > Branches "View Branch". `viewingOtherBranch` suppresses
+//   this the same way as above, for the same reason.
 //
 // Centralized here so the redirect guard, the prefetch warm-up, and the
 // sidebar's own item list can never disagree with each other.
-function computeVisibleNav(role: Role, organization: OrganizationSummary | null, viewingOtherBranch = false) {
+// myBranchOrganizationId: set even for a plain branch owner/manager who
+// holds no org_owner/org_manager role themselves, as long as their own
+// branch belongs to an organization -- see getMyBranchOrganizationId()'s own
+// comment for why this needs to be a separate signal from `organization`.
+// Without it, such a person could never reach the Organization tab at all,
+// including to respond to a stock request addressed to their own branch.
+function computeVisibleNav(
+  role: Role, organization: OrganizationSummary | null, viewingOtherBranch = false, myBranchOrganizationId: string | null = null,
+) {
   const ownerDelegatedAway = !viewingOtherBranch && role === 'owner' && organization?.myRole === 'org_owner' && organization.hasOrgManager
+  const isDedicatedOrgManagerOwnNav = !viewingOtherBranch && organization?.myRole === 'org_manager'
   return NAV_ITEMS.filter(n =>
     n.roles.includes(role)
-    && (n.id !== 'organization' || role === 'owner' || organization !== null)
-    && (n.id !== 'overview' || !ownerDelegatedAway),
+    && (n.id !== 'organization' || role === 'owner' || organization !== null || myBranchOrganizationId !== null)
+    && (n.id !== 'overview' || !ownerDelegatedAway)
+    && (!isDedicatedOrgManagerOwnNav || n.id === 'organization' || n.id === 'help'),
   )
 }
 
@@ -217,6 +245,11 @@ function roleLabelKey(id: Role): TranslationKey {
 
 // ─── Notifications Dropdown ───────────────────────────────────────────────────
 
+// Shared by the dropdown and the toast stack below, so the same alert
+// always reads with the same color in both places.
+const SEVERITY_DOT: Record<string, string> = { critical: '#dc2626', warning: '#d97706', info: '#16a34a' }
+const SEVERITY_BG: Record<string, string> = { critical: '#fef2f2', warning: '#fffbeb', info: '#f0fdf4' }
+
 function alertTimeAgo(iso: string): string {
   const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
   if (minutes < 1) return 'just now'
@@ -239,20 +272,16 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
         <span style={{ fontSize: 11, fontWeight: 600, background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '1px 7px' }}>{t('shell.activeAlerts', { count: active.length })}</span>
       </div>
       <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-        {active.map(a => {
-          const dot: Record<string, string> = { critical: '#dc2626', warning: '#d97706', info: '#16a34a' }
-          const bg: Record<string, string> = { critical: '#fef2f2', warning: '#fffbeb', info: '#f0fdf4' }
-          return (
-            <div key={a.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10, background: bg[a.type] + '60' }}>
-              <div style={{ width: 7, height: 7, borderRadius: '50%', background: dot[a.type], marginTop: 4, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: dot[a.type] }}>{t(a.titleKey)}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.msg}</div>
-                <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
-              </div>
+        {active.map(a => (
+          <div key={a.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10, background: SEVERITY_BG[a.type] + '60' }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: SEVERITY_DOT[a.type], marginTop: 4, flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: SEVERITY_DOT[a.type] }}>{t(a.titleKey)}</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.msg}</div>
+              <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
             </div>
-          )
-        })}
+          </div>
+        ))}
         {active.length === 0 && (
           <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--ink-faint)' }}>{t('shell.noNewAlerts')}</div>
         )}
@@ -260,6 +289,75 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
         <button onClick={onClose} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
       </div>
+    </div>
+  )
+}
+
+// ─── Toast stack ───────────────────────────────────────────────────────────────
+// Proactive counterpart to the dropdown above: a newly-arrived unread alert
+// (see refreshAlerts' new-vs-seen diff) gets a brief, animated card here so
+// it's noticed without having to think to open the bell. Purely a visual
+// nudge -- dismissing or letting one time out never changes is_read itself;
+// only actually opening the dropdown (clicking a card, or the bell) does
+// that, via the same openNotifDropdown() the bell button uses.
+
+const TOAST_AUTO_DISMISS_MS = 6000
+const TOAST_EXIT_ANIMATION_MS = 220
+
+function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: () => void; onOpen: () => void }) {
+  const { t } = useTranslation()
+  const [closing, setClosing] = useState(false)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setClosing(true), TOAST_AUTO_DISMISS_MS)
+    return () => clearTimeout(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!closing) return
+    const timer = setTimeout(onDismiss, TOAST_EXIT_ANIMATION_MS)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [closing])
+
+  return (
+    <div
+      className={closing ? 'toast-card toast-card-out' : 'toast-card toast-card-in'}
+      role="status"
+      style={{
+        pointerEvents: 'auto', display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 12,
+        background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 10px 30px rgba(0,0,0,0.16)',
+        cursor: 'pointer',
+      }}
+      onClick={() => { setClosing(true); onOpen() }}
+    >
+      <div style={{ width: 8, height: 8, borderRadius: '50%', background: SEVERITY_DOT[alert.type], marginTop: 4, flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: SEVERITY_DOT[alert.type] }}>{t(alert.titleKey)}</div>
+        <div style={{
+          fontSize: 11, color: 'var(--ink-mid)', marginTop: 2, overflow: 'hidden',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+        }}>{alert.msg}</div>
+      </div>
+      <button
+        onClick={e => { e.stopPropagation(); setClosing(true) }}
+        aria-label={t('shell.dismiss')}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-faint)', fontSize: 15, padding: 0, flexShrink: 0, lineHeight: 1 }}
+      >×</button>
+    </div>
+  )
+}
+
+function ToastStack({ toasts, onDismiss, onOpen }: { toasts: LiveAlert[]; onDismiss: (id: string) => void; onOpen: () => void }) {
+  if (toasts.length === 0) return null
+  return (
+    <div style={{
+      position: 'fixed', top: 72, right: 20, zIndex: 200, width: 320,
+      display: 'flex', flexDirection: 'column', gap: 10, pointerEvents: 'none',
+    }}>
+      {toasts.map(a => (
+        <ToastCard key={a.id} alert={a} onDismiss={() => onDismiss(a.id)} onOpen={onOpen} />
+      ))}
     </div>
   )
 }
@@ -444,8 +542,12 @@ export default function App() {
   // Not folded into `role`/Role itself: an org role is additive to, not a
   // replacement for, the existing owner/manager/seller branch role.
   const [organization, setOrganization] = useState<OrganizationSummary | null>(null)
+  // Set even without an org role, as long as the caller's own branch
+  // belongs to an organization -- see computeVisibleNav's own comment.
+  const [myBranchOrganizationId, setMyBranchOrganizationId] = useState<string | null>(null)
   const refreshOrganization = useCallback(async () => {
     try { setOrganization(await getMyOrganization()) } catch { setOrganization(null) }
+    try { setMyBranchOrganizationId(await getMyBranchOrganizationId()) } catch { setMyBranchOrganizationId(null) }
   }, [])
   // Branch list for an org_owner/org_manager's "All branches" / per-branch
   // picker on Overview -- fetched only once they actually have an
@@ -468,6 +570,16 @@ export default function App() {
   // `page` goes back to 'organization', and on sign-out.
   const [viewingBranch, setViewingBranch] = useState<{ branchId: string; branchName: string; branchCode?: string | null } | null>(null)
   useEffect(() => { if (page === 'organization') setViewingBranch(null) }, [page])
+  // Remembers whichever branch-dashboard page was open right before
+  // entering Organization mode, so a "← Back" control can return there --
+  // without this, the only way out of Organization (for anyone whose
+  // visibleOrgTabs is short, e.g. a plain branch owner/manager who can only
+  // reach Stock Transfers) was the "Today so far" sidebar card, which
+  // doesn't read as a navigation control at all. A ref, not state: it must
+  // survive without forcing a re-render on every ordinary page change, and
+  // is only ever read at the moment the back button is clicked.
+  const lastNonOrgPageRef = useRef<string>('overview')
+  useEffect(() => { if (page !== 'organization') lastNonOrgPageRef.current = page }, [page])
   // While `page === 'organization'`, the sidebar shows ONLY these org-level
   // tabs (Dashboard/Stock Transfers/Branches/Members/Settings) instead of
   // the full branch nav -- an org owner looking at their organization should
@@ -530,6 +642,10 @@ export default function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingSync, setPendingSync] = useState(0)
   const [alerts, setAlerts] = useState<LiveAlert[]>([])
+  // Newly-arrived unread alerts, shown as animated toast cards until
+  // dismissed or auto-expired -- populated by refreshAlerts' new-vs-seen
+  // diff below, not a straight mirror of `alerts` itself.
+  const [toasts, setToasts] = useState<LiveAlert[]>([])
 
   useEffect(() => {
     const up   = () => { setIsOnline(true);  setPendingSync(0) }
@@ -578,6 +694,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access])
 
+  // Tracks which alert ids have already been seen, purely so refreshAlerts
+  // (below) can tell "genuinely new since last poll" apart from "already
+  // known, just re-fetched again" -- a plain ref, not state, since nothing
+  // should re-render when it changes; it's read only inside that same
+  // callback. hasSeenFirstLoadRef additionally suppresses toasting the
+  // very first fetch of a session (pre-existing unread alerts should
+  // populate the badge quietly, not fire a toast burst on sign-in).
+  const seenAlertIdsRef = useRef<Set<string>>(new Set())
+  const hasSeenFirstLoadRef = useRef(false)
+
   const refreshAlerts = useCallback(async () => {
     // Best-effort and silent: a missed check here just means an overdue
     // out-of-stock reminder, or a not-yet-written-off expired batch,
@@ -586,7 +712,25 @@ export default function App() {
     try { await checkExpiredStock() } catch { /* ignore */ }
     try { await checkLicenseExpiry() } catch { /* ignore */ }
     try { await checkForecastAccuracyNotifications() } catch { /* ignore */ }
-    try { setAlerts(await loadLiveAlerts()) } catch { /* best-effort -- badge just stays at its last known count */ }
+    try { await checkMissingReorderPoints() } catch { /* ignore */ }
+    try { await checkRestockRecommendations() } catch { /* ignore */ }
+    try { await checkMissingBranchLocation() } catch { /* ignore */ }
+    try {
+      const next = await loadLiveAlerts()
+      if (hasSeenFirstLoadRef.current) {
+        const freshlyUnread = next.filter(a => !a.isRead && !seenAlertIdsRef.current.has(a.id))
+        if (freshlyUnread.length > 0) {
+          // Cap how many stack up at once -- a burst of many at once (e.g.
+          // several checks firing together) should still read as "you have
+          // new alerts", not paper the screen with cards.
+          setToasts(current => [...current, ...freshlyUnread].slice(-3))
+        }
+      } else {
+        hasSeenFirstLoadRef.current = true
+      }
+      seenAlertIdsRef.current = new Set(next.map(a => a.id))
+      setAlerts(next)
+    } catch { /* best-effort -- badge just stays at its last known count */ }
   }, [])
 
   useEffect(() => { if (access) void refreshAlerts() }, [access, refreshAlerts])
@@ -621,11 +765,17 @@ export default function App() {
   // no single-frame flash of a page this role shouldn't see.
   useLayoutEffect(() => {
     if (!access) return
-    const allowed = computeVisibleNav(role, organization, !!viewingBranch)
+    const allowed = computeVisibleNav(role, organization, !!viewingBranch, myBranchOrganizationId)
     if (!allowed.some(n => n.id === page)) {
-      setPage(allowed[0]?.id ?? 'help')
+      // Prefer 'organization' over whatever sorts first in NAV_ITEMS (would
+      // otherwise be 'help', which sits before it in that array) -- matters
+      // now that a dedicated org_manager's own allowed list is just
+      // ['help', 'organization'], so this guard firing for them (e.g. an
+      // in-progress session promoted mid-visit) lands on their real new
+      // home, same as computeDefaultPage would on a fresh sign-in.
+      setPage(allowed.find(n => n.id === 'organization')?.id ?? allowed[0]?.id ?? 'help')
     }
-  }, [access, role, organization, page, viewingBranch])
+  }, [access, role, organization, page, viewingBranch, myBranchOrganizationId])
 
   // Same correction, one level down: an org_manager only gets Dashboard/
   // Stock Transfers/Members inside the Organization section (see
@@ -634,9 +784,15 @@ export default function App() {
   // org_owner), snap back to Dashboard rather than showing a tab they no
   // longer have a sidebar entry for.
   useLayoutEffect(() => {
-    if (organization?.myRole !== 'org_manager') return
-    if (orgTab !== 'dashboard' && orgTab !== 'transfers' && orgTab !== 'members') setOrgTab('dashboard')
-  }, [organization, orgTab])
+    if (organization?.myRole === 'org_manager') {
+      if (orgTab !== 'dashboard' && orgTab !== 'transfers' && orgTab !== 'members') setOrgTab('dashboard')
+      return
+    }
+    // A plain branch owner/manager with no org role of their own, whose
+    // branch merely belongs to an organization -- Stock Transfers is the
+    // only tab they have (see visibleOrgTabs above).
+    if (!organization && myBranchOrganizationId && orgTab !== 'transfers') setOrgTab('transfers')
+  }, [organization, orgTab, myBranchOrganizationId])
 
   // Background warm-up: once signed in, prefetch every page chunk this role
   // can navigate to, so clicking around later never pays a per-page fetch
@@ -647,7 +803,7 @@ export default function App() {
     if (!access) return
     const saveData = (navigator as { connection?: { saveData?: boolean } }).connection?.saveData
     if (saveData) return
-    const allowed = computeVisibleNav(role, organization)
+    const allowed = computeVisibleNav(role, organization, false, myBranchOrganizationId)
     const warmUp = () => { allowed.forEach(item => prefetchPage(item.id)) }
     const hasIdleCallback = typeof window.requestIdleCallback === 'function'
     const handle = hasIdleCallback ? window.requestIdleCallback(warmUp, { timeout: 4000 }) : window.setTimeout(warmUp, 1500)
@@ -655,7 +811,7 @@ export default function App() {
       if (hasIdleCallback) window.cancelIdleCallback(handle as number)
       else window.clearTimeout(handle as number)
     }
-  }, [access, role, organization])
+  }, [access, role, organization, myBranchOrganizationId])
 
   // Global barcode scanner: active only inside the authenticated pharmacy
   // app (never during sign-in, the admin console, branch registration, or
@@ -708,13 +864,20 @@ export default function App() {
   }
 
   const currentRole = ROLES.find(r => r.id === role)!
-  const visibleNav = computeVisibleNav(role, organization, !!viewingBranch)
+  const visibleNav = computeVisibleNav(role, organization, !!viewingBranch, myBranchOrganizationId)
   // An org_manager only gets Dashboard/Stock Transfers/Members inside the
   // Organization section -- Branches and Settings stay owner-only. An
   // org_owner keeps all five.
+  // A plain branch owner/manager with no org_owner/org_manager role of their
+  // own (organization is null) but whose branch belongs to one
+  // (myBranchOrganizationId isn't) only ever needs Stock Transfers here --
+  // every other tab's own RPCs require real org membership and would just
+  // fail for them.
   const visibleOrgTabs = organization?.myRole === 'org_manager'
     ? ORG_TABS.filter(tab => tab.id === 'dashboard' || tab.id === 'transfers' || tab.id === 'members')
-    : ORG_TABS
+    : !organization && myBranchOrganizationId
+      ? ORG_TABS.filter(tab => tab.id === 'transfers')
+      : ORG_TABS
   const alertCount = alerts.filter(a => !a.isRead).length
   const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
 
@@ -751,20 +914,35 @@ export default function App() {
   // frozen snapshot taken right here, so the cashier can see what was just
   // read instead of the list emptying out from under them the moment it
   // marks itself read.
+  // Snapshots the currently-unread alerts for the dropdown to display, and
+  // marks them all read (both locally and server-side) -- shared by the
+  // bell button's own open case and a toast click, so the two entry points
+  // into "look at my notifications" behave identically.
+  function openNotifDropdown() {
+    const unread = alerts.filter(a => !a.isRead)
+    setNotifSnapshot(unread)
+    if (unread.length > 0) {
+      void markAllAlertsRead(unread.map(a => a.id)).catch(() => { /* best-effort; next poll reconciles */ })
+      setAlerts(current => current.map(a => a.isRead ? a : { ...a, isRead: true }))
+    }
+    setShowNotif(true)
+    setShowUser(false)
+  }
+
   function toggleNotif() {
     setShowNotif(open => {
-      const next = !open
-      if (next) {
-        const unread = alerts.filter(a => !a.isRead)
-        setNotifSnapshot(unread)
-        if (unread.length > 0) {
-          void markAllAlertsRead(unread.map(a => a.id)).catch(() => { /* best-effort; next poll reconciles */ })
-          setAlerts(current => current.map(a => a.isRead ? a : { ...a, isRead: true }))
-        }
-      }
-      return next
+      if (!open) { openNotifDropdown(); return true }
+      return false
     })
     setShowUser(false)
+  }
+
+  // A toast is a copy of an alert row taken at the moment it arrived --
+  // dismissing it (by timeout or by hand) never needs to touch is_read
+  // itself, since opening the dropdown (openNotifDropdown, above) already
+  // marks the real row read the same way clicking the bell does.
+  function dismissToast(id: string) {
+    setToasts(current => current.filter(t => t.id !== id))
   }
 
   const closeMenus = () => { setShowNotif(false); setShowUser(false); setShowSearchNav(false) }
@@ -940,11 +1118,18 @@ export default function App() {
       case 'analytics':     return <AnalyticsPage period={dateRange} branchId={viewingBranchId} />
       case 'compliance':    return <CompliancePage branchId={viewingBranchId} />
       case 'patients':      return <PatientsPage branchId={viewingBranchId} />
-      case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} />
+      // Viewing a DIFFERENT branch than your own only ever happens for an
+      // org_owner/org_manager (effective_branch_id() on the server enforces
+      // this) -- that's full settings authority there, same as that branch's
+      // own owner, so "owner" is passed regardless of the caller's own home
+      // role. Viewing your own branch (or not viewing one at all) keeps your
+      // real role, preserving the existing owner-vs-manager split.
+      case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} role={viewingBranchId && viewingBranchId !== access?.branchId ? 'owner' : role} branchId={viewingBranchId} />
       case 'organization':  return <OrganizationPage
                                      currentUserId={access!.userId}
                                      currentBranchId={access!.branchId}
                                      organization={organization}
+                                     myBranchOrganizationId={myBranchOrganizationId}
                                      onOrganizationChanged={refreshOrganization}
                                      onViewBranch={branch => { setViewingBranch(branch); setPage('overview') }}
                                      activeTab={orgTab}
@@ -1048,6 +1233,29 @@ export default function App() {
             onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
             onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = sidebarOpen ? 'var(--primary-light)' : 'none' }}
           >☰</button>
+
+          {/* Symmetric counterpart to the "← Back to Organization" pill
+              further down: the only way out of Organization mode used to be
+              the "Today so far" sidebar card, which doesn't read as
+              navigation at all -- most acute for a plain branch owner/
+              manager whose org access is Stock Transfers alone, where the
+              org sidebar has nothing else to click. Hidden if the
+              remembered page turns out invalid for this role (e.g. an
+              org_owner who has delegated 'overview' away) -- the
+              useLayoutEffect role guard would otherwise just bounce them
+              right back to Organization anyway. */}
+          {page === 'organization' && !showingBranchDrillIn && visibleNav.some(item => item.id === lastNonOrgPageRef.current) && (
+            <button
+              onClick={() => setPage(lastNonOrgPageRef.current)}
+              style={{
+                fontSize: 12, fontWeight: 600, color: 'var(--primary)', background: 'var(--primary-light)',
+                border: '1px solid var(--border)', borderRadius: 6, padding: '5px 9px', cursor: 'pointer',
+                fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap',
+              }}
+            >
+              ← {t('shell.backToDashboard')}
+            </button>
+          )}
 
           <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', letterSpacing: '-0.01em' }}>
             {t(`page.${page}` as TranslationKey)}
@@ -1183,6 +1391,8 @@ export default function App() {
             </button>
             {showNotif && <NotifDropdown alerts={notifSnapshot} onClose={() => setShowNotif(false)} />}
           </div>
+
+          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={openNotifDropdown} />
 
           {/* User avatar -- the pharmacy's own uploaded logo once one exists,
               same as the sidebar footer's copy of this same button. */}
