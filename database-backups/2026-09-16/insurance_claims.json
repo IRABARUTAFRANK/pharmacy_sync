@@ -1,0 +1,29 @@
+[
+  {
+    "claim_amount": 1361.7,
+    "coverage_percentage_applied": 85,
+    "id": "ab219ce4-66ca-44f0-b76f-0efbc0cf97b6",
+    "insurance_provider_id": "5f42d232-5078-46ed-83d4-a6b987f309f8",
+    "sale_id": "a172913f-28b4-4ad0-9fc8-b710e7bb67c9",
+    "status": "submitted",
+    "submitted_at": "2026-09-14T11:35:56.936397+00:00"
+  },
+  {
+    "claim_amount": 7744,
+    "coverage_percentage_applied": 80,
+    "id": "f7abc362-695a-43ca-b877-eef1c78184dd",
+    "insurance_provider_id": "5f42d232-5078-46ed-83d4-a6b987f309f8",
+    "sale_id": "f6465a46-618c-4348-938d-949bcb697a43",
+    "status": "submitted",
+    "submitted_at": "2026-09-15T07:41:45.273655+00:00"
+  },
+  {
+    "claim_amount": 135520,
+    "coverage_percentage_applied": 70,
+    "id": "7fe50a1a-782e-4489-aee9-4c37b5636709",
+    "insurance_provider_id": "5f42d232-5078-46ed-83d4-a6b987f309f8",
+    "sale_id": "c5372863-04e5-4c42-8341-2b27d2a676a2",
+    "status": "submitted",
+    "submitted_at": "2026-09-15T09:17:44.355809+00:00"
+  }
+]

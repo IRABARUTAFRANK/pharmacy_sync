@@ -1,0 +1,983 @@
+[
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "7cdb6ab4-ed41-40b7-a9c3-4662920b16e4",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (AXT5EHDU) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "db5f3bc3-b94f-4711-84b1-75f46b80b00b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "8d2326b1-6f1e-4707-a1a2-39c6150d8786",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (PBHL9TWN) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "b3f67ef5-86f9-4dc1-9e8f-c772f8eba449",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "980dc45c-debb-4b08-bb5b-5541f544be8b",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (5K7KVQ8Z) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "01d570f9-83df-4096-a0dc-5512999e35ca",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "ab80634b-3951-4fc1-8e08-97a067a0ddcc",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (FY4YYFKJ) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "6ca04e56-0b28-4061-998e-14060168f17b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "b62b9cdc-826d-4a28-8beb-92b1b02f76a2",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (U2KF3HXR) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "ecbd4f1f-7fd7-43af-a66a-5dba0407855a",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "c6f1e9e6-549e-4206-a783-cb06b4c3ad4a",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (2PALBHGD) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "a5262651-9c56-4fd6-a2b0-438985821f81",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "dcc364f3-a707-4fd1-b41a-877c2bbfaf42",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (XRTZQZPX) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "bbf8a508-c357-4171-a978-54d2009e562a",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "ec441f57-faad-43a5-9f99-b097b63017a3",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (5ESYUJB5) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "171cff80-fb94-4349-987e-5c507b8389ff",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "eedf3310-2ef4-4b31-aa4d-a35dccbfca4a",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (WBAJN9J5) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "25ce16f9-6e6f-44a1-9900-13c2dd77ea29",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T06:32:30.346125+00:00",
+    "id": "f1ecef06-dd38-491f-b4da-1b63c7037903",
+    "is_read": true,
+    "message": "Expired Writeoff: Adhesive Bandage (KDTXV5KE) expired on 2026-09-14 and was automatically written off.",
+    "source_id": "8da579a6-0239-4e49-92c2-a0e9830e9e0e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "137efd22-c4cd-4b99-bd34-76d7235127a8",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (D5LTLARB) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7333bac8-7cd3-4512-8d76-97ae70fc8533",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "291429fb-e99a-4227-9d2a-5c4c553d622e",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (QTXXHE2D) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "f9939040-7f88-49e5-bb10-774ac38ad94a",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "39cea0d8-ca84-4bfc-9472-db17ad8784f7",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (GBRB84HX) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "5592cc11-2299-488f-968e-cc1309bc065f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "5be7600d-5aed-42f5-af03-510a2f9779d9",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (9FZFW4SU) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "1040f333-30e0-4372-8366-461cd5671450",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "663e9c50-cd61-493b-9ec2-534e32f3b10d",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (GJ53TB34) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "fbfd0a80-5218-4406-a5fd-8d5c6bf5dbb5",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "7fdf2070-58a8-4449-8470-24d2df807c2c",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (Z4UAS8HH) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "410901fe-4220-4da8-92e5-3fb42be3370a",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "f280e7b2-06c4-499c-a185-1286b101a9c8",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (MD7GY3TE) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "b8d138f8-55c2-449c-b6cb-5b905eee20de",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "014a78b6-ffdc-41b3-b938-c2c55eb17ebb",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (NFDATBTW) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "80e1acb2-cfa7-41bb-b3a8-9c22bfb7bb7b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "03d15b0a-c3d7-4805-8ce5-8e603b0281a5",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YDSV7RGH) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "f5ecf173-ab62-4695-91bc-e66a1bf6a4d4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "10ec08ae-bffe-4688-9c9a-4d8e652e0c90",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YKPBXS5B) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "9c5d2ada-e83b-4ea6-b0cf-8abfebf657fa",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "115ac240-2238-4524-9d09-2cba151e3963",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (DSFNZMNW) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7806b169-e3dc-4117-b335-cea9b4d29905",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "12b88c05-45d3-4657-86a5-c00e0360390f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (5BPJEAE8) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "2fa7fbed-cb15-4eb4-aaba-50045ae81422",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "13d9fdd9-52d3-423b-8f02-45233c06c7b8",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (UZQ67JV4) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "1960a4ae-6d34-4d7d-a08b-86cbf8b68eb9",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "13e2f38c-4ce9-48da-b624-bcfe3ab2c9ac",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (EF98WWRT) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "93a574c7-3f8a-49a6-8404-2d00bb9d40ec",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "17a81498-b111-4850-bf06-fa3339fe1fc5",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (L3K7H3NA) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "0fc95084-58cf-4cb9-b9cb-ecf011b4d023",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "185004e4-a7ae-4132-9e43-858889e66cd1",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YFE2CLSX) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "5b136dc7-4f51-403b-b255-0c79a6d7f108",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "18d2a615-d128-4cea-8362-78d10db837be",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (ETYDHZ5B) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "3f778ca4-f321-474c-8568-aaccac022715",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "21cd8b65-26a6-4fd9-884c-e1341fd9e7ad",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (WU4JPE9T) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "a92078fe-b20e-4967-9ec4-1b999a8275a2",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "25ea8e03-767f-4821-8f53-38824b744f95",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (4UJN2FBV) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "61e0c752-ac47-4dc5-bfeb-82861f8d3116",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "26aa5c2f-0e90-4a0f-b6ee-09a94d6c9309",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (2HTJXGVY) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "2628e74d-c202-40cc-8ec6-272bab9f29dd",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "2d164268-f22e-490f-b2a5-8ca1e21adeb7",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (FCNRQ8Q5) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "b65616bb-86fc-4fd5-9cf3-5bcc53c69185",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "314858b2-5c95-4650-99c6-07b6f3e2e363",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (JV7V8RH4) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "892d2abb-7229-49ae-913e-c24ed271dda8",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "31812b9d-3bef-4b8a-9ada-79866d55105f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (2XD5SE8W) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "15a6da69-0cf9-4ba3-9b8c-64f7c7b2c310",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "33d0656c-172a-4f20-ac05-49d2db7fe3e0",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (LBPFL9UN) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "a4afc975-9f06-469d-a174-c5fb1d5d7e64",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "3564c89e-1cde-4921-9f29-4c62d878c77a",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (T23R54UC) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "19a9e50e-745d-4691-91fc-5816af3f458f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "385d5a38-c215-4cc1-87ed-381dd8d7081d",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (8GSG4M8B) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7472be4d-092a-454d-b1eb-e6a684aa0d5e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "38ec4707-a341-496e-bf8a-e4c936396a20",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (TZMGYREY) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "ec89fad6-8288-4df0-af41-a7fe7ce7a6c3",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "3b38e6f5-ccf6-4a32-a693-c6160de58a25",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (CQA36Q2B) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "c780fe19-c2b6-4cc7-bd0a-800854a24373",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "45056298-d553-413e-8edc-0621e46a7797",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (PN84KCLM) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "17c65f14-6919-468d-bf6d-a99cbc2c3c8e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "451f9707-9e8f-4ebf-8a38-407750f262b6",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (JUVFHNC9) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "51c5954d-1d8e-4448-a096-684755803bc4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "46aa2453-9524-4fad-9946-1f4fc90022cb",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (XRHYVUHV) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "f8251370-ee87-4fd8-a665-51b12227e4aa",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "49840094-cf84-401f-b0c1-292a771c884b",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YDREECSP) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "b9f1b44f-22e8-4428-993d-01d542260222",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "4ac81871-f514-45eb-be10-d3aefe448db8",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (CZEX9ZKD) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "33910b59-3f95-4a7f-93bb-fa0d7ee0604d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "4c52abbe-034e-422a-af43-1f54bbd347d6",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (48DAER8W) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "b012180d-b5a5-4a68-bd89-1eeb83c8fb83",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "58419af0-3a70-415e-8a6f-2fb0c3af7651",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (45KFBZ8S) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "1febd4e4-94b5-43e7-aef6-dddfdd9c8ce0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "595db359-f34c-4e8b-8b11-35daafbccad1",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (T3RF7546) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "dcab7c8c-42a3-4c4c-8b17-d71c47965f46",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "5f041e79-62a8-49a9-925b-a27d6faa314b",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (T288G378) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7bf39afb-db9d-45dd-9d32-3190778fddc3",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "61a62198-9144-445c-97a9-c2d33802afe3",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (K4WBF3N3) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "6c66615b-b761-4fae-9db8-c720da775bf2",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "624bb2cd-a8cd-44e4-a129-653bb58f6376",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (BLFC6XSY) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "6dc4c61f-496a-43bc-aaa6-44f2db0ff186",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "6640db8b-708a-4f04-b128-b93725d7a1c0",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (94LX92WY) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "aa741ed8-91d4-452f-b8d7-9b6e2f13f47d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "67a26433-fbe7-4f30-baad-69bfaa4272d4",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (DE2RXDQJ) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "c0749528-25e6-4d74-a24d-9d078c949302",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "6cc13af8-8307-4082-98eb-58ecf12b059b",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (DPUNXKLV) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "19e3958c-18d1-4fd1-a263-3dfb1ec24fd5",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "707e11c3-aed8-46df-8d25-a75f0c426089",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (HN7U2BMN) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "cc0ae40d-5446-4e01-b592-7e1f67754653",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "7197a92e-759c-4c14-955e-e3c235dcf758",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (DQPWKDBB) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "3b141c22-82d1-43bb-8442-9306a678c87f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "75a4bba4-707a-452f-8db4-8fb85341acfb",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (6UXFVE2V) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "4362c94a-9919-429e-aea1-2a720cffc7c4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "76f0f086-e9be-445f-b09b-604fa68f4e3e",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (CV2JQ8FH) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "ce50b602-3cf3-46e7-a2ca-588c69aed087",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "77dd5a0d-e6a3-453a-b087-8fe5cfddd5c7",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (JU8ZK6CM) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "bb1ca2d8-e7d6-4c45-8b47-0937821c9470",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "7ce98843-1662-4ce8-ae7d-b2ffe5d1ea82",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (82FKGPPR) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "f8c5d313-e976-4f4d-aa52-9ee8722ed7e8",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "7e1e0482-2439-4eaa-87b9-1175ab819bd3",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (SF4ZR24U) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "f60bca19-78f4-4994-bba3-2094c7e528ed",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "7eb1ba42-782f-484e-98a1-da303a2c1842",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (5TECEWGH) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "64526988-5b68-4b73-a29c-e342e247aab5",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "81d3c936-172a-453d-b3fe-f30827fb15cd",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YZNKC9SV) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "4adb5491-9b8e-4596-9f7d-f71ef0e89a86",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "8795d379-0fd4-4daf-869b-87e9b1e54563",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (54GA8VDM) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "abc37651-1ab9-47b7-a06c-3e5f4b19343e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "882f6b2d-6d36-4d0a-a375-7ebca2744a20",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (BRPUMVLJ) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "d43b1ca7-4501-4914-8c54-a0cc1b02809b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "8a52f25d-df76-4762-b378-dc966edf4981",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (F8JR92U4) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "e7469144-98c6-4c8e-9af1-062859275451",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "8aefb837-3557-4a71-b317-d495a6a0f0cc",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (UM52VP6P) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "56da6eee-0fee-4985-8183-3626792070bb",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "8e216558-f833-4ed8-a807-0a733aba8306",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (83LGX4TV) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "c79e09b6-a2f2-48d9-a763-2a5e8bae9358",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "91f92c7f-42f5-4b9c-8e50-9d284a335e78",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (8FAQCM8N) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "a07a178f-d360-4c63-8b47-0133cf9c7f70",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "938433ed-3b2c-4ac5-ba25-58d6e0391003",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (2AENAMJE) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "d6fbf269-2a80-4647-beb2-cf3222996c3f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "95b88958-3193-45fd-add7-15fd5dfad600",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (CCGWGUXG) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "3093034d-424c-4d9a-8735-60a652cda5a9",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "970ee78b-f42f-4d4c-8077-a14f608cb1a8",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (STQAD3UJ) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "d093fd10-17ca-4804-8b03-275f127e4198",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "9785120c-8dd6-47d3-a03b-3ecceb0901e6",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (FVNGQGU6) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "3312a537-f576-4d25-9873-711bcbb18b2d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "9a7bfb94-d2c1-4342-a20c-cf74f5f9c0bf",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (V3J8ZCJS) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7d0aedb0-decd-4f32-844c-2dda6b55f7dc",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "9acee64f-a84a-4929-b67e-c51c553d183d",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (5UW7WKCH) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "39631e68-9a01-4061-bfed-a9d682c8b507",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "9c7b47b9-8b67-4730-848c-88a78fafdddd",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (ETTZUY6G) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "e3c036fc-c4e4-471d-bb1d-ca31bba613d3",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "9ddfa7d2-394b-40cb-8858-76806939b972",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (8DBU4C5R) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "c948a0c8-df98-40cb-be5b-0f2f41f6c80a",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "9ea78fb8-cf51-40f4-a4c4-5dee85ca8b61",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (29HT3W6Z) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "97770d92-d043-497d-b071-5577d5405986",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "a2969d70-09de-41e2-8344-0cabb5a525fb",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (E2W4MP26) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7b37468f-ed03-4e26-abf8-58b68e185b77",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "a4dd5f1a-0351-4c60-b5b4-29a56961b13c",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (F3GPMESX) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "9f36a99a-5ce7-4f8b-81f6-158c83ba5f59",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "a6140674-76a5-4b48-a906-411c0dce8a2b",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YXXW59UT) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "ea1cc847-c55d-41a5-b6cf-e0734efdbd88",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "a9194eaa-6526-4beb-aac7-1caa1135ecb3",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (QRJXDTM2) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "b89909c2-f896-45e0-94ea-c0c3b9a173b0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ae71ad6b-023b-4e8b-884d-c320c7dd0147",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (ZBJRULLE) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "d3490c9a-db7a-4387-a546-e3348672e9b1",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "b4dab405-7ef6-44dd-bbe4-ab01880ce480",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YF2WGWKJ) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "265f00cb-6833-4e11-9fad-c0e4867b0ba9",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "bcca0e17-98a2-4f1c-b207-77f723580fda",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (2YJXZ282) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "d00c077c-ce10-45a5-9909-047502563b7e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "bfb6ba21-bd84-4e03-b304-d900478ca19f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (6TMGCKVD) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "0d224150-6b26-435b-b0c6-d8b94459e5cd",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "c0245b89-2caa-45f0-8706-872afa11415f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (J642WLAF) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "40fde67e-ece7-4610-9eb6-ee1acd449df0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "c484fe2c-7756-40c8-894f-22ec5f022957",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (ZAYRJQLY) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "c9be2e7e-47fc-48b4-8587-a5d648d8d465",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "cbcc8ef2-9cc4-44c4-b036-7f6aa583fe94",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (YWXGLZ6M) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "bc448e35-efce-4931-b60e-11f0e4495b0c",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "cbcfe678-af06-4bfb-826c-cc3f46d8a080",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (RTK9EA9A) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "9af723c0-b3bd-459f-a33e-62c6a1cecbc4",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "cd79fd58-ff14-48e1-9120-c13fd1c3f2d6",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (EEADFDH4) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "ede2aedc-8c45-4738-a260-dc39ee036a7e",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ce40cdc3-63e7-45e2-99a0-2c499431cf6e",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (SBKL46VD) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "8ab35632-f3e9-406e-8c69-1ed2e05dc764",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ced108bd-1895-491e-bc35-dd280749d0c7",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (JG5SGJXT) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "5c4719a7-333e-4572-a5b3-a91779a742f9",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d091fcbb-d4b0-4a2f-87a9-2f59d4dba983",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (KLEPQZYH) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "d95fb662-2a3d-4c42-98ba-e7b099a1b37f",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d24bed9e-7c3f-4fbb-9495-64fc52aa3eef",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (N9C8Q9H9) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "e45d4520-ed11-476a-8b70-90dc288454f7",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d51fbd8e-4db1-412f-9040-1dac52425490",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (DZB884FG) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "3ccdd781-b862-46d8-8252-1459b7470511",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d555a6ab-58ff-414b-86cd-9fe9e12154bc",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (P8NXLSH2) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "1fb024fb-b1f4-4ea8-90ca-b682c8fb3242",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d7c1c04d-43c2-4957-8a7c-1d8aaad4493f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (NVDUMF6E) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "844a043e-a257-4966-a6af-502326c20167",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d7e1f4e3-78f0-4154-ac4b-131f0947794b",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (BQVYAJ5R) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "080962cc-e704-4ce0-9be6-32b55ad8b3ec",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "d89112c3-dc49-4a9e-8a29-a3d202b8a27e",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (EDRYW3R5) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "8cd48741-4e00-4d0d-9d79-de1be37eda9b",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "db23f5b2-e8f5-4364-bf9e-5933209e824f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (3GDVNQ4U) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "354f4101-85a7-4f94-a4c4-0ffa9883cce9",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "e18b2579-eaa9-47bf-bfb9-4538c91ee3f0",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (BY9CTAAP) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "4e62bac5-1dfc-4473-a496-83095c96aa42",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ec8ce348-da07-4ce1-9450-90deb1fe233f",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (Y87QAGAP) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "646121ac-dfa5-4adb-87ae-b11ed532a0d3",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ed8aace2-b65a-4fb4-855d-45eff13e897d",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (CFMA5HN8) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "f7bba23b-d34a-4989-b550-f110fb77b1b0",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ede8450e-4c8b-4475-8b12-91890a1c98d3",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (T277GAFG) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "1d1783fd-e2ca-414a-8468-f2fe39f6cf28",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "ee850dd8-6fbe-415d-bb60-a4f335cf5f24",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (6H6HDTWC) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "7f17c6be-835d-4175-9b2c-eea7d324bead",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "f3f41c51-468b-465f-b16c-77900ff0a812",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (TMNYLR29) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "e2b79fee-5444-419c-8555-db004f5b2970",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "f40b2af3-55b3-4023-abe7-c857b018d7bc",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (G27Q3JJS) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "90757393-7d83-4615-935b-ee69621edd17",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "f66ee051-fc3b-49f5-a44b-c8e4e7e0e67e",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (SST7AX7P) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "c671d33f-b11e-4afb-becc-1a7099a5e954",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "fe447faa-858d-4e7a-a912-9ac97db70272",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (4L5PDDZB) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "a30c7cd5-3f86-4b88-a83e-7c1cce49351d",
+    "source_type": "stock_adjustment"
+  },
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-16T06:25:13.634636+00:00",
+    "id": "fe5f9418-8a95-43b4-9e4f-46a295787a93",
+    "is_read": true,
+    "message": "Expired Writeoff: ABACOFF COUGH Syrup 100ml 14.08mg (MKSBRFFL) expired on 2026-09-15 and was automatically written off.",
+    "source_id": "efd742a2-d66a-47c0-ac32-de01eb244389",
+    "source_type": "stock_adjustment"
+  }
+]

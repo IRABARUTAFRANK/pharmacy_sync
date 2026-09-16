@@ -1,0 +1,16 @@
+[
+  {
+    "age": 12,
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "created_at": "2026-09-15T07:41:44.962107+00:00",
+    "created_by": "9d5461d0-8e5d-4cc1-85b5-6ae04ef73074",
+    "full_name": "Rhema",
+    "gender": "male",
+    "id": "d73d1dd3-a1c1-480e-b672-e40508587dc0",
+    "insurance_number": "vjb87689",
+    "phone": "0789653489",
+    "tin": null,
+    "tin_or_phone": "0789653489",
+    "updated_at": "2026-09-15T09:17:44.09665+00:00"
+  }
+]

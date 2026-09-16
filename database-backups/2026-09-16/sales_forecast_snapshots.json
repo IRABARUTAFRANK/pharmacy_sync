@@ -1,0 +1,48 @@
+[
+  {
+    "branch_id": "02c27b95-b6bd-4aeb-ae68-8c05f25e513a",
+    "bucket": "week",
+    "category_id": null,
+    "generated_at": "2026-09-15T21:10:58.108476+00:00",
+    "id": "65d0bb5d-b238-4b6b-9e7a-686ec12b53e3",
+    "notified_at": null,
+    "points": [
+      {
+        "lower_bound": 12811139.29,
+        "period_start": "2026-09-14",
+        "predicted_quantity": 9326.67,
+        "predicted_revenue": 13590694.92,
+        "upper_bound": 14370250.56
+      },
+      {
+        "lower_bound": 42493524.56,
+        "period_start": "2026-09-21",
+        "predicted_quantity": 29794.33,
+        "predicted_revenue": 43415907.23,
+        "upper_bound": 44338289.89
+      },
+      {
+        "lower_bound": 70947281.29,
+        "period_start": "2026-09-28",
+        "predicted_quantity": 49320.83,
+        "predicted_revenue": 71869663.95,
+        "upper_bound": 72792046.62
+      },
+      {
+        "lower_bound": 99401038.01,
+        "period_start": "2026-10-05",
+        "predicted_quantity": 68847.33,
+        "predicted_revenue": 100323420.68,
+        "upper_bound": 101245803.35
+      },
+      {
+        "lower_bound": 69405569.28,
+        "period_start": "2026-10-12",
+        "predicted_quantity": 48108.33,
+        "predicted_revenue": 70102825.04,
+        "upper_bound": 70800080.8
+      }
+    ],
+    "product_id": null
+  }
+]

@@ -1,0 +1,170 @@
+[
+  {
+    "id": "29c4aa0d-9c42-45dc-b8a7-c8dd3efd6fb2",
+    "issued_at": "2026-09-13T20:48:26.407837+00:00",
+    "receipt_number": "RCT-20260913-9C3FE7",
+    "sale_id": "c8b7da2e-8fed-413a-b114-c3898b769ed1"
+  },
+  {
+    "id": "a57f7109-d443-48af-a4d3-f34e8e40d9eb",
+    "issued_at": "2026-09-13T21:29:08.664002+00:00",
+    "receipt_number": "RCT-20260913-3C27F7",
+    "sale_id": "386833d8-bcfd-4c3d-8855-4b9476aaaa40"
+  },
+  {
+    "id": "2221bb3b-34de-4515-b17a-1dd28e4c7ef2",
+    "issued_at": "2026-09-13T21:29:42.254438+00:00",
+    "receipt_number": "RCT-20260913-D9681E",
+    "sale_id": "0c627d83-ec91-4818-85f9-f49101f0c11f"
+  },
+  {
+    "id": "68439fc7-1097-4280-aaa0-d6c101ddde8d",
+    "issued_at": "2026-09-13T22:03:25.968922+00:00",
+    "receipt_number": "RCT-20260913-A1E9C0",
+    "sale_id": "386d75c6-5bbb-4e7d-ae63-4383e2e99551"
+  },
+  {
+    "id": "bc23ef45-edb7-4a3a-817d-a4e4b0bd10cf",
+    "issued_at": "2026-09-13T22:05:28.581242+00:00",
+    "receipt_number": "RCT-20260913-058DA1",
+    "sale_id": "ef9ec781-b542-4404-b541-1d05af75c289"
+  },
+  {
+    "id": "8b649d1d-2dd9-4e70-a343-0a9a7135c9ce",
+    "issued_at": "2026-09-14T08:25:23.189244+00:00",
+    "receipt_number": "RCT-20260914-E509B4",
+    "sale_id": "1d874cba-ca6c-4fc7-a5f7-ad932fe0276b"
+  },
+  {
+    "id": "ddf7b26e-7b42-4bbb-83dd-5eed71c31944",
+    "issued_at": "2026-09-14T08:49:17.075874+00:00",
+    "receipt_number": "RCT-20260914-5EC6FD",
+    "sale_id": "ad2b06b5-6237-477e-88ac-551aba25c4c0"
+  },
+  {
+    "id": "35f92687-7a23-44a2-b130-83d550f71055",
+    "issued_at": "2026-09-14T08:54:02.335122+00:00",
+    "receipt_number": "RCT-20260914-13DD9D",
+    "sale_id": "bd644496-d1ea-4594-9fa6-2ae9ae82d652"
+  },
+  {
+    "id": "d18de8fd-60ba-42b6-8d08-f6cb1a917fe0",
+    "issued_at": "2026-09-14T09:02:18.769333+00:00",
+    "receipt_number": "RCT-20260914-7FBBE8",
+    "sale_id": "83a4e07e-27e9-4710-9de0-52cb58a225ef"
+  },
+  {
+    "id": "6cdf26c8-ceff-445f-a567-9611a37aa467",
+    "issued_at": "2026-09-14T09:24:32.624138+00:00",
+    "receipt_number": "RCT-20260914-05C82D",
+    "sale_id": "68bf6fb6-6557-40f0-8b71-687b8116f473"
+  },
+  {
+    "id": "27db0364-fbef-4697-8fed-b74033105635",
+    "issued_at": "2026-09-14T09:26:54.23226+00:00",
+    "receipt_number": "RCT-20260914-E1951A",
+    "sale_id": "f437bc1b-adbb-40b6-9a8a-6df96bae644e"
+  },
+  {
+    "id": "82eb4b0b-9dbe-4264-9450-69f70d022b33",
+    "issued_at": "2026-09-14T11:35:56.936397+00:00",
+    "receipt_number": "RCT-20260914-52EE80",
+    "sale_id": "a172913f-28b4-4ad0-9fc8-b710e7bb67c9"
+  },
+  {
+    "id": "b64c623f-c124-4ff0-af8e-e6d43f7a71b8",
+    "issued_at": "2026-09-15T07:41:45.273655+00:00",
+    "receipt_number": "RCT-20260915-EC9662",
+    "sale_id": "f6465a46-618c-4348-938d-949bcb697a43"
+  },
+  {
+    "id": "d7e84a71-e341-4b57-a5e9-f0c930f1d036",
+    "issued_at": "2026-09-15T07:54:43.415237+00:00",
+    "receipt_number": "RCT-20260915-13A7D7",
+    "sale_id": "4a9269d0-73f6-44d4-9f64-61e842884f19"
+  },
+  {
+    "id": "c52cc784-a775-4490-98c4-7b8f9c5d7faa",
+    "issued_at": "2026-09-15T07:59:58.101555+00:00",
+    "receipt_number": "RCT-20260915-D5A3BD",
+    "sale_id": "4f70eccf-f5a0-4153-8d0d-a404ddf4037c"
+  },
+  {
+    "id": "3fa6658a-042e-4fd1-b0c8-b242aba90426",
+    "issued_at": "2026-09-15T08:01:02.147022+00:00",
+    "receipt_number": "RCT-20260915-967080",
+    "sale_id": "e66bd7dc-8bfa-45e3-b5e2-37d645a1b61d"
+  },
+  {
+    "id": "e072d442-1f7c-40d4-8d09-81da3af4e82f",
+    "issued_at": "2026-09-15T08:02:13.308266+00:00",
+    "receipt_number": "RCT-20260915-7DF47F",
+    "sale_id": "ee3cb804-6178-4b87-8e04-fd978d510feb"
+  },
+  {
+    "id": "d674523a-7844-4efd-b683-07979f3bebe6",
+    "issued_at": "2026-09-15T08:59:37.902548+00:00",
+    "receipt_number": "RCT-20260915-9B10A6",
+    "sale_id": "15a6fbc2-28e8-4285-b0b0-25e3e911e114"
+  },
+  {
+    "id": "efe55c0d-4b87-4f30-8378-201775b50c0e",
+    "issued_at": "2026-09-15T09:10:50.427454+00:00",
+    "receipt_number": "RCT-20260915-F49498",
+    "sale_id": "ae90508a-f484-425f-a1f0-d7ea415a6bd1"
+  },
+  {
+    "id": "c96f67f1-c7b9-4a9f-911f-38d9dc8ba702",
+    "issued_at": "2026-09-15T09:17:44.355809+00:00",
+    "receipt_number": "RCT-20260915-814C8F",
+    "sale_id": "c5372863-04e5-4c42-8341-2b27d2a676a2"
+  },
+  {
+    "id": "5ee284ea-9f0b-48dd-a193-606e472150cf",
+    "issued_at": "2026-09-15T10:10:08.674839+00:00",
+    "receipt_number": "RCT-20260915-CF4EF5",
+    "sale_id": "8cf25cb8-f537-4a67-beb3-a330af82b86c"
+  },
+  {
+    "id": "969b08f6-964e-4bf0-99bc-7c40717cfe05",
+    "issued_at": "2026-09-15T10:14:22.741482+00:00",
+    "receipt_number": "RCT-20260915-C3F725",
+    "sale_id": "6647295e-4d5e-4f71-80e8-f4d16e2e07a0"
+  },
+  {
+    "id": "edb136b6-24b0-4e54-8de1-0bdc5d4a8aca",
+    "issued_at": "2026-09-15T11:35:04.071848+00:00",
+    "receipt_number": "RCT-20260915-449FE1",
+    "sale_id": "28e086da-d8f2-4379-a51c-7ae9b87f2f3c"
+  },
+  {
+    "id": "ca2ddb0a-f5d3-431d-a03a-ef529ed38150",
+    "issued_at": "2026-09-15T16:42:52.672633+00:00",
+    "receipt_number": "RCT-20260915-5B3365",
+    "sale_id": "9eea0338-7e85-41a1-8cd4-f7b23395ab68"
+  },
+  {
+    "id": "e4376628-5fda-4209-b2b0-bb461270944d",
+    "issued_at": "2026-09-15T16:44:44.98624+00:00",
+    "receipt_number": "RCT-20260915-89CB46",
+    "sale_id": "471369b3-29fa-44f7-9e25-1b34329e3bc7"
+  },
+  {
+    "id": "51fa07c2-c3ba-4d7b-b382-bdd5280787f3",
+    "issued_at": "2026-09-15T21:09:04.929338+00:00",
+    "receipt_number": "RCT-20260915-638DB5",
+    "sale_id": "4d02c2e0-bb89-4b08-98e2-8e45cfa0092a"
+  },
+  {
+    "id": "ef990b2b-d075-4546-9ca7-78758779c7df",
+    "issued_at": "2026-09-16T06:33:08.623188+00:00",
+    "receipt_number": "RCT-20260916-8B5303",
+    "sale_id": "32a002e7-e0fb-491d-91b2-13587a435b29"
+  },
+  {
+    "id": "13c57b42-4570-4977-8dc6-3a730a4a5ea7",
+    "issued_at": "2026-09-16T06:51:09.585314+00:00",
+    "receipt_number": "RCT-20260916-BF249A",
+    "sale_id": "34399134-55b2-404f-bbff-065d1cb0e570"
+  }
+]
