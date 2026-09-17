@@ -5,7 +5,8 @@ import { useGlobalSearch } from './lib/search'
 import type { TranslationKey } from './lib/i18n/en'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
-import { Logo } from './components'
+import type { SettingsTab } from './pages/BranchSettingsPage'
+import { Logo, Modal } from './components'
 import { Sidebar } from './Sidebar'
 
 
@@ -16,10 +17,12 @@ import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { getMyBranchOrganizationId, getMyOrganization, listOrganizationBranches, type OrganizationSummary, type OrganizationBranch } from './lib/organization'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
-import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { checkExpiredStock, checkExpiringSoonStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkLowStockAlerts, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 import { GuidedTour, hasCompletedTour, markTourComplete } from './lib/tour'
+import { loadOnboardingProgress, type OnboardingProgress } from './lib/gettingStarted'
+import { recordAnyFeatureNudgeShown, recordFeatureNudgeShown, shouldShowAnyFeatureNudge, shouldShowFeatureNudge } from './lib/featureNudge'
 
 // Code-split every page behind the sidebar (and the admin/branch/reset
 // top-level routes) so the first load only ships what's needed to sign in --
@@ -520,6 +523,39 @@ function useIntroSplash(): 'visible' | 'exiting' | 'done' {
   return phase
 }
 
+// ─── Feature discovery popup ────────────────────────────────────────────────
+// A centered popup (not a banner tucked into the one page it's about) is
+// deliberate: the whole premise is reaching someone who doesn't know a
+// feature exists yet, and someone who doesn't know it exists has no reason to
+// go looking for it on its own page. This can interrupt on ANY page. Reuses
+// the same real-usage signals as the Getting Started checklist (OverviewPage)
+// -- checked once per session (a few seconds after landing, so it never races
+// the first-run tour), picking the first still-unused item in this list.
+// Unlike that checklist (dismiss = gone forever) or the one-shot GuidedTour,
+// dismissing this only suppresses it for a cooldown -- see lib/featureNudge.ts.
+interface FeatureDiscoveryDef {
+  key: string
+  done: (progress: OnboardingProgress) => boolean
+  page: string
+  // Only meaningful when page === 'branch' -- that page opens on its
+  // "profile" tab by default, so a bare setPage('branch') alone would land
+  // someone looking for e.g. discounts on the wrong tab entirely.
+  branchTab?: SettingsTab
+  titleKey: TranslationKey
+  bodyKey: TranslationKey
+}
+
+const FEATURE_DISCOVERY: FeatureDiscoveryDef[] = [
+  { key: 'reorder_points', done: p => p.setReorderPoint, page: 'inventory', titleKey: 'discover.reorderTitle', bodyKey: 'discover.reorderBody' },
+  { key: 'discounts', done: p => p.usedDiscount, page: 'branch', branchTab: 'pos', titleKey: 'discover.discountTitle', bodyKey: 'discover.discountBody' },
+  { key: 'categories', done: p => p.createdCategory, page: 'branch', branchTab: 'categories', titleKey: 'discover.categoryTitle', bodyKey: 'discover.categoryBody' },
+  // Not 'insurance' -- that page is a read-only view of claims/coverage for
+  // a branch user; adding a provider is Super-Admin-only (AdminPortal.tsx).
+  // What a branch user can actually DO to make this true is pick an existing
+  // provider at checkout, so this sends them to Sales instead.
+  { key: 'insurance', done: p => p.usedInsurance, page: 'sales', titleKey: 'discover.insuranceTitle', bodyKey: 'discover.insuranceBody' },
+]
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 const DATE_RANGE_OPTIONS = ['today', 'thisWeek', 'thisMonth', 'lastMonth', 'quarter', 'custom'] as const
@@ -617,6 +653,14 @@ export default function App() {
     setPage('inventory')
   }
   useEffect(() => { if (page !== 'inventory') setInventoryFocus(null) }, [page])
+
+  // Same deep-link shape as inventoryFocus above, for the feature-discovery
+  // popup's "Try it now" (see FEATURE_DISCOVERY below) landing on a specific
+  // Branch Settings tab -- e.g. discounts live under "pos", categories under
+  // "categories", not the "profile" tab the page opens on by default.
+  const [branchSettingsFocus, setBranchSettingsFocus] = useState<{ tab: SettingsTab; seq: number } | null>(null)
+  useEffect(() => { if (page !== 'branch') setBranchSettingsFocus(null) }, [page])
+
   const { term: search, setTerm: setSearch } = useGlobalSearch()
   const [showSearchNav, setShowSearchNav] = useState(false)
   const [searchNavHighlight, setSearchNavHighlight] = useState(0)
@@ -635,8 +679,39 @@ export default function App() {
   useEffect(() => {
     if (access && snapshotSettled && !hasCompletedTour(access.userId)) setTourOpen(true)
   }, [access, snapshotSettled])
+
+  // See FEATURE_DISCOVERY above. Only checked once the first-run tour is
+  // behind them (hasCompletedTour) and not while it's actually open, and only
+  // once the 4s delay elapses without the tour reopening in the meantime --
+  // so a manual "Replay tour" mid-delay cancels this cleanly instead of both
+  // popping up together.
+  const [discovery, setDiscovery] = useState<FeatureDiscoveryDef | null>(null)
+  useEffect(() => {
+    if (!access || !hasCompletedTour(access.userId) || tourOpen) return
+    // Global cooldown gate, separate from each feature's own -- caps this to
+    // at most one popup overall per window regardless of how long
+    // FEATURE_DISCOVERY grows. See shouldShowAnyFeatureNudge()'s comment.
+    if (!shouldShowAnyFeatureNudge(access.userId)) return
+    const timer = window.setTimeout(() => {
+      loadOnboardingProgress()
+        .then(progress => {
+          const candidate = FEATURE_DISCOVERY.find(f => !f.done(progress) && shouldShowFeatureNudge(access.userId, f.key))
+          if (candidate) setDiscovery(candidate)
+        })
+        .catch(() => { /* best-effort -- just skipped this session */ })
+    }, 4000)
+    return () => window.clearTimeout(timer)
+  }, [access, tourOpen])
+
+  function closeDiscovery() {
+    if (access && discovery) {
+      recordFeatureNudgeShown(access.userId, discovery.key)
+      recordAnyFeatureNudgeShown(access.userId)
+    }
+    setDiscovery(null)
+  }
+
   const [showNotif, setShowNotif]   = useState(false)
-  const [notifSnapshot, setNotifSnapshot] = useState<LiveAlert[]>([])
   const [showUser, setShowUser]     = useState(false)
 
   const [isOnline, setIsOnline] = useState(navigator.onLine)
@@ -709,6 +784,8 @@ export default function App() {
     // out-of-stock reminder, or a not-yet-written-off expired batch,
     // surfaces on the next poll instead of this one.
     try { await checkOutOfStockAlerts() } catch { /* ignore */ }
+    try { await checkLowStockAlerts() } catch { /* ignore */ }
+    try { await checkExpiringSoonStock() } catch { /* ignore */ }
     try { await checkExpiredStock() } catch { /* ignore */ }
     try { await checkLicenseExpiry() } catch { /* ignore */ }
     try { await checkForecastAccuracyNotifications() } catch { /* ignore */ }
@@ -909,31 +986,14 @@ export default function App() {
     setShowSearchNav(false)
   }
 
-  // Opening the bell marks whatever was unread at that instant as read —
-  // no separate click required. The dropdown itself still renders from a
-  // frozen snapshot taken right here, so the cashier can see what was just
-  // read instead of the list emptying out from under them the moment it
-  // marks itself read.
-  // Snapshots the currently-unread alerts for the dropdown to display, and
-  // marks them all read (both locally and server-side) -- shared by the
-  // bell button's own open case and a toast click, so the two entry points
-  // into "look at my notifications" behave identically.
-  function openNotifDropdown() {
-    const unread = alerts.filter(a => !a.isRead)
-    setNotifSnapshot(unread)
-    if (unread.length > 0) {
-      void markAllAlertsRead(unread.map(a => a.id)).catch(() => { /* best-effort; next poll reconciles */ })
-      setAlerts(current => current.map(a => a.isRead ? a : { ...a, isRead: true }))
-    }
-    setShowNotif(true)
-    setShowUser(false)
-  }
-
+  // Opening the bell is just a peek -- it no longer marks anything read on
+  // its own, the same reasoning as AlertsPage.tsx's refresh(): glancing at
+  // the dropdown (or seeing it while looking for something else) isn't the
+  // same as having actually dealt with every alert in it. The badge count
+  // and dropdown contents only change once something is marked read
+  // explicitly, from the full Alerts page.
   function toggleNotif() {
-    setShowNotif(open => {
-      if (!open) { openNotifDropdown(); return true }
-      return false
-    })
+    setShowNotif(open => !open)
     setShowUser(false)
   }
 
@@ -1105,6 +1165,8 @@ export default function App() {
                                      organization={organization}
                                      branches={orgBranches}
                                      initialScopeBranchId={viewingBranchId}
+                                     userId={access!.userId}
+                                     onNavigate={setPage}
                                    />
       case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} branchId={viewingBranchId} />
       case 'receiving':     return <StockReceivingPage branchId={viewingBranchId} />
@@ -1124,7 +1186,7 @@ export default function App() {
       // own owner, so "owner" is passed regardless of the caller's own home
       // role. Viewing your own branch (or not viewing one at all) keeps your
       // real role, preserving the existing owner-vs-manager split.
-      case 'branch':        return <BranchSettingsPage onLogoSaved={setPharmacyLogoUrl} role={viewingBranchId && viewingBranchId !== access?.branchId ? 'owner' : role} branchId={viewingBranchId} />
+      case 'branch':        return <BranchSettingsPage key={branchSettingsFocus?.seq ?? 0} initialTab={branchSettingsFocus?.tab} onLogoSaved={setPharmacyLogoUrl} role={viewingBranchId && viewingBranchId !== access?.branchId ? 'owner' : role} branchId={viewingBranchId} />
       case 'organization':  return <OrganizationPage
                                      currentUserId={access!.userId}
                                      currentBranchId={access!.branchId}
@@ -1375,10 +1437,10 @@ export default function App() {
               onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = showNotif ? 'var(--bg)' : 'none' }}
             >
               🔔
-              {/* The count itself, not just a dot -- clicking it (the whole
-                  button) already opens the dropdown AND marks everything
-                  read immediately, see toggleNotif() above; this just makes
-                  that number visible instead of a plain unread indicator. */}
+              {/* The count itself, not just a dot -- clicking it only opens
+                  the dropdown (see toggleNotif() above), it doesn't mark
+                  anything read; this just makes that number visible instead
+                  of a plain unread indicator. */}
               {alertCount > 0 && (
                 <span style={{
                   position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, padding: '0 3px',
@@ -1389,10 +1451,10 @@ export default function App() {
                 </span>
               )}
             </button>
-            {showNotif && <NotifDropdown alerts={notifSnapshot} onClose={() => setShowNotif(false)} />}
+            {showNotif && <NotifDropdown alerts={alerts} onClose={() => setShowNotif(false)} />}
           </div>
 
-          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={openNotifDropdown} />
+          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={() => setShowNotif(true)} />
 
           {/* User avatar -- the pharmacy's own uploaded logo once one exists,
               same as the sidebar footer's copy of this same button. */}
@@ -1433,6 +1495,31 @@ export default function App() {
           Tab navigation; it is never visible and never intercepts a click. */}
       {tourOpen && (
         <GuidedTour onFinish={() => { markTourComplete(access.userId); setTourOpen(false) }} />
+      )}
+
+      {discovery && (
+        <Modal title={t('discover.popupEyebrow')} onClose={closeDiscovery} width={380}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'center' }}>
+            <div style={{ fontSize: 30 }}>🔔</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)' }}>{t(discovery.titleKey)}</div>
+            <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-mid)', lineHeight: 1.6 }}>{t(discovery.bodyKey)}</p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 6 }}>
+              <button
+                onClick={closeDiscovery}
+                style={{ padding: '9px 14px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--ink-mid)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              >{t('discover.later')}</button>
+              <button
+                onClick={() => {
+                  const { page: target, branchTab } = discovery
+                  closeDiscovery()
+                  if (branchTab) setBranchSettingsFocus({ tab: branchTab, seq: Date.now() })
+                  setPage(target)
+                }}
+                style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: 'var(--primary)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+              >{t('discover.tryNow')}</button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {scannerEnabled && (

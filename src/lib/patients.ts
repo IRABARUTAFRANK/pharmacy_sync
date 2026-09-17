@@ -14,6 +14,10 @@ export interface Patient {
   phone: string
   /** Businesses and insured patients have one; most walk-ins do not. */
   tin: string | null
+  /** The patient's own insurance membership/policy number -- distinct from
+   *  `tin` (their own tax ID) and from the insurance provider's own TIN.
+   *  Null for a cash/walk-in patient with no insurance on file. */
+  insuranceNumber: string | null
 }
 
 export interface PatientListRow extends Patient {
@@ -32,6 +36,7 @@ export async function findPatientByIdentifier(identifier: string, branchId?: str
   return {
     id: row.id, fullName: row.full_name, gender: row.gender, age: row.age,
     tinOrPhone: row.tin_or_phone, phone: row.phone ?? row.tin_or_phone, tin: row.tin ?? null,
+    insuranceNumber: row.insurance_number ?? null,
   }
 }
 
@@ -46,10 +51,12 @@ export async function upsertPatient(
   phone: string,
   tin?: string | null,
   branchId?: string,
+  insuranceNumber?: string | null
 ): Promise<string> {
   const { data, error } = await supabase.rpc("upsert_patient", {
     p_full_name: fullName, p_gender: gender, p_age: age,
-    p_phone: phone, p_tin: tin?.trim() || null, ...branchArg(branchId),
+    p_phone: phone, p_tin: tin?.trim() || null, p_insurance_number: insuranceNumber?.trim() || null,
+    ...branchArg(branchId),
   })
   if (error) throw error
   return data as string
@@ -61,6 +68,7 @@ export async function listBranchPatients(branchId?: string): Promise<PatientList
   return ((data ?? []) as any[]).map(row => ({
     id: row.id, fullName: row.full_name, gender: row.gender, age: row.age,
     tinOrPhone: row.tin_or_phone, phone: row.phone ?? row.tin_or_phone, tin: row.tin ?? null,
+    insuranceNumber: row.insurance_number ?? null,
     visitCount: Number(row.visit_count), lastVisitAt: row.last_visit_at, lifetimeSpend: Number(row.lifetime_spend),
   }))
 }

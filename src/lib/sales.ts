@@ -94,18 +94,37 @@ export interface BranchInsuranceClaim {
   claimAmount: number
   status: InsuranceClaimStatus
   submittedAt: string
+  // For the claims document actually submitted to the insurer -- not shown as
+  // extra on-screen columns today, just carried along so an export has enough
+  // to identify which patient/visit each line is for. patientName/insuranceNumber
+  // can be null for a claim from before patient recording became mandatory on
+  // an insurance sale.
+  receiptNumber: string | null
+  saleTotal: number
+  patientName: string | null
+  patientInsuranceNumber: string | null
 }
 
 export async function loadBranchInsuranceClaims(): Promise<BranchInsuranceClaim[]> {
   const { data, error } = await supabase
     .from("insurance_claims")
-    .select("id, insurance_provider_id, coverage_percentage_applied, claim_amount, status, submitted_at")
+    .select(`
+      id, insurance_provider_id, coverage_percentage_applied, claim_amount, status, submitted_at,
+      sales ( total_amount, patients ( full_name, insurance_number ), receipts ( receipt_number ) )
+    `)
     .order("submitted_at", { ascending: false })
   if (error) raise(error, "Could not load insurance claims.")
-  return (data ?? []).map(row => ({
-    id: row.id, providerId: row.insurance_provider_id, coveragePercentageApplied: Number(row.coverage_percentage_applied),
-    claimAmount: Number(row.claim_amount), status: row.status as InsuranceClaimStatus, submittedAt: row.submitted_at,
-  }))
+  return (data ?? []).map((row: any) => {
+    const sale = Array.isArray(row.sales) ? row.sales[0] : row.sales
+    const patient = sale ? (Array.isArray(sale.patients) ? sale.patients[0] : sale.patients) : null
+    const receipt = sale ? (Array.isArray(sale.receipts) ? sale.receipts[0] : sale.receipts) : null
+    return {
+      id: row.id, providerId: row.insurance_provider_id, coveragePercentageApplied: Number(row.coverage_percentage_applied),
+      claimAmount: Number(row.claim_amount), status: row.status as InsuranceClaimStatus, submittedAt: row.submitted_at,
+      receiptNumber: receipt?.receipt_number ?? null, saleTotal: Number(sale?.total_amount ?? 0),
+      patientName: patient?.full_name ?? null, patientInsuranceNumber: patient?.insurance_number ?? null,
+    }
+  })
 }
 
 export interface CoverageOverrideRow {
@@ -154,6 +173,47 @@ export async function adminClearInsuranceCoverage(providerId: string, productId:
   if (error) raise(error, "Could not clear this product's coverage override.")
 }
 
+// ── Admin: bulk price-list import (see src/lib/insuranceImport.ts for the
+// CSV/Excel parsing that builds these rows) ─────────────────────────────────
+
+export interface InsuranceImportRow {
+  drugCode: string
+  productType: "medicine" | "supply"
+  productName: string
+  genericName: string | null
+  dosage: string | null
+  form: string
+  unit: string
+  price: number
+}
+
+export interface InsuranceImportResult {
+  createdProducts: number
+  updatedProducts: number
+  createdVariants: number
+  reusedVariants: number
+  pricesSet: number
+}
+
+export async function adminImportInsurancePriceList(
+  providerId: string, taxRateId: string, rows: InsuranceImportRow[],
+): Promise<InsuranceImportResult> {
+  const { data, error } = await supabaseAdmin.rpc("admin_import_insurance_price_list", {
+    p_provider_id: providerId, p_tax_rate_id: taxRateId,
+    p_rows: rows.map(r => ({
+      drugCode: r.drugCode, productType: r.productType, productName: r.productName, genericName: r.genericName,
+      dosage: r.dosage, form: r.form, unit: r.unit, price: r.price,
+    })),
+  })
+  if (error) raise(error, "Could not import this price list.")
+  const row = (Array.isArray(data) ? data[0] : data) as any
+  return {
+    createdProducts: Number(row?.created_products ?? 0), updatedProducts: Number(row?.updated_products ?? 0),
+    createdVariants: Number(row?.created_variants ?? 0), reusedVariants: Number(row?.reused_variants ?? 0),
+    pricesSet: Number(row?.prices_set ?? 0),
+  }
+}
+
 // ── Sales POS: scan → cart ──────────────────────────────────────────────────
 
 export interface ScannedBarcode {
@@ -174,6 +234,11 @@ export interface ScannedBarcode {
   form: string | null
   manufacturerName: string | null
   sellingPrice: number
+  // What this exact batch cost the branch, per piece -- used only for the
+  // walk-in bargain-price profit/loss check (see priceLine() callers in
+  // SalesPage.tsx). Never sent to complete_sale(); it recomputes its own
+  // pricing server-side from the same stock_batches row.
+  costPrice: number
   taxRateId: string
   taxRatePercentage: number
   batchNumber: string
@@ -229,7 +294,7 @@ export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<S
     childPiecesPerPack: row.child_pieces_per_pack ?? null,
     activeChildCount: row.active_child_count ?? null,
     productId: row.product_id, productName: row.product_name, dosage: row.dosage, form: row.form,
-    manufacturerName: row.manufacturer_name, sellingPrice: Number(row.selling_price),
+    manufacturerName: row.manufacturer_name, sellingPrice: Number(row.selling_price), costPrice: Number(row.cost_price),
     taxRateId: row.tax_rate_id, taxRatePercentage: Number(taxRate?.rate_percentage ?? 0),
     batchNumber: row.batch_number, expiryDate: row.expiry_date,
   }
@@ -277,6 +342,17 @@ export interface CompleteSaleInput {
   // Undefined/omitted preserves today's exact behavior (the caller's own
   // branch, resolved server-side).
   branchId?: string
+  // The customer's negotiated final price for the whole sale (e.g. "give me
+  // this for 500"), walk-in only -- complete_sale() rejects it outright if
+  // insuranceProviderId or discountId is also set. Mutually exclusive with
+  // discountId at the UI level too; see SalesPage.tsx's bargain panel.
+  bargainFinalPrice?: number | null
+  // What the PATIENT pays out of pocket for this sale, as a percentage --
+  // insurance covers the rest (100 - this), applied uniformly across every
+  // line instead of the per-product/provider default. Real coverage varies
+  // by the patient's own plan, not the product, so the pharmacist enters it
+  // per sale. Insurance-only; complete_sale() rejects it on a walk-in sale.
+  patientCoveragePercentage?: number | null
 }
 
 // The one and only way a sale is written: complete_sale() re-validates and
@@ -295,6 +371,8 @@ export async function completeSale(input: CompleteSaleInput): Promise<CompleteSa
     p_patient_id: input.patientId ?? null,
     p_payment_method: input.paymentMethod ?? null,
     p_discount_id: input.discountId ?? null,
+    p_bargain_final_price: input.bargainFinalPrice ?? null,
+    p_patient_coverage_percentage: input.patientCoveragePercentage ?? null,
     ...branchArg(input.branchId),
   })
   if (error) raise(error, "Could not complete this sale.")
@@ -345,6 +423,11 @@ export interface ReceiptData {
   subtotal: number
   taxTotal: number
   insuranceCoveredTotal: number
+  // Any discount actually applied to this sale -- whether from a
+  // discounts-catalog code or a cashier-bargained final price -- derived
+  // from comparing the line-item total against sales.total_amount. 0 when
+  // no discount was used.
+  discountAmount: number
   patientOwedTotal: number
   grandTotal: number
   // RRA EBM/VSDC compliance data (see src/lib/vsdc.ts). Null until this
@@ -355,11 +438,14 @@ export interface ReceiptData {
   ebmMrcNo: string | null
   ebmReceiptSignature: string | null
   ebmInvoiceNumber: number | null
+  // Optional, pharmacist-added -- see setSaleReceiptNote(). Purely additive
+  // to the receipt; null/absent changes nothing about how it renders.
+  receiptNote: string | null
 }
 
 export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
   const [saleRes, receiptRes, itemsRes, claimRes] = await Promise.all([
-    supabase.from("sales").select("id, branch_id, cashier_id, patient_id, total_amount, sold_at").eq("id", saleId).maybeSingle(),
+    supabase.from("sales").select("id, branch_id, cashier_id, patient_id, total_amount, sold_at, receipt_note").eq("id", saleId).maybeSingle(),
     supabase.from("receipts").select("receipt_number, issued_at").eq("sale_id", saleId).maybeSingle(),
     supabase.from("sale_items").select("barcode_id, tax_rate_id, quantity, unit_price, subtotal, insurance_covered_amount").eq("sale_id", saleId),
     supabase.from("insurance_claims").select("insurance_provider_id").eq("sale_id", saleId).maybeSingle(),
@@ -437,6 +523,17 @@ export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
   const branchRow = branchRes.data as any
   const logoPath: string | null = branchRow?.logo_path ?? null
 
+  // sales.total_amount is the TRUE, authoritative amount actually charged --
+  // written by complete_sale() as v_total - v_discount_amount, whether that
+  // discount came from a discounts-catalog code or a cashier-bargained final
+  // price (see complete_sale()'s own comments). Everything above this point
+  // (subtotal/taxTotal/insuranceCoveredTotal) is summed straight from the
+  // line items and knows nothing about a discount -- comparing the two is
+  // exactly how much was actually taken off.
+  const preDiscountOwed = subtotal + taxTotal - insuranceCoveredTotal
+  const finalOwed = Number(saleRes.data.total_amount)
+  const discountAmount = Math.max(0, preDiscountOwed - finalOwed)
+
   return {
     saleId, receiptNumber: receiptRes.data.receipt_number, issuedAt: receiptRes.data.issued_at,
     branchName: branchRow?.name ?? "—",
@@ -448,11 +545,21 @@ export async function getSaleReceipt(saleId: string): Promise<ReceiptData> {
     patientName: patient?.full_name ?? null, patientGender: patient?.gender ?? null, patientAge: patient?.age ?? null, patientContact: patient?.tin_or_phone ?? null,
     insuranceProviderName: (providerRes.data as any)?.name ?? null,
     items: receiptItems, subtotal, taxTotal, insuranceCoveredTotal,
-    patientOwedTotal: subtotal + taxTotal - insuranceCoveredTotal, grandTotal: subtotal + taxTotal,
+    discountAmount, patientOwedTotal: finalOwed, grandTotal: subtotal + taxTotal,
     // TODO: once complete_sale() submits to VSDC and stores the result on
     // public.receipts, select and map those columns here instead of nulls.
     ebmSdcId: null, ebmMrcNo: null, ebmReceiptSignature: null, ebmInvoiceNumber: null,
+    receiptNote: saleRes.data.receipt_note ?? null,
   }
+}
+
+// Sets (or clears, with an empty string) the pharmacist-added note on an
+// already-completed sale's receipt. Branch-scoped inside the RPC itself --
+// see set_sale_receipt_note() -- so this can only ever touch a sale that
+// belongs to the caller's own branch.
+export async function setSaleReceiptNote(saleId: string, note: string): Promise<void> {
+  const { error } = await supabase.rpc("set_sale_receipt_note", { p_sale_id: saleId, p_note: note })
+  if (error) raise(error, "Could not save this note.")
 }
 
 // ── Public receipt lookup — powers the "scan to view online" QR printed on
@@ -485,9 +592,11 @@ export async function getPublicSaleReceipt(saleId: string): Promise<ReceiptData>
       insuranceCovered: Number(i.insuranceCovered), patientOwed: Number(i.patientOwed),
     })),
     subtotal: Number(row.subtotal), taxTotal: Number(row.taxTotal), insuranceCoveredTotal: Number(row.insuranceCoveredTotal),
+    discountAmount: Number(row.discountAmount ?? 0),
     patientOwedTotal: Number(row.patientOwedTotal), grandTotal: Number(row.grandTotal),
     ebmSdcId: row.ebmSdcId ?? null, ebmMrcNo: row.ebmMrcNo ?? null, ebmReceiptSignature: row.ebmReceiptSignature ?? null,
     ebmInvoiceNumber: row.ebmInvoiceNumber ?? null,
+    receiptNote: row.receiptNote ?? null,
   }
 }
 

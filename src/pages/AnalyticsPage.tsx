@@ -8,6 +8,8 @@ import type { TranslationKey } from "../lib/i18n/en"
 import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/overview"
 import { listBranchPatients } from "../lib/patients"
 import { loadReceivingReference, type ReceivingCategory, type ReceivingProduct } from "../lib/receiving"
+import { loadBranchInsuranceClaims, loadInsuranceProviders, type InsuranceProvider } from "../lib/sales"
+import { useSessionDraft } from "../lib/sessionDraft"
 import {
   loadBasketSize, loadBranchSnapshot, loadCategoryBreakdown, loadDeadStock, loadDiscountUsage, loadInsuranceClaimAging,
   loadInsuranceProviderComparison, loadInsuranceSummary, loadInventoryTurnover, loadPatientRetention, loadPatientSummary,
@@ -187,6 +189,37 @@ function PeriodPickerModal({ def, onClose, onConfirm }: { def: ReportDef; onClos
   )
 }
 
+// Shown only for the Insurance report, right after the period is picked --
+// each insurer needs its own claim document, so this asks which one (or "all
+// providers" to keep today's combined summary+aging behavior unchanged).
+// See generateReport()'s "insurance" branch for what each choice produces.
+function InsuranceProviderPickerModal({ providers, onClose, onConfirm }: {
+  providers: InsuranceProvider[]
+  onClose: () => void
+  onConfirm: (providerId: string | null, providerName: string | null) => void
+}) {
+  const { t } = useTranslation()
+  const [providerId, setProviderId] = useState("")
+
+  return (
+    <Modal title={t("analyticsPage.insuranceProviderPickerTitle")} onClose={onClose} width={420}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("analyticsPage.insuranceProviderPickerSubtitle")}</div>
+        <select value={providerId} onChange={e => setProviderId(e.target.value)} style={SELECT_STYLE}>
+          <option value="">{t("analyticsPage.insuranceProviderAllOption")}</option>
+          {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <Btn variant="secondary" onClick={onClose}>{t("analyticsPage.periodCancel")}</Btn>
+          <Btn variant="primary" onClick={() => onConfirm(providerId || null, providers.find(p => p.id === providerId)?.name ?? null)}>
+            {t("analyticsPage.periodContinue")}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 function StatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div style={{ flex: "1 1 150px", minWidth: 140, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
@@ -247,9 +280,17 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
   const [snapshot, setSnapshot] = useState<BranchSnapshot | null>(null)
   const [snapshotLoading, setSnapshotLoading] = useState(true)
 
-  const [dateFrom, setDateFrom] = useState(daysAgo(30))
-  const [dateTo, setDateTo] = useState(daysAgo(0))
-  const [bucket, setBucket] = useState<TrendBucket>("day")
+  // dateFrom through retentionInactive below all survive navigating to
+  // another page and back (Sales, Alerts, anywhere) via useSessionDraft --
+  // see lib/sessionDraft.ts. This is filter/configuration state, not raw
+  // data (the data itself is always re-fetched fresh from these values by
+  // the effects below), but re-picking a custom date range, forecast
+  // product, or retention window every time is exactly the kind of lost
+  // work this page shouldn't force after a quick trip to check something
+  // else.
+  const [dateFrom, setDateFrom] = useSessionDraft("analytics_dateFrom", daysAgo(30))
+  const [dateTo, setDateTo] = useSessionDraft("analytics_dateTo", daysAgo(0))
+  const [bucket, setBucket] = useSessionDraft<TrendBucket>("analytics_bucket", "day")
   const [trend, setTrend] = useState<SalesTrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(true)
 
@@ -263,21 +304,21 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
     setDateTo(toDateInputValue(range.end))
   }, [period])
 
-  const [topMetric, setTopMetric] = useState<"revenue" | "quantity">("revenue")
-  const [topDirection, setTopDirection] = useState<"asc" | "desc">("desc")
+  const [topMetric, setTopMetric] = useSessionDraft<"revenue" | "quantity">("analytics_topMetric", "revenue")
+  const [topDirection, setTopDirection] = useSessionDraft<"asc" | "desc">("analytics_topDirection", "desc")
   const [topProducts, setTopProducts] = useState<TopProductRow[]>([])
 
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryBreakdownRow[]>([])
 
-  const [stockFilter, setStockFilter] = useState<StockFilter>("all")
+  const [stockFilter, setStockFilter] = useSessionDraft<StockFilter>("analytics_stockFilter", "all")
   const [stockRows, setStockRows] = useState<StockStatusRow[]>([])
   const [stockLoading, setStockLoading] = useState(true)
 
   const [reference, setReference] = useState<{ products: ReceivingProduct[]; categories: ReceivingCategory[] } | null>(null)
-  const [forecastProductId, setForecastProductId] = useState("")
-  const [forecastCategoryId, setForecastCategoryId] = useState("")
-  const [forecastHorizon, setForecastHorizon] = useState(30)
-  const [forecastHistory, setForecastHistory] = useState(90)
+  const [forecastProductId, setForecastProductId] = useSessionDraft("analytics_forecastProductId", "")
+  const [forecastCategoryId, setForecastCategoryId] = useSessionDraft("analytics_forecastCategoryId", "")
+  const [forecastHorizon, setForecastHorizon] = useSessionDraft("analytics_forecastHorizon", 30)
+  const [forecastHistory, setForecastHistory] = useSessionDraft("analytics_forecastHistory", 90)
   const [forecast, setForecast] = useState<SalesForecast | null>(null)
   const [forecastSeries, setForecastSeries] = useState<SalesForecastPoint[]>([])
   const [forecastAccuracy, setForecastAccuracy] = useState<SalesForecastAccuracyPoint[]>([])
@@ -299,15 +340,15 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
   const [sellerProductivity, setSellerProductivity] = useState<SellerProductivityRow[]>([])
 
   // ── Extras with their own controls ──
-  const [deadStockDays, setDeadStockDays] = useState(60)
+  const [deadStockDays, setDeadStockDays] = useSessionDraft("analytics_deadStockDays", 60)
   const [deadStock, setDeadStock] = useState<DeadStockRow[]>([])
   const [deadStockLoading, setDeadStockLoading] = useState(true)
 
   const [claimAging, setClaimAging] = useState<ClaimAgingBucket[]>([])
   const [recallLog, setRecallLog] = useState<RecallLogRow[]>([])
 
-  const [retentionLookback, setRetentionLookback] = useState(180)
-  const [retentionInactive, setRetentionInactive] = useState(60)
+  const [retentionLookback, setRetentionLookback] = useSessionDraft("analytics_retentionLookback", 180)
+  const [retentionInactive, setRetentionInactive] = useSessionDraft("analytics_retentionInactive", 60)
   const [patientRetention, setPatientRetention] = useState<PatientRetentionRow[]>([])
   const [retentionLoading, setRetentionLoading] = useState(true)
 
@@ -317,6 +358,7 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
     loadReceivingReference().then(ref => setReference({ products: ref.products, categories: ref.categories })).catch(() => { /* forecast pickers just stay empty */ })
     loadInsuranceClaimAging(branchId).then(setClaimAging).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorClaimAging")))
     loadRecallLog(50).then(setRecallLog).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorRecallLog")))
+    loadInsuranceProviders().then(setInsuranceProviders).catch(reason => setError(reason instanceof Error ? reason.message : t("analyticsPage.errorInsuranceProviders")))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId])
 
@@ -438,8 +480,13 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
 
   const [pickerDef, setPickerDef] = useState<ReportDef | null>(null)
   const [reportLoadingId, setReportLoadingId] = useState<string | null>(null)
-  const [activeReport, setActiveReport] = useState<{ def: ReportDef; period: ResolvedPeriod } | null>(null)
+  const [activeReport, setActiveReport] = useState<{ def: ReportDef; period: ResolvedPeriod; insuranceProviderName?: string | null } | null>(null)
   const [reportSections, setReportSections] = useState<ReportSection[] | null>(null)
+  // Insurance report only: period is picked first (same as every other
+  // report), then this holds it while the provider picker (below) asks which
+  // insurer -- or "all providers" -- before generateReport() actually runs.
+  const [pendingInsuranceReport, setPendingInsuranceReport] = useState<{ def: ReportDef; period: ResolvedPeriod } | null>(null)
+  const [insuranceProviders, setInsuranceProviders] = useState<InsuranceProvider[]>([])
 
   // Days between the chosen from/to, inclusive -- used to translate a
   // calendar period into the "how many days back" windows a few analytics_*
@@ -454,7 +501,7 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
   // NOT reuse this page's own dateFrom/dateTo state, so picking "Today" for a
   // report works regardless of what date range the charts elsewhere on this
   // page currently happen to be showing.
-  async function generateReport(def: ReportDef, period: ResolvedPeriod) {
+  async function generateReport(def: ReportDef, period: ResolvedPeriod, insuranceProviderId?: string | null, insuranceProviderName?: string | null) {
     setReportLoadingId(def.id)
     setError("")
     try {
@@ -497,24 +544,49 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
           },
         ]
       } else if (def.id === "insurance") {
-        // Claim aging has no from/to of its own -- it's "how old are claims
-        // still pending right now", a live snapshot regardless of period.
-        const [insuranceData, agingData] = await Promise.all([
-          loadInsuranceSummary(period.from, period.to, branchId),
-          loadInsuranceClaimAging(branchId),
-        ])
-        sections = [
-          {
-            title: "Claims by Insurer",
-            headers: ["Provider", "Claims", "Total Claimed (RWF)", "Paid Out (RWF)", "Pending (RWF)"],
-            rows: insuranceData.map(r => [r.providerName, r.claimCount, Math.round(r.totalClaimed), Math.round(r.paidOut), Math.round(r.pending)]),
-          },
-          {
-            title: "Claim Aging (live, all pending claims)",
-            headers: ["Age", "Claims", "Total Amount (RWF)"],
-            rows: agingData.map(r => [r.ageBucket, r.claimCount, Math.round(r.totalAmount)]),
-          },
-        ]
+        if (insuranceProviderId) {
+          // One insurer's own itemized claim list -- the document that
+          // actually gets submitted for reimbursement, not an aggregate
+          // mixing every insurer together. Claim aging (a live, all-providers
+          // snapshot with no provider column of its own) doesn't belong in a
+          // single insurer's document, so it's left out of this branch only.
+          const from = new Date(period.from).getTime()
+          const to = new Date(`${period.to}T23:59:59`).getTime()
+          const claims = (await loadBranchInsuranceClaims()).filter(c => {
+            const at = new Date(c.submittedAt).getTime()
+            return c.providerId === insuranceProviderId && at >= from && at <= to
+          })
+          sections = [
+            {
+              title: `Claims — ${insuranceProviderName ?? "Insurer"}`,
+              headers: ["Receipt #", "Patient", "Insurance No.", "Date", "Coverage %", "Sale Total (RWF)", "Claim Amount (RWF)", "Status"],
+              rows: claims.map(c => [
+                c.receiptNumber ?? "—", c.patientName ?? "—", c.patientInsuranceNumber ?? "—",
+                new Date(c.submittedAt).toLocaleDateString(), `${c.coveragePercentageApplied}%`,
+                Math.round(c.saleTotal), Math.round(c.claimAmount), c.status,
+              ]),
+            },
+          ]
+        } else {
+          // Claim aging has no from/to of its own -- it's "how old are claims
+          // still pending right now", a live snapshot regardless of period.
+          const [insuranceData, agingData] = await Promise.all([
+            loadInsuranceSummary(period.from, period.to, branchId),
+            loadInsuranceClaimAging(branchId),
+          ])
+          sections = [
+            {
+              title: "Claims by Insurer",
+              headers: ["Provider", "Claims", "Total Claimed (RWF)", "Paid Out (RWF)", "Pending (RWF)"],
+              rows: insuranceData.map(r => [r.providerName, r.claimCount, Math.round(r.totalClaimed), Math.round(r.paidOut), Math.round(r.pending)]),
+            },
+            {
+              title: "Claim Aging (live, all pending claims)",
+              headers: ["Age", "Claims", "Total Amount (RWF)"],
+              rows: agingData.map(r => [r.ageBucket, r.claimCount, Math.round(r.totalAmount)]),
+            },
+          ]
+        }
       } else if (def.id === "patients") {
         // listBranchPatients() has no date filter (a patient's gender/age
         // aren't period-scoped data) -- summary and retention are.
@@ -632,7 +704,7 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
           },
         ]
       }
-      setActiveReport({ def, period })
+      setActiveReport({ def, period, insuranceProviderName })
       setReportSections(sections)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("analyticsPage.errorReport"))
@@ -743,15 +815,33 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
         <PeriodPickerModal
           def={pickerDef}
           onClose={() => setPickerDef(null)}
-          onConfirm={period => { setPickerDef(null); void generateReport(pickerDef, period) }}
+          onConfirm={period => {
+            setPickerDef(null)
+            // Insurance report only: ask which insurer before generating --
+            // see InsuranceProviderPickerModal below.
+            if (pickerDef.id === "insurance") setPendingInsuranceReport({ def: pickerDef, period })
+            else void generateReport(pickerDef, period)
+          }}
+        />
+      )}
+
+      {pendingInsuranceReport && (
+        <InsuranceProviderPickerModal
+          providers={insuranceProviders}
+          onClose={() => setPendingInsuranceReport(null)}
+          onConfirm={(providerId, providerName) => {
+            const { def, period } = pendingInsuranceReport
+            setPendingInsuranceReport(null)
+            void generateReport(def, period, providerId, providerName)
+          }}
         />
       )}
 
       {reportSections && activeReport && (
         <ExportModal
-          title={`${t(activeReport.def.titleKey)} — ${activeReport.period.label}`}
+          title={`${t(activeReport.def.titleKey)}${activeReport.insuranceProviderName ? ` — ${activeReport.insuranceProviderName}` : ""} — ${activeReport.period.label}`}
           sections={reportSections}
-          filenameBase={`${activeReport.def.id}-report-${activeReport.period.from}-to-${activeReport.period.to}`}
+          filenameBase={`${activeReport.def.id}-report${activeReport.insuranceProviderName ? `-${activeReport.insuranceProviderName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}` : ""}-${activeReport.period.from}-to-${activeReport.period.to}`}
           onClose={() => { setReportSections(null); setActiveReport(null) }}
           formatLabel={t("overviewPage.exportFormatLabel")}
           cancelLabel={t("overviewPage.exportCancel")}

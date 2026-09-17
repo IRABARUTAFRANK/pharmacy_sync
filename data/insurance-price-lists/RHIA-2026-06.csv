@@ -1,0 +1,1447 @@
+SN,DRUG_CODE,GENERIC_DESCRIPTION,DESIGNATION,INSTRUCTIONS,SELLING_UNIT,PRICE
+1,A01AA01001,Sodium Fluoride,ELMEX SENSITIVE TUBE 50ml 2 AT 6YRS,DT,TUBE,9345
+2,A01AA01002,Sodium Fluoride,ELMEX SENSITIVE TUBE 75ml 6 -12YRS,DT,TUBE,10280
+3,A01AA01003,Sodium Fluoride,ELMEX SENSITIVE TUBE 75ml AD,DT,TUBE,11601
+4,A01AA01004,Sodium Fluoride,ZYMAFLUOR Tablet 1MG B/100,,BOX,3071
+5,A01AA01005,Sodium Fluoride,"ZYMAFLUOR Tablet 0,25MG B/200",,BOX,3010
+6,A01AA51001,Sodium Fluoride,PARODONTAX TOOTHPASTE 75 ml/TBE,DT,TUBE,5140
+7,A01AA51002,Sodium Fluoride + Potassium Nitrate,SENSODYNE TOOTHPASTE TBE 75G,DT,TUBE,5073
+8,A01AB02001,Hydrogen peroxyde 3% 120ml,HYDROGEN PEROXYDE 3% SOLUTION 120ml,,BOTTLE,935
+9,A01AB09001,Miconazole 20g/1g,DAKTARIN Oral gel 40g,,TUBE,12683
+10,A01AB11002,Iodine + Pootassium iodide,LUGOL ORAL SOLUTION 5% 20 ml,,BOTTLE,1135
+11,A01AB11003,Cetylpyridinium,SONATEC MOUTHWASH SOLUTION 250ml,,BOTTLE,3938
+12,A01AB12003,Hexetidine,LISTERINE MOUTHWASH 250ml,DENTAL SURGEON,BOTTLE,6902
+13,A01AB18001,Clotrimazole,CANDID MOUTH PAINT 15ml,,BOTTLE,3778
+14,A01AB18002,Clotrimazole,CLOTRIMAZOLE Mouth Paint 15ml,,BOTTLE,538
+15,A01AD11001,Povidone- Iodine 10% mouthwash solution,BETADINE Mouthwash solution 10% 125ml,,BOTTLE,4940
+16,A01AD11002,Povidone- Iodine 1% Mouthwash Solution 100ml,REXEDINE 1% Mouthwash Solution 100ml,,BOTTLE,1936
+17,A01AD11003,Salicylic Acid 10mg +Rhubarb extract 50mg +Anthraquinone Glycosides,PYRALVEX Oral Solution 10ml,DENTAL SURGEON or PED,BOTTLE,24698
+18,A01AD11004,Choline salicylate +Cetalkonium Chloride,FLOGENCYL Gingival gel . 20g,DT,TUBE,9100
+19,A02AB01001,Aluminium Hydroxyde 500mg tablet,HYDROXYDE D'ALUMINIUM 500MG tab,,TABLET,4
+20,A02AB03001,Aluminium Phosphate Sachet,PHOSPHALUGEL Sachet,,SACHET,358
+21,A02AB10001,Aluminium Hydroxyde +Magnesium Hydroxyde+Simethicone,RELCER gel 180ml,,BOTTLE,3818
+22,A02AF02001,Aluminium Hydroxyde 175mg +Magnesium Hydroxyde 200mg,MAALOX Oral Suspension 250ml,,BOTTLE,8411
+23,A02AF02002,Aluminium Hydroxyde +Magnesium Hydroxyde+Alginate,ULGICID Syrup 200ml,,BOTTLE,2937
+24,A02AF02003,Aluminium Hydroxyde 200mg+Magnesium Hydroxyde 200mg +Simethicone 25mg,MAALOX Sachet B/30,,SACHET,648
+25,A02AD04001,"Almagate, 1.5g",ALMAX FORTE ORAL SUSPENSION,,SACHET,338
+26,A02BA01001,Cimetidine 200mg,CIMETIDINE 200mg tablet,,TABLET,13
+27,A02BA01002,Cimetidine 400mg,CIMETIDINE 400mg tablet,,TABLET,27
+28,A02BA01003,Cimetidine 200mg/2ml Injection,CIMETIDINE 200mg/ 2ml Injection,,VIAL,134
+29,A02BA53001,"Famotidine 10 mg, Magnesium hydroxide 165 mg, Calcium carbonate 800 mg",GASTRICID Tablet,,TABLET,170
+30,A02BC01001,Omeprazole 20mg,OMEPRAZOLE 20mg Capsules,,CAPSULE,23
+31,A02BC01002,"Omeprazole Sodium BP, 40mg",OMEPRAZOLE 40mg Injection,HU,VIAL,3338
+32,A02BC02003,Pantoprazole 20mg,PANTOPRAZOLE 20 mg tablet,,TABLET,28
+33,A02BC02004,Pantoprazole 40mg,PANTOPRAZOLE 40mg tablet,,TABLET,107
+34,A02BC03001,Lansoprazole 30mg,LANSOPRAZOLE 30mg Capsules,,CAPSULE,165
+35,A02BC05001,Esomeprazole 20mg,ESOMEPRAZOLE 20mg Capsules,,CAPSULE,29
+36,A02BC05002,Esomeprazole 40mg,ESOMEPRAZOLE 40mg capsules,,CAPSULE,43
+37,A02BC05003,Esomeprazole 40mg Injection,ESOMEPRAZOLE 40mg Injection,HU,VIAL,5340
+38,A02BC05004,Esomeprazole magnesium trihydrate 10mg,"NEXIUM 10MG Gastro-resistant Granules for oral suspension, Sachet",PED or ENT,SACHET,3036
+39,A02BC05005,Esomeprazole 40mg,"NEXIUM 40mg Powder for solution for injection/infusion, IV",HU & SPEC,VIAL,18755
+40,A02BD06001,Esomeprazole +Amoxycilline +Clarithromycine,ESOFAG KIT tablet PLAQUETE/7,IM & SURG,KIT OF ONE DAY DOSE,1945
+41,A02BX02001,Sucralfate,ULCAR 1GR tablet B/30,,TABLET,434
+42,A02BX02002,Sucralfate,ULCAR 1g Sachet B/30,,SACHET,557
+43,A02BX13001,Aluminium Hydroxyde +Magnesium Carbonate,GAVISCON Suspension 250ml,,BOTTLE,15352
+44,A02BX13002,Aluminium Hydroxyde +Magnesium Carbonate,GAVISCON 260mg tablet B/20,,TABLET,227
+45,A03AA04001,Mebeverine 100mg tablet,DUSPATALIN 100mg tablet B/30,,TABLET,284
+46,A03AA04003,Mebeverine 200mg tablet,DUSPATALIN 200mg tablet B/30,,TABLET,334
+47,A03AA04004,Mebeverine 10mg/ml Oral Suspension,DUSPATALIN 10mg/ml Oral Suspension 200ml,,BOTTLE,4020
+48,A03AA05001,Trimebutine 100mg,DEBRIDAT 100mg tablet B/30,,TABLET,367
+49,A03AA05003,Trimebutine 4.8mg/ml oral Suspension,DEBRIDAT BABY 4.8mg/ml Oral Suspension 125ml,,BOTTLE,4480
+50,A03AA05004,Trimebutine 25mg/5ml Oral Suspension 250ml,DEBRIDAT 24mg/5ml Granules for oral Suspension 250 ml,,BOTTLE,6090
+51,A03AB06001,Otilonium Bromide,SPASMOMEN 40mg tablet,,TABLET,441
+52,A03AB17002,METHYLSULFATE DE TIEMONIUM 10mg/5ml 150ml,VISCERALGINE Syrup 10mg/5ml 150ml,,BOTTLE,3640
+53,A03AD01001,Papaverine 40mg,PAPAVERINE 40mg tablet,,TABLET,22
+54,A03AD01002,Papaverine 40mg/ml Injection,PAPAVERINE 40mg/ml Injection,HU,VIAL,384
+55,A03AD02001,Drotaverine,"NOSPA 40mg tablet B/100, B/20",,TABLET,161
+56,A03AD02002,Drotaverine,NOSPA 40mg/2ml Injection B/25,,VIAL,171
+57,A03AD02003,Drotaverine 80mg +Paracetamol 500mg,SPASCOL 80mg tablet B/20,,TABLET,298
+58,A03AX12001,Phloroglucinol 80mg,SPASFON 80mg tablet B/30,,TABLET,191
+59,A03AX12002,Phloroglucinol,SPASFON-LYOC 80mg Oral tablet B/10,,TABLET,414
+60,A06AG11002,Sodium Lauryl Sulfoacetate +Sodium Citrate + Glycerol,"MICROLAX FROSTBITTEN GELEE TBE CAN. 6,25G AD.",,TUBE,2737
+61,A03AX12003,Phloroglucinol 150mg+Trimethylphloroglucinol 150mg,SPASFON Suppository B/10,,SUPPOSITORY,701
+62,A03AX12004,Phloroglucinol inj.40mg/4ml +Trimethylphloroglucinol 40mcg/4ml,SPASFON Injection Solution in Ampoules,,VIAL,1335
+63,A03AX13001,Dimeticone 2.25 g Oral gel,"POLYSILANE Oral gel , Sachet B/15",IM,SACHET,1257
+64,A03AX13002,Cleboprida 0.5mg +Simeticone 200mg,FLATORIL 200mg Capsules,,CAPSULE,248
+65,A03B001,Atropine injection 0.5mg/ml,ATROPINE 0.5mg/ml injection,,VIAL,908
+66,A03B002,Atropine injection 1mg/ml,ATROPINE 1mg/ml injection,,VIAL,1068
+67,A03BB01001,Hyoscine Butylbromure,BUTYLSCOPOLAMINE 10 mg tablet,,TABLET,48
+68,A03BB01002,Butylhyoscine bromide 20mg/ml injection,BUTYLHYOSCINE BROMIDE 20mg/ml Injection,,VIAL,280
+69,A03F01001,Metoclopramide,METOCLOPRAMIDE 10mg tablet,,TABLET,13
+70,A03D001,Paracetamol +Bromure Butylhyoscine,DOLOSPAM tablet,,TABLET,196
+71,A03F01002,Metoclopramide injection 10mg/2ml,METOCLOPRAMIDE injection 10mg/2ml,,VIAL,187
+72,A03F01003,Metoclopramide,PRIMPERAN Syrup 200ml,,BOTTLE,3349
+73,A03F01004,Metoclopramide 5mg/5ml 60ml,PRIMPERAN 5mg/5ml Syrup 60ml,,BOTTLE,2660
+74,A03FA03001,Domperidone 10mg,MOTILIUM 10mg tablet B/40,,TABLET,561
+75,A03FA03002,Domperidone 10mg,DOMPERIDONE 10mg tablet,,TABLET,66
+76,A03FA03003,Domperidone,MOTILIUM Oral Suspension 200ml,,BOTTLE,4873
+77,A04AA01001,Ondansetron,ONDANSETRON 4mg tablet B/10,,TABLET,275
+78,A04AA01004,Ondansetron,ONDANSETRON 8mg tablet,,TABLET,344
+79,A04AA01002,Ondansetron,ONDANSETRON 4mg/2ml Injection,HU,VIAL,2003
+80,A04AA01003,Ondansetron,ONDANSETRON 2mg/5ml Syrup 30ml,,BOTTLE,2470
+81,A04AD05001,METOPIMAZINE 10mg/ml INJ,VOGALENE 10mg/ml INJ,HU,VIAL,503
+82,A04AD05002,METOPIMAZINE 5mg Suppo,VOGALENE 5mg Suppository B/10,,SUPPOSITORY,401
+83,A05AA02001,Ursodeoxycholic Acid 150mg tablets,URSODEOXYCHOLIC ACID 150mg tablets,,TABLET,623
+84,A04AD05003,METOPIMAZINE 5mg/5ml 150ml,VOGALENE 5mg/5ml Syrup 150ML,,BOTTLE,4900
+85,A05AA02002,Ursodeoxycholic Acid 250mg capsules,URSODEOXYCHOLIC ACID 250mg capsules,,Capsule,387
+86,A05AA02003,Ursodeoxycholic Acid 300mg tablets,URSODEOXYCHOLIC ACID 300mg tablets,,TABLET,890
+87,A05BA01001,Arginine Glutamate,ROCMALINE Oral Solution in Ampoule 10 ml B/20,,VIAL,601
+88,A06AA01001,Paraffine Oil,PARAFFINE OIL 100ml or 125ml,IM or PED or ENT,BOTTLE,1802
+89,A06AB02001,Bisacodyl,BISACODYL 5mg tablet,,TABLET,12
+90,A06AB02002,Bisacodyl,DULCOLAX 10mg Suppository B/6,,SUPPOSITORY,1469
+91,A06AB08001,Sodium Picosulfate,SKILAX GOUTTE 15ml,,BOTTLE,3671
+92,A06AD11001,Lactulose,DUPHALAC Oral Solution 200ml,,BOTTLE,4339
+93,A06AD11002,Lactulose,DUPHALAC Sachet B/20,,SACHET,404
+94,A06AD15001,Macrogol 10g,"FORLAX 10g Powder for oral Solution, Sachet B/10",,SACHET,990
+95,A06AD15002,Polyethylene glycol+ Electrolytes,"PECOL 137.15g Powder for Oral Solution, Sachet",IM or SURGEON,SACHET,8344
+96,A06AD15003,Macrogol 4g,"FORLAX 4g Powder for Oral Solution, Sachet B/10",,SACHET,1061
+97,A06AD17001,Sodium Phosphate,FLEET PHOSPHOSODA 45 ml,IM or PED,BOTTLE,10257
+98,A06AD17002,Sodium Phosphate,CLEEN PHOSPHOSODA 45 ml,IM or PED,BOTTLE,17622
+99,A06AG11001,Sodium Lauryl Sulfoacetate +Sodium Citrate + Glycerol,MICROLAX FROSTBITTEN GELEE BABY TUBE B/4,,TUBE,4305
+100,A06AX01001,Glycerol,GLYCERINE Suppository Baby B/10,,SUPPOSITORY,681
+101,A06AX01002,Glycerol,GLYCERINE Suppository Child B/10,,SUPPOSITORY,654
+102,A06AX01003,Glycerol,GLYCERINE Suppository Adult B/10,,SUPPOSITORY,701
+103,A07AA02001,Nystatine,NYSTATINE 500.000 UI Oral tablet,,TABLET,104
+104,A07AA02002,Nystatine,NYSTATINE Oral Suspension .24 Doses 30ml,,BOTTLE,868
+105,A07AA06002,Aminosidine 250mg,AMINOSIDINE 250mg tablet,,TABLET,501
+106,A07AA06003,Aminosidine 125mg/5ml,UNIBROL 125mg/5ml Syrup 60ml,,BOTTLE,4699
+107,A07AA06004,Aminosidine 125mg/5ml,AMINOSIDINE Syrup 125 mg/ 5ml 60ml,,BOTTLE,3404
+108,A07BA01001,Activated Charcoal 125mg tablet,ACTIVATED CHARCOAL 125mg tablet,,TABLET,32
+109,A07BA51002,Activated charcoal 125mg tablet,CARBOBEL SIMPLEX 125mg tablet,,TABLET,591
+110,A07BC05001,Diosmectite,SMECTA 3g Sachet,,SACHET,367
+111,A07BC54001,Attapulgite de Mormoiron Activee 1g,"ACTAPULGITE 1g Powder for drinkable solution,sachet B/20",,SACHET,154
+112,A07BC54002,Attapulgite de Mormoiron Activee 3g,"ACTAPULGITE 3g Powder for drinkable Solution, Sachet B/30",,SACHET,274
+113,A07CA001,Oral rehydration Solution,ORAL REHYDRATION SOLUTION sachets,,SACHET,240
+114,A07DA03001,Loperamide,LOPERAMIDE 2MG tablet,,TABLET,27
+115,A07DA03002,Loperamide 1mg/5ml,IMODIUM 1mg/5ml Syrup 90 ml,,BOTTLE,4046
+116,A07FA02001,Saccharomyces boulardii,SACCHAROMYCES BOULARDII 250mg,SPEC,SACHET,1015
+117,A09AA02001,"Multienzymes(lipase, protease, and amylase)",CREON 12000 UI capsule B/60,,CAPSULE,275
+118,A09AA02002,Multienzymes(lipase 10.000 IU amylase 8.000 IU protéase 600 IU) Gastro-resistant capsules,CREON 10000 UI capsule B/60,,CAPSULE,303
+119,A10AB03001,Fast-Acting Insulin 100ui/ml 10ml Injection,ACTRAPID INSULIN 100 UI/ml Injection 10ml,,VIAL,10146
+120,A10AD03001,Intermidiate- acting insulin 70/30 100ui/ml 10ml Injection,MIXTARD INSULIN 30/70 100UI/ml Injection 10 ml,,VIAL,9211
+121,A10AE03001,Long -Acting Insulin 100ui/ml 10ml Injection,INSULATARD INSULIN 100UI/ ml Injection 10 ml,,VIAL,9211
+122,A10BA02001,Metformin 500mg,METFORMINE 500mg tablet,,TABLET,20
+123,A10BA02002,Metformin 850mg,METFORMINE 850mg tablet,,TABLET,19
+124,A10BA02005,Metformin 500mg,METFORMIN-DENK 500mg tablet,,TABLET,112
+125,A10BA02006,Metformin 850mg,METFORMIN-DENK 850mg tablet,,TABLET,165
+126,A10BA02007,Metformin 1000mg,METFORMIN-DENK 1000mg tablet,,TABLET,264
+127,A10BA02008,Metformin 1000mg,METFORMINE SUSTAINED RELEASE 1000mg tablet,,TABLET,134
+128,A10BB01001,Glibenclamide 5mg,GLIBENCLAMIDE 5mg tablet,,TABLET,17
+129,A10BB09001,Gliclazide 60mg,DIAMICRON MR 60mg tablet B/30,,TABLET,405
+130,A10BB09002,Gliclazide 80mg,GLICLAZIDE 80mg tablet B/20,,TABLET,214
+131,A10BB09003,Gliclazide 60mg,GLICLAZIDE MR 60mg tablet B/30,,TABLET,235
+132,A10BB12001,Glimepiride 2mg,GLIMEPIRIDE 2mg tablet B/30,,TABLET,329
+133,A10BB12002,Glimepiride 3mg,GLIMEPIRIDE 3mg tablet B/30,,TABLET,423
+134,A10BB12003,Glimepiride 1mg,AMAREL 1mg tablet B/30,,TABLET,129
+135,A10BB12004,Glimepiride 2mg,AMAREL 2mg tablet B/30,,TABLET,168
+136,A10BB12005,Glimepiride 3mg,AMAREL 3mg tablet B/30,,TABLET,178
+137,A10BB12006,Glimepiride 4mg,AMAREL 4mg tablet B/30,,TABLET,178
+138,A10BB12007,Glimepiride 1mg,GLYSET 1mg tablet,,TABLET,148
+139,A10BB12008,Glimepiride 4mg,GLYSET 4mg tablet,,TABLET,182
+140,A10BD02003,Glimepiride 1mg + Metformin hydrochloride 500mg,GLIMEPIRIDE 1mg + METFORMIN 500mg tablets,,TABLET,325
+141,A10BD02004,Glimepiride 2mg + Metformin hydrochloride 500mg,GLIMEPIRIDE 2mg + METFORMIN 500mg tablets,,TABLET,356
+142,A10BD02002,Metformin 500mg +Glibenclamide 5mg,METFORMINE 500mg /GLIBENCLAMIDE 5mg tablet,,TABLET,150
+143,A10BD07001,Metformin 500mg +Sitagliptin 50mg,SITAGLIPTINE 50mg/ METFORMINE 500mg tablet,IM,TABLET,441
+144,A10BD07002,Metformin 1000mg+Sitagliptin 50mg,SITAGLIPTINE 50mg/ METFORMINE 1000mg tablet,IM,TABLET,504
+145,A10BD07003,Metformin 850mg+Sitagliptin 50mg,SITAGLIPTINE 50mg/ METFORMINE 850mg tablet,IM,TABLET,450
+146,A10BD08001,Metformin 500mg + Vildagliptin 50mg,GALVUS MET 50mg / 500mg tablet,IM,TABLET,1229
+147,A10BD08002,Metformin 850mg + Vildagliptin 50mg tablet,GALVUS MET 50mg / 850mg tablet,IM,TABLET,1229
+148,A10BD08003,Metformin 1000mg + Vildagliptin 50mg,GALVUS MET 50mg /1000mg tablet B/60,IM,TABLET,1229
+149,A10BD08004,Metformin 850mg + Vildagliptin 50mg,METFORMIN 850mg + VILDAGLIPTIN 50mg tablet,IM,TABLET,466
+150,A10BD08005,Metformin 1000mg + Vildagliptin 50mg,METFORMIN 1000mg + VILDAGLIPTIN 50mg tablet,IM,TABLET,480
+151,A10BH01001,Sitagliptin 50mg tablet,SITAGLIPTIN 50mg tablet,IM,TABLET,414
+152,A10BH01002,Sitagliptin 100mg tablet,SITAGLIPTIN 100mg tablet,IM,TABLET,498
+153,A10BH02001,Vildagliptin 50mg tablet,GALVUS 50mg tablet B/30,IM,TABLET,1239
+154,A10BH02002,Vildagliptin 50mg tablet,VILDAGLIPTIN 50 mg tablet,IM,TABLET,432
+155,A10BH08001,Teneligliptin 20 mg,TENELIGLIPTIN 20mg tablet,IM,TABLET,534
+156,A10BK01001,Dapagliflozin 10mg tablet,FORXIGA 10mg tablet,IM and Motivation,TABLET,2946
+157,A10BK01002,Dapagliflozin 10mg tablets,DAPAGLIFLOZIN 10mg tablets,IM,TABLET,612
+158,A10BD15001,Dapagliflozin 10mg tablets+Metformin 500mg,DAPAGLIFLOZIN 10mg + METFORMIN 500mg tablets,IM,TABLET,636
+159,A11AA03001,Multivitamin,MULTIVITAMIN tablet,,TABLET,5
+160,A11AA03002,Multivitamin,MULTIVITAMIN Syrup 60ml,,BOTTLE,547
+161,A11AA03003,Multivitamin,MULTIVITAMIN Syrup 100ml,,BOTTLE,601
+162,A11CA01001,Retinol,VITAMIN A 50 000 UI Capsule,,CAPSULE,8
+163,A11CA01002,Retinol,VITAMIN A CAPS 100 000 UI Capsule,,CAPSULE,14
+164,A11CA01003,Retinol,VITAMIN A 200 000 UI capsule,,CAPSULE,140
+165,A11CC04001,Calcitriol,MEDITROL capsule B/30,SPEC,CAPSULE,778
+166,A11CC05001,Cholecalciferol 2400ui/1ml oral drop,D CURE 2400ui/1ml oral drops,,BOTTLE,8092
+167,A11CC05002,Cholecalciferol 25000ui/1ml oral drop,D CURE 25000ui/1ml oral drops,,BOTTLE,2310
+168,A11CC05003,Vitamin D3 (Cholecalciferol) 400 IU,INFANT D 400 IU Capsules,,CAPSULE,467
+169,A11CC05004,"Vitamin D3 (Cholecalciferol) 60,000 IU","VITOC D 60,000 IU Capsules",,CAPSULE,517
+170,A11DA01001,Thiamin 50mg,VITAMIN B1 50mg tablet,,TABLET,16
+171,A11DA01002,Thiamin 100mg,VITAMIN B1 100mg tablet,,TABLET,15
+172,A11DA01003,Thiamin 100mg/2ml,VITAMIN B 1 100mg/2ml Injection,,VIAL,540
+173,A11DA01004,Thiamin 300mg,BENERVA 300mg tablet B/20,,TABLET,456
+174,A11DA02001,Sulbutiamin 200mg,SURMENALIT 200mg tablet,SPEC,TABLET,388
+175,A11DB001,"Methylcobalamin 1500mcg+Gamma linoleic Acid 100mg+ Folic Acid 1.5mg +Pyridoxin, Hydrochloride 3mg +Biotin 3mg+Elemental Chronium 100mg+Elemental Zinc 10mg",NEUROCARE capsule B/30,SPEC,CAPSULE,504
+176,A11DB002,Methylcobalamin 750mcg+Pregabalin 75mg +Folic Acid 1.5mg +Pyridoxin Hydrochloride 3mg +Alpha lipoic Acid 100mg,NEUROCARE PLUS Capsule B/30,SPEC,CAPSULE,642
+177,A11DB003,Thiamin Hydrochloride + Pyridoxin Hydrochloride +cyanocobalamin,NEURORUBINE FORTE tablet,SPEC,TABLET,324
+178,A11DB004,Thiamin Hydrochloride + Pyridoxin Hydrochloride +cyanocobalamin,NEURORUBINE INJECTION Ampoule,SPEC,VIAL,1560
+179,A11DB005,Thiamin+ Pyridoxin +cyanocobalamin,TRIBEES FORTE tablet,SPEC,TABLET,294
+180,A11DB006,Thiamin +Pyridoxin,VIT-B-DENK 1100mg/200mg tablet B/100,,TABLET,186
+181,A11DB007,Thiamin Chlorydrate 100mg +pyridoxin Chlorhydrate 100mg+Cyanocobalamin 1mg,NEUROBION tablet,,TABLET,109
+182,A11EA001,Vitamin B Complex,VITAMIN B COMPLEXE tablet,,TABLET,10
+183,A11EA002,Vit B Complexe Injection 2ml,VITAMIN B COMPLEXE Injection 2ml,,VIAL,374
+184,A11EX001,B Vitamins Formula,NAT B capsule B/30,,CAPSULE,365
+185,A11EX002,Phosphatidyl choline 300mg+Thiamine 10mg +Vitamin B2 6mg+ Cyanocobalamine 10mg + d-alpha- Tocopherol +Nicotinamide 30mg,LIVOLIN Capsule,IM,CAPSULE,463
+186,A11GA01001,Ascorbic Acid 500mg,VITAMIN C 500mg tablet,,TABLET,27
+187,A11HA02001,Pyridoxin 50mg,VITAMIN B6 50mg tablet,,TABLET,11
+188,A11HA02002,Pyridoxin 100mg,VITAMIN B6 100mg tablet,,TABLET,18
+189,A11HA02003,Pyridoxin 100mg/2ml,VITAMIN B 6 100mg/2 ml injection,,VIAL,600
+190,A11HA03001,dl-alpha-tocopheryl acetate 400 iu,VITAMIN E 400 IU tablet,SPEC,TABLET,210
+191,A11HA03002,d-alpha-tocopherol 400ui,ENAT 400 UI capsule B/30,SPEC,CAPSULE,454
+192,A11HA30001,Vitamin B5 100mg,BEPANTHENE 100mg tablet B/60,D,TABLET,976
+193,A11JB002,"vitamin C 75 mg, L-carnitine L-tartrate 50 mg, vitamin E 12.5 mg, ginseng extract 10 mg, L-arginine 10 mg, zinc 7.5 mg, vitamin B1 nitrate 5 mg, vitamin B6 5 mg, iron 5 mg, ubidecarenone 2.5 mg, L-glutathione 2.5 mg, manganese 2 mg, lycopene 2 mg, folic acid 1.5 mg, copper 1 mg, mecobalamin 750 mg, vitamin A 1250 IU, selenium 100 mcg, vitamin D3 500 IU",OLIGOCARE Tablet B/30**,UROL or GYN,TABLET,318
+194,A11JB003,"Inositol, L-Arginine, Folic Acid, Vit. B12, B6, Selenium with Micronutrients",OVACARE Tablet B/30**,GYN,TABLET,289
+195,A11AA03004,"Vitamin A 4,000.00 IU, Vitamin D 400.00 IU, Vitamin B1 2.00 mg, Vitamin B2 2.00 mg, Nicotinamide 10.00 mg, Vitamin B6 2.00 mg, Calcium Pantothenate 2.00 mg, Folic Acid 0.25 mg, Vitamin C 37.50 mg, Vitamin B12 2.00 mcg, Calcium 100.00 mg, Vitamin E 1.00 IU, Iron 20.00 mg, Copper 0.50 mg, Iodine 0.05 mg, Magnesium 1.00 mg, Manganese 0.10 mg, Potassium 1.00 mg, Zinc 0.15 mg.",PRENATAL capsule,GYN,CAPSULE,405
+196,A12AX001,Calcium 500mg,CALCIUM SANDOZ 500mg Effervescent tablet B/20,,TUBE OF 20 Tablets,7346
+197,A12AX002,Calcium 500mg + vitamin D3 400ui,IDEOS 500mg/400ui chewable tablet TUBE/15,,TUBE OF 15 Tablets,5880
+198,A12AX004,Calcium Gluconate 10% Injection 10ml,CALCIUM GLUCONATE 10% Injection 10ml,,VIAL,267
+199,A12AX005,Calcium + vitamin D,CALCIUM VIT D3 Capsule B/30,,CAPSULE,59
+200,A12AX006,Calcium 500mg+Magnesium 50mg+Zinc 2mg +Vitamin D3 1000UI,ZEDCAL tablet,,TABLET,64
+201,A12AX007,Calcium gcarbonate 150mg + Magnesium hydroxide 25mg + zinc gluconate 2mg + vit D3 200 I.U.,ZEDCAL SYRUP 200ml,,BOTTLE,1602
+202,A12AX009,Calcium + vitamin D,CALCIVITA Capsule B/50,,CAPSULE,204
+203,A12AX008,Calcium 1000mg +Vitamin D 880 UI,CALCI D DENK 1000mg/880ui effervescent tablet T/20,SPEC,TUBE OF 20 Tablets,16154
+204,A12BA01001,Potassium,KALEORID LP 600mg tablet B/30,,TABLET,178
+205,A12CB01001,Zinc Sulfate,ZINC SULFATE 10mg tablet,,TABLET,15
+206,A12CB01002,Zinc Sulfate,ZINC SULFATE 20mg tablet,,TABLET,17
+207,A12CC02001,Magnesium Sulphate 1g/10ml,MAGNESIUM SULPHATE Injection Solution in Ampoules,,VIAL,3154
+208,A12CC30001,Magnesium salts in combination,MAGNE B6 tablet B/50,,TABLET,345
+209,A12CC30002,Magnesium Pidolate,ACTIMAG Syrup 100ml,SPEC/PED,BOTTLE,12863
+210,A13001,L-Citrulline Malate,STIMOL Oral Solution in ampoule 10 ml B/18,SPEC,AMPOULE,742
+211,A13002,Arginine aspartate 5 g Oral Solution in Drinkable ampoules,POTENCIATOR OR. SOL Ampoule BUV. **,SPEC & M,AMPOULE,614
+212,A15001,Cyproheptadine + Arginine Aspartate,DYNAMOGEN oral solution in ampoule B/20,SPEC & M,AMPOULE,524
+213,A15002,Cyproheptadine + B Complex vitamins,BECOACTIN Syrup 200ml,SPEC,BOTTLE,2376
+214,B01AA03001,Warfarin 5mg tablet,MAREVAN 5mg tablet,,TABLET,398
+215,B01AA07001,Acenocoumarol 1mg,SINTROM MITIS 1mg tablet B/50,,TABLET,58
+216,B01AA07002,Acenocoumarol 4mg,SINTROM 4mg tablet B/30,SPEC,TABLET,232
+217,B01AB01001,Heparin 5.000IU/ml Injection,HEPARINE 5.000 iu/ml 5ml/Vial Injection,SPEC,VIAL,8678
+218,B01AB01002,"Heparin 7,500 ui/0,3ml Subcutaneous","CALCIPARINE Subcutaneous 7,500iu/0,3mlL",SPEC,VIAL,2100
+219,B01AB05001,Enoxaparin Sodium 2000iu/0.2ml Injection,"ENOXAPARIN SODIUM 2000iu/ 0,2ml Injection",SPEC,VIAL,6275
+220,B01AB05002,Enoxaparin Sodium 4000iu/0.4ml Injection,"ENOXAPARIN SODIUM 4000iu/ 0,4ml Injection",SPEC,VIAL,8144
+221,B01AB05003,Enoxaparin Sodium 8000iu/0.8ml Injection,"ENOXAPARIN SODIUM 8000iu/ 0,8ml Injection",SPEC,VIAL,13580
+222,B01AB05004,Enoxaparin Sodium 6000iu/0.6ml Injection,"ENOXAPARIN SODIUM 6000iu/ 0,6ml Injection",SPEC,VIAL,10947
+223,B01AB05005,Enoxaparin Sodium 4000iu/0.4ml Injection,LOMOH -40 40mg/0.4ml Injection,SPEC,VIAL,7743
+224,B01AC04001,Clopidogrel 75mg,CLOPIDOGREL 75mg tablet B/30,SPEC,TABLET,317
+225,B01AC04002,Clopidogrel 75mg,PLAVIX 75mg tablet B/30,SPEC,TABLET,336
+226,B01AC06001,Acetylsalicylic Acid 75mg,ACETYLSALISYLIC ACID 75mg tablet,,TABLET,13
+227,B01AC06003,Acetylsalicylic Acid 100mg,ACETYLSALISYLIC ACID 100mg tablet,,TABLET,3
+228,B01AC06004,Acetylsalicylic Acid 75mg,CARDISPIRIN GASTRO-RESISTANT 75mg tablet B/28,,TABLET,198
+229,B01AC06005,Acetylsalicylic Acid 100mg,CARDIO ASPIRINE Tablet 100mg tablet,,TABLET,205
+230,B01AC06006,Acetylsalicylic Acid 80mg Gastro-Resistant,ASAFLOW GASTRO-RESISTANT 80mg tablet,,TABLET,117
+231,B01AC06007,Acetylsalicylic Acid 160mg Gastro-Resistant,ASAFLOW GASTRO-RESISTANT160 mg tablet,,TABLET,210
+232,B01AC30001,Clopidogrel 75mg+ Acetylsalicylic acid 75 mg,CLOPIDOGREL 75mg + ACETYLSALICYLIC ACID 75mg,SPEC,TABLET,288
+233,B01AF01001,Rivaroxaban 20mg tablet,XARELTO 20 mg tablet,SPEC,TABLET,2098
+234,B01AF01002,Rivaroxaban 15mg tablet,XARELTO 15mg tablet,SPEC,TABLET,2098
+235,B01AF01003,Rivaroxaban 10mg tablet,XAROBAN 10 mg tablet,SPEC,TABLET,601
+236,B01AF01004,Rivaroxaban 10mg tablets,RIVAROXABAN 10mg tablets,SPEC,TABLET,521
+237,B01AF01005,Rivaroxaban 20mg tablets,RIVAROXABAN 20mg tablets,SPEC,TABLET,619
+238,B02AA02001,Tranexamic acid 500mg,PAUSE 500mg tablet B/30,,TABLET,445
+239,B02AA02002,Tranexamic acid 250mg,EXACYL 250mg tablet,,TABLET,263
+240,B02AA02003,Tranexamic acid 500mg,EXACYL 500mg tablet B/20,,TABLET,342
+241,B02AA02004,Tranexamic Acid 500mg/5ml Injection,EXACYL 500mg/5ml Injection,,VIAL,944
+242,B02AA02005,Tranexamic acid 500mg,TRANEXAMIC ACID 500mg/5ml injection,,VIAL,2003
+243,B02BA01001,Phytomenadione 1mg/1ml Injection,VIT K1 1mg/1ml Injection,,VIAL,192
+244,B02BA01002,Phytomenadione 10mg/1ml Injection,VITAMIN K1 10mg/1ml Injection,,VIAL,120
+245,B02BX01001,Etamsylate 250mg tablet,DICYNONE 250mg tablet B/20,,TABLET,210
+246,B02BX01002,Etamsylate 500mg tablet,DICYNONE 500mg tablet B/20,,TABLET,644
+247,B02BX01003,Etamyslate 250mg/ml Injection,DICYNONE 250mg/ml Injection,,VIAL,1836
+248,B03AB02001,Saccharated iron Oxide / Iron sucrose,ENCIFER 20mg/ml Injection 5ML,HU,VIAL,6414
+249,B03AB02002,Iron sucrose,AKUROSE 20mg /ml injection 5ML,HU,VIAL,4005
+250,B03AC05001,Ferric Hydroxide Polymaltose,HAEMOJET 100mg/2ml,HU,VIAL,2465
+251,B03AB05001,Ferric oxide polymaltose complexes,MUMFER Syrup 150ml,,BOTTLE,3778
+252,B03AD03001,Folic acid + Ferrous Sulfate,FOLIC ACID+FER SULFATE tablet,,TABLET,19
+253,B03AD03002,Iron +Folic ACID + Ascorbic Acid,FERCEFOL tablet B/30,,TABLET,154
+254,B03AD03003,Iron +Folic ACID + Ascorbic Acid,FERCEFOL Syrup 150ml,,BOTTLE,4072
+255,B03AD03005,Fer III 10mg/ml + Folic Acid 0.1mg/ml,FEMIFER Syrup 200ml,,BOTTLE,7252
+256,B03AB05002,Iron Hydroxide Polymaltose Complex 50mg/5ml,AMIFER JUNIOR SYRUP 150ml,,BOTTLE,6542
+257,B03AE01001,Iron +Folic Acid +Methylcobalamin,AMIFER Syrup 200ml,,BOTTLE,8744
+258,B03AE10001,Coppper Gluconate +Iron Gluconate +Managanese Gluconate,TOT'HEMA oral solution in ampoule B/20,,AMPOULE,601
+259,B03AE10002,Iron + B complex Vitamins,FERO-B COMPLEX Syrup 100ml,,BOTTLE,898
+260,B03AE10003,Folic Acid + Ferrous Sulfate,TRANSFERON tablet B/30,,TABLET,44
+261,B03BA01001,Cyanocobalamin,VITAMIN B12 1mg/2ml injection,,VIAL,500
+262,B03BA05001,Iron Fumarate+Folic Acid +Vitamin C +Vitamin B12+Zinc,MECONERV Capsule B/ 30,,CAPSULE,427
+263,B03BB01001,Folic Acid 5mg tablet,FOLIC ACID 5mg tablet,,TABLET,8
+264,B03XA01001,Erythropoietin 4000iu,ERYTHROPOIETIN 4000iu injection,HU,VIAL,13751
+265,B03XA02001,Darbepoetin alfa,DARBEPOETIN 40 mcg injection,HU & M,VIAL,29370
+266,B05AA01001,Human Albumin,ALBUMINE HUMAN 20% 100ml,HU & M,BOTTLE,121550
+267,B05BB01001,Sodium Chloride+Sodium Lactate+Potassium cloride +Calcium Chloride solution for infusion 500ml,RINGER LACTATE Solution for infusion 500ml,HU,BOTTLE,1001
+268,B05BC01001,Mannitol 20% Solution for infusion 100 ml,MANNITOL 20% Solution for infusion 100 ml,HU,BOTTLE,3671
+269,B05CX01001,Dextrose 5% w/v Solution for Infusion 500ml,DEXTROSE 5% w/v solution for infusion 500ml,HU,BOTTLE,1001
+270,B05CX01002,Dextrose 10% w/v Solution for Infusion 250ml,DEXTROSE 10% w/v solution for infusion 250ml,HU,BOTTLE,1175
+271,B05CX01003,Dextrose 50% w/v Solution for Infusion 20ml,DEXTROSE 50% w/v solution for infusion 20ml,HU,BOTTLE,1762
+272,B05CX01004,Dextrose 10% w/v + Ions solution for infusion 250ml,DEXTROSE 10% w/v + Ions solution for infusion 250ml,HU,BOTTLE,1175
+273,B05XA01001,Potassium Chloride 8.4% w/v Solution for injection,POTASSIUM CHLORIDE 8.4% Solution for Injection,HU,BOTTLE,1135
+274,B05XA02001,Sodium Bicarbonate 8.4% w/v Solution for Injection,SODIUM BICARBONATE 8.4% Solution for Injection,HU,VIAL,2737
+275,B05XA03001,Sodium Chloride 0.9% Solution for infusion 500ml,NORMAL SALINE 0.9% Solution for infusion 500ml,HU,BOTTLE,868
+276,B05XA03002,Sodium chloride 0.9% solution,NORMAL SALINE COLLAPSIBLE 1000ML,HU,BOTTLE,10947
+277,B05XA03003,Sodium chloride 0.9% solution,NORMAL SALINE COLLAPSIBLE 500ML,HU,BOTTLE,4005
+278,C01AA05001,Digoxine 0.25mg,"DIGOXINE 0,25mg tablet",,TABLET,199
+279,C01AA05002,Digoxine 0.5mg/2ml Injection,DIGOXINE 0.5mg/2ml Injection,,VIAL,267
+280,C01AA05003,Digoxine 0.05ml/1ml,"DIGOXINE 0,05mg/1ml Pediatric Oral solution 60ml",,BOTTLE,884
+281,C01BD01001,Amiodarone Chlorhydrate 200mg,AMIODARONE 200mg tablet,,TABLET,668
+282,C01BD01002,Amiodarone Chlorhydrate 200mg,CORDARONE 200 mg tablet,,TABLET,1004
+283,C01CA01001,Etilefrine 5mg,EFFORTIL 5mg tablet B/20,,TABLET,417
+284,C01CA01002,Etilefrine 10mg/ml,EFFORTIL 10mg/ml injection B/6,,VIAL,2313
+285,C01CA01003,Etilefrine 0.75%,EFFORTIL 0.75% oral solution 30 ml,,BOTTLE,6496
+286,C01CA04001,Dopamine 40mg/ml,DOPAMINE 40mg/ml Injection 5ml/Vial,,VIAL,840
+287,C01CA26001,Ephedrine 30mg,EPHEDRINE 30mg tablet,,TABLET,8
+288,C01CA26002,Ephedrine 50mg/ml Injection,EPHEDRINE 50mg/ml Injection,,VIAL,1335
+289,C01DA02002,Glyceryl Trinitrate,"TRINITRINE 0,15MG Tablet",,TABLET,56
+290,C01DA02003,Nitroglycerin 2.6mg tablet Controlled release,NITROCONTIN 2.6mg tablets Controlled release,IM,TABLET,310
+291,C01DA08001,Isosorbide dinitrate 5mg tablet,CEDOCARD 5mg tablet B/60,,TABLET,116
+292,C01DA08002,Isosorbide dinitrate 10mg tablet,CEDOCARD 10mg tablet B/60,,TABLET,56
+293,C01DA08003,Isosorbide dinitrate 10mg tablet,ISOSORBIDE DINITRATE 10mg tablet,,TABLET,8
+294,C01DA08004,Isosorbide dinitrate,RISORDAN 20mg tablet,,TABLET,103
+295,C01EB15002,Trimetazidine 35mg,VASTAREL 35mg tablet,,TABLET,336
+296,C02AB01001,Methyldopa,METHYLDOPA 250mg tablet,,TABLET,93
+297,C02AC01001,Clonidine 150mg,CLONIDINE 150mcg tablet,,TABLET,225
+298,C02AC01002,Clonidine 150mcg,CLONIDINE 150mcg/ml Injection,,VIAL,1302
+299,C02AC01003,Clonidine 0.15mg tablet,"CATAPRESSAN 0,15mg tablet",,TABLET,427
+300,C02AC01004,Clonidine 0.15mg/ml Injection,"CATAPRESSAN 0,15 mg/ml Injection",,VIAL,1302
+301,C02CA01001,Prazosin 1mg,MINIPRESS 1mg tablet,IM,TABLET,182
+302,C02CA01002,Prazosin 5mg,MINIPRESS 5mg tablet,IM,TABLET,553
+303,C02CA04001,Doxazosine 2mg,CARDURA 2mg tablet,NEPHRO or IM or UROL,TABLET,567
+304,C02CA04002,Doxazosine 8mg,CARDURA 8mg tablet,NEPHRO or IM or UROL,TABLET,1237
+305,C02CA04003,Doxazosine 4mg,CARDURA 4mg tablet,NEPHRO or IM or UROL,TABLET,948
+306,C02DB02001,Hydralazine Hydrochloride 20mg/ml injection,HYDRALAZINE 20mg/ml Injection,HU,VIAL,1936
+307,C02LA01001,Bendroflumethiazide 2.5mg + reserpine 0.1mg,"TENSIONORME 2,5mg/0,1mg tablet",,TABLET,191
+308,C03AA03001,Hydrochlorothiazide,HYDROCHLOROTHIAZIDE 25mg tablet,,TABLET,11
+309,C03AA03002,Hydrochlorothiazide,HYDROCHLOROTHIAZIDE 50mg tablet,,TABLET,17
+310,C03AA03003,Hydrochlorothiazide,ESIDREX 25mg tablet,,TABLET,229
+311,C03BA04002,Chlortalidone 50mg,HYGROTON 50mg tablet B/30,,TABLET,102
+312,C03BA04003,Chlortalidone 10mg,HYGROTON 100mg tablet,,TABLET,126
+313,C03BA11001,Indapamide 1.5mg,NATRILIX SR 1.5mg tablet,,TABLET,387
+314,C03BA11002,Indapamide 2.5mg,INDAPAMIDE 2.5mg tablet,,TABLET,210
+315,C03CA01001,Furosemide 40mg,FUROSEMIDE 40mg tablet,,TABLET,20
+316,C03CA01002,Furosemide 20mg/2ml Injection,FUROSEMIDE 20mg/2ml Injection,,VIAL,467
+317,C03CA04001,Torasemide 5mg,TORAS-DENK 5mg tablet,IM,TABLET,327
+318,C03CA04002,Torasemide 10mg,TORSINEX 10mg tablet,IM,TABLET,297
+319,C03CA04003,Torasemide 20mg,TORSINEX Tablet 20mg tablet,IM,TABLET,325
+320,C03DA01001,Spironolactone 25mg,SPIRONOLACTONE 25mg tablet,,TABLET,96
+321,C03DA01002,Spironolactone 100mg,SPIRONOLACTONE 100mg tablet,,TABLET,285
+322,C03DA01003,Spironolactone 25mg,ALDACTONE 25mg tablet B/50,,TABLET,176
+323,C03DA01004,Spironolactone 50mg,ALDACTONE 50mg tablet,,TABLET,445
+324,C03DA01005,Spironolactone 100mg,ALDACTONE 100mg tablet,,TABLET,623
+325,C03EA01001,Amiloride 5mg+Hydrochlorothiazide 50mg,MODURETIC 5mg/50mg tablet,,TABLET,127
+326,C03EA04001,Spironolactone 25mg+Altizide 15mg,ALDACTAZINE 25mg/15mg tablet,,TABLET,290
+327,C03EB01001,Spironolactone 50mg+Furosemide 20mg,SPIRONOLACTONE 50MG+FUROSEMIDE 20MG,,TABLET,434
+328,C04AD03001,Pentoxifylline 400mg,TORENTAL 400mg Prolonged-release tablet,IM,TABLET,587
+329,C04AX21001,Naftidrofuryl 100mg,PRAXILENE 100mg tablet B/20,,TABLET,168
+330,C05AD04001,Cinchocaine +Prednisolone,SCHERIPROCT suppository B/12,,SUPPOSITORY,525
+331,C05AD04002,Cinchocaine +Prednisolone,SCHERIPROCT ointment 10g,,TUBE,5180
+332,C05AD04003,Cinchocaine +Prednisolone,SCHERIPROCT ointment 30g,,TUBE,13035
+333,C05AX03001,Antihemorrhoids Preparations,ANTI - HAEMORRHOID suppository,,SUPPOSITORY,334
+334,C05AX03003,Antihemorrhoids Preparations,ANTI - HAEMORRHOID ointment 30g,,TUBE,1736
+335,C05AX04001,Titane dioxyde +Zinc Oxyde,TITANOREINE suppository B/12,,SUPPOSITORY,1846
+336,C05AX04002,Titane dioxyde +Zinc Oxyde,TITANOREINE Cream / ointment 20g,,TUBE,14018
+337,C05AX04003,Zinc oxyde,ZINC OXYDE 10% ointment 50g,,POT,1268
+338,C05BA03001,Heparine Gel,LIOTON GEL 1000 IU 30g,SPEC,TUBE,11428
+339,C05BB02001,Polidocanol 1%,AETOXYSCLEROL 1% injection vial/2ml,,VIAL,10539
+340,C05BB02002,Polidocanol 2%,AETOXYSCLEROL 2% injection vial/2ml,,VIAL,14020
+341,C05BX01001,Calcium dobesilate monohydrate 500mg capsules,DOBESIL 500mg capsules,,CAPSULE,481
+342,C05CA05001,Hidrosmin 200mg,VENOSMIL 200mg capsule B/20,SPEC,CAPSULE,479
+343,C05CA05002,Hidrosmin,VENOSMIL topical gel 60g,,TUBE,9442
+344,C05CA53001,Diosmin Combinations,DAFLON 500mg tablet B/30,,TABLET,567
+345,C05CA53002,Diosmin Combinations,PHLEBODIA 600mg tablet B/15,SPEC,TABLET,730
+346,C07AA05001,Propranolol 40mg,PROPRANOLOL 40mg tablet,,TABLET,27
+347,C07AA05002,Propranolol 10mg,INDERAL 40mg tablet,IM or PED,TABLET,140
+348,C07AB02001,Metoprolol 100mg,LOPRESSOR 100mg tablet B/100,,TABLET,245
+349,C07AB02002,Metoprolol 200mg,LOPRESSOR 200mg tablet B/100,,TABLET,151
+350,C07AB03001,Atenolol 25mg,ATENOLOL 25mg tablet,,TABLET,45
+351,C07AB03002,Atenolol 50mg,ATENOLOL 50mg tablet,,TABLET,43
+352,C07AB03003,Atenolol 100mg,ATENOLOL 100mg tablet,,TABLET,62
+353,C07AB03004,Atenolol 50mg,ATENOLOL DENK 50mg tablet,,TABLET,154
+354,C07AB07001,Bisoprolol 5mg,BISOPROLOL 5mg tablet,,TABLET,249
+355,C07AB07002,Bisoprolol 10mg,BISOPROLOL 10mg tablet,,TABLET,306
+356,C07AB12001,Nebivolol 5mg,NEBILONG 5mg tablet,,TABLET,338
+357,C07AB12002,Nebivolol 2.5mg,NEBILONG 2.5mg tablet,,TABLET,196
+358,C07AG01001,Labetalol 100mg tablet,TRANDATE 100mg tablet,,TABLET,139
+359,C07AG02001,Carvedilol 6.25mg tablet,CARVEDILOL 6.25mg tablet,,TABLET,126
+360,C07AG02002,Carvedilol 12.5mg tablet,"CARVEDILOL 12,5mg tablet",,TABLET,134
+361,C07AG02003,Carvedilol 25mg tablet,CARVEDILOL 25mg tablet,,TABLET,445
+362,C07AG02004,Carvedilol 6.25mg tablet,CARVEDILOL DENK 6.25mg tablet,,TABLET,323
+363,C07BB03001,Atenolol 50mg+ chlorthalidone 12.5mg,TENORETIC 50mg/12.5mg tablet,IM,TABLET,567
+364,C07BB03002,Atenolol 100mg+ chlorthalidone 25mg,TENORETIC 100mg/25mg tablet,IM,TABLET,756
+365,C07BB12001,Nebivolol 5mg +Hydrochlorothiazide 12.5mg,"NEBIVOLOL 5mg + HYDROCHLORTHIAZIDE 12,5mg tablet B/30",IM,TABLET,382
+366,C07FB12001,Nebivolol 5mg + Amlodipine 5mg,NEBIVOLOL 5 mg + AMLODIPINE 5mg tablet B/30,IM,TABLET,396
+367,C08CA01001,Amlodipine 5mg,AMLODIPINE 5mg tablet,,TABLET,29
+368,C08CA01002,Amlodipine 10mg,AMLODIPINE 10mg tablet,,TABLET,43
+369,C08CA01003,S-Amlodipine 5mg,ASOMEX 5mg tablet,,TABLET,369
+370,C08CA01004,S-Amlodipine 2.5mg,"ASOMEX 2,5mg tablet B/30",,TABLET,231
+371,C08CA02001,Felodipine 5mg,PLENDIL 5mg tablet,,TABLET,578
+372,C08CA02002,Felodipine 10mg,PLENDIL 10mg tablet,,TABLET,935
+373,C08CA05001,Nifedipine 10mg,NIFEDIPINE 10 mg tablet,,TABLET,17
+374,C08CA05002,Nifedipine 20mg,NIFEDIPINE 20mg tablet,,TABLET,15
+375,C08CA05003,Nifedipine 30mg,ADALATE LA 30mg tablet,CARDIOL,TABLET,416
+376,C08CA14001,Cilnidipine 5mg,CILNIDIPINE 5mg tablet,IM,TABLET,439
+377,C08CA14002,Cilnidipine 10mg,CILNIDIPINE 10mg tablet,IM,TABLET,601
+378,C08DA01001,Verapamil 40mg,ISOPTINE 40mg tablet B/50,,TABLET,150
+379,C08DA01003,Verapamil 120mg,ISOPTINE 120mg tablet B/30,,TABLET,298
+380,C08DA01004,Verapamil 240mg,ISOPTINE LP 240mg tablet B/30,,TABLET,602
+381,C08DB01001,Dilitiazem 60mg,TILDIEM 60mg tablet,IM,TABLET,108
+382,C08DB01002,Dilitiazem 200mg,TILDIEM 200mg capsule B/28,IM,CAPSULE,710
+383,C08GA02001,Amlodipine 5mg+Indapamide 1.5mg,"NATRIXAM 5mg/1,5 tablet",IM,TABLET,729
+384,C08GA02002,Amlodipine 10mg+Indapamide 1.5mg,"NATRIXAM 10mg/1,5mg Tablet",IM,TABLET,818
+385,C08GA02003,Amlodipine 2.5mg +hydrochlorothiazide 12.5mg,ASOMEX -D tablet,IM,TABLET,352
+386,C09AA01001,Captopril 25mg,CAPTOPRIL 25 mg tablet,,TABLET,20
+387,C09AA01002,Captopril 50mg,CAPTOPRIL 50mg tablet,,TABLET,39
+388,C09AA02001,Enalapril 5mg,ENALAPRIL 5mg tablet,,TABLET,52
+389,C09AA02002,Enalapril 10mg,ENALAPRIL 10mg tablet,,TABLET,81
+390,C09AA02003,Enalapril 20mg,ENALAPRIL 20mg tablet,,TABLET,131
+391,C09AA02004,Enalapril 5mg,RENITEC 5mg tablet B/28,,TABLET,160
+392,C09AA02005,Enalapril 20mg,RENITEC 20mg tablet B/28,,TABLET,216
+393,C09AA03001,Lisinopril 5mg,LISINOPRIL 5mg tablet B/28,,TABLET,125
+394,C09AA03002,Lisinopril 10mg,LISINOPRIL 10mg tablet B/28,,TABLET,140
+395,C09AA03003,Lisinopril 20mg,LISINOPRIL 20mg tablet,,TABLET,367
+396,C09AA03004,Lisinopril 5mg,ZESTRIL 5mg tablet B/28,,TABLET,424
+397,C09AA03005,Lisinopril 20mg,ZESTRIL 20mg tablet B/28,,TABLET,643
+398,C09AA04001,Peridompril 5mg,COVERSYL 5mg tablet B/30,IM,TABLET,794
+399,C09AA04002,Peridompril 10mg,COVERSYL 10mg tablet,IM,TABLET,1084
+400,C09AA05001,Ramipril 2.5mg,"TRIATEC 2,5mg tablet B/30",IM,TABLET,78
+401,C09AA05002,Ramipril 5mg,TRIATEC 5mg tablet,IM,TABLET,485
+402,C09AA05003,Ramipril 10mg,TRIATEC 10mg tablet,IM,TABLET,489
+403,C09AA05005,Ramipril 2.5mg,GENPRESS 2.5mg tablet,SPEC,TABLET,354
+404,C09AA05006,Ramipril 5mg,GENPRESS 5mg tablet,SPEC,TABLET,470
+405,C09BA01001,Captopril 50mg + Hydrochlorothiazide 25mg,CARDIURINE 50mg/25mg tablet,,TABLET,257
+406,C09BA01002,Captopril 50mg+Hydrochlorothiazide 25mg,CAPTOPRIL 50mg+ HYDROCHLOROTHIAZIDE 25mg -DENK 50/25 tablet,,TABLET,109
+407,C09BA02001,Enalapril 20mg+Hydrochlorothiazide 12.5mg,ENALAPRIL 20mg+HYDROCHLORTHIAZIDE 12.5 mg DENK tablet,,TABLET,185
+408,C09BA04001,Peridompril 5mg +indapamide 1.25mg,COVERSYL PLUS 5mg/1.25 mg tablet,IM,TABLET,693
+409,C09BA04002,Peridompril 5 mg + indapamide 1.25mg,BIPRETERAX 5mg/1.25mg tablet B/30,IM,TABLET,1023
+410,C09BA04003,Peridompril 10mg +indapamide 2.5mg,BIPRETERAX 10mg/2.5mg tablet B/30,IM,TABLET,1160
+411,C09BA05001,Ramipril 5mg+hydrochlorothiazide 25mg,TRITAZIDE 5mg/25mg tablet,IM,TABLET,548
+412,C09BB04001,Peridompril 5mg+amlodipine 5mg,COVERAM 5mg/5mg tablet,IM,TABLET,1051
+413,C09BB04002,Peridompril 5mg+amlodipine 10mg,COVERAM 5mg/10mg tablet,IM,TABLET,1084
+414,C09BB04003,Peridompril 10mg+amlodipine 5mg,COVERAM 10mg/5mg tablet,IM,TABLET,1196
+415,C09BB04004,Peridompril 10mg+amlodipine 10mg,COVERAM 10mg/10mg tablet,IM,TABLET,1287
+416,C09BB06001,Enalapril 10mg+Nitrendipine 20mg,ENEAS 10mg/20mg tablet B/30,,TABLET,481
+417,C09BX01001,Perindopril arginine 5mg+Indapamide 1.25mg+Amlodipine besilate 5mg,PERINDOPRIL ARGININE 5mg + INDAPAMIDE 1.25mg + AMLODIPINE BESILATE 5mg,IM,TABLET,1247
+418,C09BX01002,Perindopril arginine 5mg+Indapamide 1.25mg+Amlodipine besilate 10mg,PERINDOPRIL ARGININE 5mg + INDAPAMIDE 1.25mg + AMLODIPINE BESILATE 10mg,IM,TABLET,1238
+419,C09BX01003,Perindopril arginine 10mg+Indapamide 2.5mg+Amlodipine besilate 5mg,PERINDOPRIL ARGININE 10mg + INDAPAMIDE 2.5mg + AMLODIPINE BESILATE 5mg,IM,TABLET,1376
+420,C09BX01004,Perindopril arginine 10mg+Indapamide 2.5mg+Amlodipine besilate 10mg,PERINDOPRIL ARGININE 10mg + INDAPAMIDE 2.5mg + AMLODIPINE BESILATE 10mg,IM,TABLET,1376
+421,C09CA01001,Losartan 25mg,LOSARTAN 25mg tablet,,TABLET,175
+422,C09CA01002,Losartan 50mg,LOSARTAN 50mg tablet B/28,,TABLET,125
+423,C09CA01003,Losartan 100mg,LOSARTAN DENK 100mg tablet B/28,,TABLET,274
+424,C09CA03001,Valsartan 80mg,DIOVAN 80mg tablet,IM,TABLET,900
+425,C09CA03002,Valsartan 160mg,DIOVAN 160mg tablet,IM,TABLET,1299
+426,C09CA03003,Valsartan 80mg,VALSARTAN 80mg tablet,,TABLET,311
+427,C09CA03004,Valsartan 160mg,VALSARTAN 160mg tablet,,TABLET,423
+428,C09CA04001,Irbesartan 150mg,APROVEL 150mg tablet,IM,TABLET,572
+429,C09CA04002,Irbesartan 300mg,APROVEL 300mg tablet,IM,TABLET,525
+430,C09CA06001,Candesartan 8mg,ATACAND 8mg tablet B/28,IM,TABLET,1152
+431,C09CA06002,Candesartan 16mg,ATACAND 16mg tablet B/28,IM,TABLET,1705
+432,C09CA07002,Telmisartan 40mg,TELMISARTAN 40mg tablet,,TABLET,206
+433,C09CA07003,Telmisartan 80mg,TELMISARTAN 80mg tablet,,TABLET,280
+434,C09DA01001,Losartan 50mg +Hydrochlorothiazide 12.5mg,LOSARTAN 50mg/HYDROCHLOROTHIAZIDE 12.5 mg tablet,,TABLET,160
+435,C09DA01002,Losartan 100mg +Hydrochlorothiazide 12.5mg,LOSARTAN 100mg+ HYDROCHLORTHIAZIDE 12.5mg DENK tablet,IM,TABLET,667
+436,C09DA03001,Valsartan 80mg +Hydrochlorothiazide 12.5mg,"CO-DIOVAN 80mg/12,5mg tablet",IM,TABLET,1290
+437,C09DA03002,Valsartan 160mg +Hydrochlorothiazide 12.5mg,"CO-DIOVAN 160mg/12,5mg tablet",IM,TABLET,1797
+438,C09DA03003,Valsartan 160mg +Hydrochlorothiazide 12.5mg,VALSARTAN 160mg + HYDROCHLOROTHIAZIDE 12.5mg,IM,TABLET,1088
+439,C09DA04001,Irbesartan 150mg +Hydrochlorothiazide 12.5mg,COAPROVEL 150mg/12.5mg tablet,IM,TABLET,577
+440,C09DA04002,Irbesartan 300mg +Hydrochlorothiazide 12.5mg,COAPROVEL 300mg/12.5mg tablet,IM,TABLET,1457
+441,C09DA06001,Candesartan 16mg+Hydrochlorothiazide 12.5mg,ATACAND PLUS 16mg/12.5mg tablet B/28,IM,TABLET,1705
+442,C09DA07001,Telmisartan 40+Hydrochlorothiazide 12.5mg,"TELMISARTAN 40mg+HYDROCHLORTHIAZIDE 12,5mg tablet",IM,TABLET,264
+443,C09DA07002,Telmisartan 80+Hydrochlorothiazide 12.5mg,"TELMISARTAN 80mg+HYDROCHLORTHIAZIDE 12,5mg tablet",IM,TABLET,369
+444,C09DB01001,Amlodipine 5mg+valsartan 160mg,EXFORGE 5mg/160mg tablet,IM,TABLET,2225
+445,C09DB01002,Amlodipine 10mg+valsartan 160mg,EXFORGE 10mg/160mg tablet,IM,TABLET,2398
+446,C09DB01003,Amlodipine 5mg+valsartan 80mg,AMLODIPINE 5mg + VALSARTAN 80mg,IM,TABLET,334
+447,C09DB01004,Amlodipine 5mg+valsartan 160mg,AMLODIPINE 5mg + VALSARTAN 160mg,IM,TABLET,445
+448,C09DB01005,Amlodipine 10mg+valsartan 160mg,AMLODIPINE 10mg + VALSARTAN 160mg,IM,TABLET,567
+449,C09DB04001,Telmisartan 40 mg + Amlodipine 5 mg,TELMISARTAN 40mg +AMLODIPINE 5mg tablet,IM,TABLET,352
+450,C09DB04002,Telmisartan 80 mg + Amlodipine 5 mg,TELMISARTAN 80mg +AMLODIPINE 5mg tablet,IM,TABLET,428
+451,C09DB06001,S-Amlodipine 2.5mg +Losartan 50mg,"ASOMEX LT 2,5mg/50mg tablet",IM,TABLET,401
+452,C09DB06002,Amlodipine 5mg +Losartan 50mg,AMLOZAAR 5mg/50mg tablet,,TABLET,458
+453,C09DX01001,Valsartan 160mg +Amlodipine 5mg+Hydrochlorothiazide 12.5mg,EXFORGE HCT 5mg/160mg/12.5mg tablet,IM,TABLET,2225
+454,C09DX01002,Valsartan 160mg +Amlodipine 10mg+Hydrochlorothiazide 12.5mg,EXFORGE HCT 10mg/160mg/12.5mg tablet,IM,TABLET,2505
+455,C09DX01003,Amlodipine 5mg +losartan 50mg +Hydrochlorothiazide 12.5mg,AMLOZAAR-H 5mg/50mg/12.5mg tablet,,TABLET,507
+456,C09DX04004,Sacubitril 24mg+Valsartan 26mg tablets,SACUBITRIL 24mg + VALSARTAN 26mg tablets,IM,TABLET,303
+457,C09DX04001,Sacubitril 24mg+Valsartan 26mg tablets,UPERIO 50mg tablet,IM,TABLET,1613
+458,C09DX04002,Sacubitril 49mg+Valsartan 51mg tablets,UPERIO 100mg tablet,IM,TABLET,1613
+459,C09DX04003,Sacubitril 97mg+Valsartan 103mg tablets,UPERIO 200mg tablet,IM,TABLET,1613
+460,C10AA01001,Simvastatin 10mg,SIMVASTATIN 10mg tablet,,TABLET,33
+461,C10AA01002,Simvastatin 20mg,SIMVASTATIN 20mg tablet,,TABLET,140
+462,C10AA01003,Simvastatin 20mg,SIMVA-DENK 20mg tablet,,TABLET,318
+463,C10AA01004,Simvastatin 40mg,SIMVA-DENK 40mg tablet,,TABLET,654
+464,C10AA05001,Atorvastatin 20mg,ATORVASTATIN 20mg tablet,,TABLET,111
+465,C10AA05002,Atorvastatin 10mg,ATORVASTATIN 10mg tablet,,TABLET,55
+466,C10AA07001,Rosuvastatin 5mg,CRESTOR 5mg tablet,IM,TABLET,1083
+467,C10AA07002,Rosuvastatin 20mg,CRESTOR 20mg tablet,IM,TABLET,1566
+468,C10AA07003,Rosuvastatin 10mg,CRESTOR 10mg tablet,IM,TABLET,1083
+469,C10AA07004,Rosuvastatin 5mg,ROSUVASTATIN 5mg tablet,IM,TABLET,199
+470,C10AA07005,Rosuvastatin 10mg,ROSUVASTATIN 10mg tablet,IM,TABLET,263
+471,C10AA07006,Rosuvastatin 20mg,ROSUVASTATIN 20mg tablet,IM,TABLET,394
+472,C10AB05001,Fenofibrate 200mg,FENOFIBRATE 200mg tablet,,TABLET,513
+473,C10AC01001,Colestyramine Anhydrous 4g,"QUESTRAN 4g powder for oral suspension ,sachet B/50",SPEC,SACHET,1084
+474,D01AA08001,Griseofulvine,GRISEOFULVINE 5% ointment 50g,,POT,4472
+475,D01AC01001,Clotrimazole,CLOTRIMAZOL Cream 20g,,TUBE,467
+476,D01AC01002,Clotrimazole,CANDID Powder 30g,,BOTTLE,3671
+477,D01AC01003,Clotrimazole,CANDID Cream 15g or 20g,,TUBE,2670
+478,D01AC01004,Clotrimazole,CANDID 1% W/V topical lotion,,BOTTLE,3338
+479,D01AC02001,Miconazole Nitrate 2%,MICONAZOLE 2% Cream 15g,,TUBE,467
+480,D01AC03001,Econazole,PEVARYL Cream 30g,,TUBE,7700
+481,D01AC03002,Econazole,PEVARYL Solution 150 ml,,BOTTLE,10013
+482,D01AC03003,Econazole,PEVARYL Spray solution 30ml,,BOTTLE,15353
+483,D01AC08001,Ketoconazole 2%,KETOCONAZOLE Cream 15g,,TUBE,534
+484,D01AC08002,Ketoconazole 2%,MICOZAL 2% cream 15g,,TUBE,3124
+485,D01AC08003,Ketoconazole 2%,KETOCONAZOLE 2% shampoo 100 ml,D or PED,BOTTLE,7049
+486,D01AC12001,Fenticonazole 2%,LOMEXIN 2% cream 15g,,TUBE,8678
+487,D01AC14001,Sertaconazole,DERMOFIX Cream 20g,SPEC,TUBE,6675
+488,D01AC20001,Clotrimazole +Beclomethasone,CANDID B Cream,,TUBE,4005
+489,D01AC20002,Clotrimazole +Betamethasone + Gentamycin,CANDIDERM Cream 15g,,TUBE,3071
+490,D01AC20003,Clotrimazole 1%+Beclomethasone 0.025%,CANDID B LOTION 15 ml,,BOTTLE,2380
+491,D01AC20004,Isoconazole nitrate +Diflucortolone valerate,TRAVOCORT CREAM 15G,D,TUBE,5607
+492,D01AC52001,"Miconazole, nitrate 20 mg / 1 g + Hydrocortisone 10 mg / 1 g cream 15g",DAKTACORT CREAM 15 G,,TUBE,3150
+493,D01AC52002,"Miconazole, nitrate 20 mg / 1 g + Hydrocortisone 10 mg / 1 g cream 30g",DAKTACORT CREAM 30g,,TUBE,8411
+494,D01AE02001,Methylrosaniline,VIOLET DE GENTIANE 2% topical solution 20ml,,BOTTLE,734
+495,D01AE12001,Salicylic Acid,DIABLE VERT plasters B/6,D,PIECE,1558
+496,D01AE12002,Salicylic Acid,DIABLE VERT ointment 10g,D,TUBE,9345
+497,D01AE12003,Salicylic Acid,DIABLE VERT topical solution 10ml,D,BOTTLE,9612
+498,D01AE12004,Salicylate,POMMADE SALICYLEE 3% 50g,,POT,1469
+499,D01AE12005,Salicylic Acid 2-5%,SALICYLIC ACID 2-5% Ointment 100g,,POT,980
+500,D01AE12006,Salicylic Acid 2-5%,SALICYLIC ACID 2-5% ointment 50g,,POT,840
+501,D01AE12007,Salicylic Acid,SALICYLIC ACID 25% OINT 50G OR 100G,,POT,1120
+502,D01AE12008,Salicylic Acid 3% +Benzoic Acid 6%,WHITEFIELD' S topical ointment ointment 20g or 25g,,TUBE,427
+503,D01AE12010,Salicylic Acid 3% +Benzoic Acid 6%,WHITFIELD'S Ointment 50g OR 100g,,POT,1764
+504,D01AE13001,Selenium Sulfide 2.5%,SELSUN shampoo 120ml,D,BOTTLE,14140
+505,D01AE15001,Terbinafine 1%,TERBINAFINE 1% cream 15g,D,TUBE,8544
+506,D01AE15002,Terbinafine 1%,TERBINOL 1% topical spray 30ml,D,BOTTLE,5600
+507,D01BA01001,Griseofulvine 125mg,GRISEOFULVIN 125mg tablet,,TABLET,40
+508,D01BA01002,Griseofulvine 250mg,GRISEOFULVIN 250mg tablet,,TABLET,80
+509,D01BA01003,Griseofulvine 500mg,GRISEOFULVIN 500mg tablet,,TABLET,116
+510,D01BA02001,Terbinafine 250mg,TERBINAFINE 250mg tablet,D,TABLET,1507
+511,D02AB009,Zinc oxide+ feric oxide,CALAMINE LOTION 100 ml,,BOTTLE,521
+512,D02AB010,Zinc oxide 15% ointment 90g,INOTYOL ointment 90g,,TUBE,23897
+513,D02AE51002,Urea 5% + Aloe vera+ Zinc Oxide+Vitamins,HEEL CREAM 30 g,,TUBE,2613
+514,D02AX003,Emulsifying ointment 200g,EMULSIFYING OINTMENT 200G,D,POT,5140
+515,D02AX004,Emulsifying ointment 400g,EMULSIFYING OINTMENT 400G,D,POT,9692
+516,D02DAB001,Zinc Oxyde +Cholesterol,SENOPHILE Cream 50g,,TUBE,7700
+517,D03AA001,Zinc oxyde + cod liver Oil 65g,MITOSYL ointment 65g,,TUBE,2940
+518,D03AX03001,Dexpanthenol,BEPANTHOL cream 50g,D,TUBE,19358
+519,D03AX03002,Dexpanthenol 5%,BEPANTHENE 5% ointment 30g,D,TUBE,23897
+520,D03AX03003,Dexpanthenol labial stick 4.5g,BEPANTHOL labial stick 4.5g,D & M,TUBE,12683
+521,D04AA10001,Promethazine,PHENERGAN cream 30g,,TUBE,5610
+522,D04AB01001,Lidocaine 2.5% w/w (25 mg/g)+ Prilocaine 2.5% w/w (25 mg/g),EMLA 5% cream 5g,D,TUBE,14018
+523,D04AX001,Crotamiton 10%,EURAX 10% cream 20g,,TUBE,4320
+524,D04AX002,Crotamiton 10%,EURAX 10% cream 40g,SPEC,TUBE,33346
+525,D05AD02001,Methoxysalen 0.1%,"MELADININE 0,1% topical solution 24ml",D,BOTTLE,32895
+526,D05AD02002,Methoxysalen 0.75%,"MELADININE 0,75% topical solution 24 ml",D,BOTTLE,38055
+527,D05AX02001,Calcipotriol 50mcg,DAIVONEX 50mcg/g ointment 30g,D,TUBE,24698
+528,D05AX02002,Calcipotriol 50mcg,DAIVONEX CREAM 50mcg/g 30g,D,TUBE,20559
+529,D05BA02001,Methoysalen 10mg,MELADININE 10mg tablet B/30,D,TABLET,1018
+530,D05BB02001,Acitretine 10mg,NEOTIGASON 10mg tablet B/30,D,TABLET,1709
+531,D05BB02002,Acitretine 25mg,NEOTIGASON 25mg capsule B/30,D,CAPSULE,4806
+532,D06AA04001,Tetracycline,TETRACYCLINE 15g skin ointment,,TUBE,534
+533,D06AX01001,Fusidic Acid 2%,FUCIDINE 2% Cream 15G,,TUBE,5474
+534,D06AX01002,Fusidic Acid 2%,FUCIDINE 2% ointment 15g,,TUBE,5140
+535,D06AX01003,Fusidic Acid +Betamethasone,FUCICORT Cream 15g,D,TUBE,7877
+536,D06AX04001,Neomycin,NEOMYCINE ointment 15g,,TUBE,560
+537,D06AX05001,Neomycin +Bacitracin,NEOMYCINE BACITRACINE ointment 20g or 15g,,TUBE,1176
+538,D06AX09001,Mupirocin 2%,BACTROBAN Ointment 15g,SPEC,TUBE,22562
+539,D06AX09002,Mupirocin 2%,SUPIROCIN cream 2% 15g,SPEC,TUBE,8411
+540,D06BA01001,Silver sulfadiazine 1% 50g,FLAMMAZINE cream 1% 50g,,TUBE,10413
+541,D06BA51001,Silver Sulfadiazine +Chlorhexidine,SILVEREX cream 20g,,TUBE,534
+542,D06BB03002,Aciclovir 10%,ACICLOVIR 10% cream/ointment 10g,,TUBE,1047
+543,D06BB03001,Aciclovir 5%,ACICLOVIR 5% cream/ointment 10g,,TUBE,1802
+544,D06BB04001,Podophyllotoxin 5%,PODOPHYLLINE 5% ointment 15g,,POT,26700
+545,D06BX01001,Metronidazole 7.5mg/1mg cream 50g,"ROZEX 7,5mg/1mg cream 50g",D,TUBE,25365
+546,D06BX01002,Metronidazole 7.5mg/1mg cream30g,"ROZEX 7,5mg/1mg cream 30g",D,TUBE,21160
+547,D07AA02001,Hydrocortisone 1%,HYDROCORTISONE 1% ointment 15g,,TUBE,534
+548,D07AA02002,Hydrocortisone 1%,HYDROCORTISONE 1% cream 15g,,TUBE,507
+549,D07AB02001,Hydrocortisone Butyrate 0.1%,LOCOID 0.1 % cream 30g,D,TUBE,8678
+550,D07AB02002,Hydrocortisone Butyrate,LOCOID 0.1% ointment 30g,D,TUBE,7903
+551,D07AC01001,Betamethasone Valerate 0.1%,BETAMETHASONE VALERATE 0.1% cream 15g,,TUBE,561
+552,D07AC01002,Betamethasone,DIPROSONE cream 30g,D or ALLERGOL,TUBE,6742
+553,D07AC01003,Betamethasone Dipropionate 0.05%,"DIPROLENE 0,05% cream 15g or 30g",D,TUBE,2670
+554,D07AC01004,Betamethasone 0.05%,"DIPROLENE 0,05% ointment 15g or 30g",D,TUBE,4940
+555,D07AC01006,Betamethasone,BETNEVAL lotion 30ml,D,BOTTLE,4806
+556,D07AC06001,Diflucortolone,NERISONE cream 30g,D,TUBE,7529
+557,D07AC06002,Diflucortolone,NERISONE ointment 30g,D,TUBE,6061
+558,D07AC14001,Methyprednisolone Aceponate 0.1%,"ADVANTAN 0,1% cream 15g",D or ALLERGOL,TUBE,5874
+559,D07AC14002,Methyprednisolone Aceponate 0.1%,"ADVANTAN 0,1% ointment 15g",D or ALLERGOL,TUBE,6008
+560,D07AC18001,Prednicarbate 0.25%,PEITEL 0.25% cream 30g,D or PED,TUBE,10947
+561,D07AD01001,Clobetasol propionate 0.5mg/g,CLOBETASOL PROPIONATE 0.5mg/g ointment,,TUBE,668
+562,D07AD01002,Clobetasol propionate 0.5mg/g,DERMOVATE cream 20g,D or ALLERGOL,TUBE,3311
+563,D07AD01004,Clobetasol propionate 0.5mg/g,DERMOVATE cream 30g,D or ALLERGOL,TUBE,14552
+564,D07CB01001,Nystatine +Neomycin+ Triamcinolone,POSITON ointment 30g,D or PED or GYN,TUBE,6728
+565,D07CB01002,Nystatine +Neomycin+ Triamcinolone,POSITON cream 30g,D or PED or GYN,TUBE,6658
+566,D07CB01003,Nystatine +Neomycin+ Triamcinolone,MYCOLOG ointment 15g,D,TUBE,5180
+567,D07CB01004,Nystatine +Neomycin+ Triamcinolone,MYCOLOG cream 15g,D,TUBE,5040
+568,D07CC01001,Betamethasone +Neomycin,BETAMETHASONE-NEOMYCINE cream 10g,,TUBE,403
+569,D07CD01001,Clobetasol+Miconazole +Gentamycin,SONADERM cream 10g,,TUBE,1669
+570,D07XC01001,Betamethasone + Salicylic Acid,DIPROSALIC lotion 15g,D,BOTTLE,3920
+571,D07XC01002,Betamethasone + Salicylic Acid,ENTEZMA ointment 30g,,TUBE,3965
+572,D07XC01004,Betamethasone + Salicylic Acid,DIPROSALIC ointment 30g,D,TUBE,7716
+573,D08AC52001,Chlorhexidine +Benzalkonium,DERMOBACTER topical solution 300ml,,BOTTLE,8370
+574,D08AC52002,Chlorhexidine +Benzalkonium,DERMOBACTER topical solution 125 ml,,BOTTLE,5140
+575,D08AC52004,Cetrimide +chlorhexidine,SAVLON topical solution 125ml,,BOTTLE,4940
+576,D08AG02001,Povidone -Iodine 10%,BETADINE 10% topical solution 125 ml,,BOTTLE,5340
+577,D08AG02002,Povidone -Iodine 10%,BETADINE topical gel 10g,,TUBE,4005
+578,D08AG02003,Povidone -Iodine 10%,BETADINE topical gel 40g,D,TUBE,8960
+579,D08AG02004,Povidone -Iodine 100ml,POVIDONE IODINE topical solution 100ml,,BOTTLE,801
+580,D08AG02005,Povidone -Iodine 200ml,POVIDONE IODINE topical solution 200ml,,BOTTLE,2403
+581,D08AG02006,Povidone -Iodine 20g,PYODINE topical gel 20g,,TUBE,2136
+582,D08AL01001,Caustic Pencil,SILVER NITRATE Stick,,PIECE,5207
+583,D08AL01002,Colloidal Silver Solution,KARLOIDAL SILVER SOLUTIONS 100 ml,,BOTTLE,3204
+584,D08AL01003,Colloidal Silver Solution,KARLOIDAL SILVER SOLUTIONS 236 ml,HU,BOTTLE,6118
+585,D08AL01004,Colloidal Silver Solution,KARLOIDAL SILVER SOLUTIONS 500 ml,HU,BOTTLE,16688
+586,D08AL01005,Colloidal Silver Solution,KARLOIDAL SILVER SOLUTIONS 1000 ml,HU,BOTTLE,21000
+587,D08AX02001,Eosine 2%,EOSINE AQUEOUS 2% topical solution 20ml,,BOTTLE,935
+588,D08AX02002,Eosine 2%,EOSINE ALCOHOLIC 2% topical solution 20ml,,BOTTLE,770
+589,D08AX04001,Tosylchloramide Sodium,CHLORAMINE T 50mg tablet,,TABLET,35
+590,D08AX06001,Potassium Permanganate 500mg,PERMANGANATE DE POTASSIUM 500mg tablet,,TABLET,63
+591,D08AX07001,Sodium Hypochlorite 0.2%,"DAKIN SOL 0,2% topical solution 120ml",,BOTTLE,1068
+592,D08AX08001,Ethanol 70%- ….%,ALCOHOL DESINFECTANT 120 ml,,BOTTLE,1268
+593,D08AX08002,Ethanol +Iodine,ALCOHOL IODINE 1% 120ml,,BOTTLE,1268
+594,D09AX001,Soft Paraffin Dressings,TULLE GRAS 10cm X 10cm B/10,,PIECE,280
+595,D09AX002,Soft Paraffin Dressings,PARAFFINE GAUZE 10cm *10cm B/10,,PIECE,240
+596,D10AB02001,Sulfur,SULPHUR ointment 25g,,POT,801
+597,D10AD01001,Tretinoin,ACNESOL 0.05% cream 25g,,TUBE,1802
+598,D10AD03001,Adapalene 0.1%,DIFFERIN 0.1% topical gel 30g,D,TUBE,12616
+599,D10AD03002,Adapalene 0.1%,"ADAPALENE 0,1% topical gel 15g",,TUBE,3444
+600,D10AE01001,Benzoyl Peroxyde 5%,CUTACNYL 5% topical gel 40g,,TUBE,7149
+601,D10AE01002,Benzoyl Peroxyde 10%,CUTACNYL 10% topical gel 40g,,TUBE,6869
+602,D10AF01001,Clindamycin,CLINDAMYCIN 1% topical gel 20g,,TUBE,1335
+603,D10AF02001,Erythromycin,ERYTHROGEL B 4% topical gel 30g,D,TUBE,9879
+604,D10AF02002,Erythromycin,ERYFLUID 4% topical solution 30ml,D,BOTTLE,8277
+605,D10AX03001,Azelaic acid,SKINOREIN 20% cream 30g,D,TUBE,55470
+606,D10BA01001,Isotretinoine 10mg,ROACCUTANE 10mg capsule,D,CAPSULE,1003
+607,D10BA01002,Isotretinoine 20mg,ROACCUTANE 20mg capsule,D,CAPSULE,1612
+608,D10BA01003,Isotretinoine 10mg,ISOTRETINOINE 10mg tablet,,TABLET,1021
+609,D10AF51001,Clindamycin + Tretinoin,CLINDAMYCIN 1% + TRETINOIN 0.25% gel 20g,,TUBE,2403
+610,D11AF004,Potassium hydroxyde 5% topical solution,MOLUTREX topical solution 10ml,D,BOTTLE,48762
+611,D11AH01001,Tacrolimus,TACROLIMUS 0.1% ointment 10g,D,TUBE,10013
+612,D11AH01002,Tacrolimus,TACROLIMUS 0.03% ointment 10g,D,TUBE,7343
+613,D11AH01003,Tacrolimus,TACROLIMUS 0.1% ointment 60g,D,TUBE,17000
+614,D11AX01001,Minoxidil 2% (20mg/1ml),MINOXIDIL 2% cutaneous solution 60ml,D,BOTTLE,24030
+615,D11AX01002,Minoxidil 5% ( 50mg/1ml),MINOXIDIL 5% cutaneous solution 60ml,D,TUBE,29167
+616,G01AA01001,Nystatin,NYSTATINE 100.000UI Vaginal tablet,,PESSARY,49
+617,G01AA51001,Nystatin +Polymyxin+ Neomycin,POLYGINAX VIRGO vaginal pessaries B/6,,BOX OF 6 PESSARIES,7209
+618,G01AA51002,Nystatin +Polymyxin+ Neomycin,POLYGINAX vaginal pessaries B/6,,BOX OF 6 PESSARIES,7343
+619,G01AA51003,Nystatin +Polymyxin+ Neomycin,POLYGINAX vaginal pessaries B/12,,BOX OF 12 PESSARIES,14685
+620,G01AA51004,Nystatin Combinations,GYNOFER vaginal pessaries B/8,,BOX OF 8 PESSARIES,4272
+621,G01AC05001,Dequalinium Chloride 10mg,FLUOMIZIN Vag. pessary 10MG,,BOX OF 6 PESSARIES,7810
+622,G01AF01001,Metronidazole 500mg,METRONIDAZOLE 500mg vaginal pessaries,,PESSARY,220
+623,G01AF02001,Clotrimazole,CLOTRIMAZOLE 100mg vaginal pessaries B/6,,BOX OF 6 PESSARIES,534
+624,G01AF02002,Clotrimazole 200mg,CLOTRIMAZOLE 200mg vaginal tablet B/3,,BOX OF 3 PESSARIES,532
+625,G01AF02003,Clotrimazole 500mg,CANDID V1 500mg vaginal pessaries B/1,,BOX OF 1 PESSARY,3538
+626,G01AF02004,Clotrimazole 200mg,CANDID-V3 200mg vaginal pessaries B/3,,BOX OF 3 PESSARIES,3938
+627,G01AF02005,Clotrimazole 100mg,CANDID V-6 100mg vaginal pessaries B/6,,BOX OF 6 PESSARIES,3338
+628,G01AF02006,Clotrimazole,CANDID vaginal gel 30g,,TUBE,5474
+629,G01AF04002,Miconazole,MICONAZOLE 400mg vaginal pessaries B/3,,BOX OF 3 PESSARIES,5874
+630,G01AF04004,Miconazole Nitrate 2%,MICONAZOLE NITRATE vaginal cream 40g,,TUBE,3431
+631,G01AF04003,Miconazole Nitrate 2%,GYNO-DAKTARIN vaginal cream 40g,,TUBE,4480
+632,G01AF19001,Sertaconazole,GYNOZALAIN 500mg vaginal pessaries B/1,,BOX OF 1 PESSARY,9545
+633,G01AF20001,Ornidazole +Miconazole,CANDIFEM 600mg vaginal pessaries B/6,,BOX OF 6 PESSARIES,966
+634,G01AX11001,Povidone- Iodine 10%,BETADINE 10% vaginal solution 125ml,,BOTTLE,4205
+635,G02AB01002,Methylergometrine 0.2 mg/ml Injection,METHYLERGOMETRINE 0.2 mg/ml injection,,VIAL,296
+636,G02AB01001,Methylergometrine 0.125mg,"METHYLERGOMETRINE 0,125MG tablet",,TABLET,18
+637,G02AB03001,Ergometrin 0.2mg,"ERGOMETRIN 0,2mg tablet",,TABLET,15
+638,G02AB03002,Ergometrin 0.5mg,"ERGOMETRIN 0,5mg tablet",,TABLET,53
+639,G02AD06001,Misoprostol 200 µg tablet,CYTOTEC 200 µg tablet,,TABLET,1602
+640,G02AD06002,Misoprostol 200µg,MISOPROSTOL 200µg tablet,,TABLET,534
+641,G02CB01001,Bromocriptine 2.5mg,"PARLODEL 2,5mg tablet B/30",,TABLET,358
+642,G02CB03001,Carbegoline 0.5mg,"DOSTINEX 0,5mg tablet B/8",SPEC & M,TABLET,10070
+643,G03BA03001,Testosterone 25mg/ml,TESTOSTERONE 25mg/ml Injection**,,VIAL,321
+644,G03BA03002,Testosterone 250mg,TESTOVIRON DEPOT 250mg injection B/1**,,VIAL,2670
+645,G03BA03003,Testosterone 250mg/ml,ANDROTARDYL INJ 250mg/1ml injection **,SPEC,VIAL,18290
+646,G03BB01001,Mesterolone 25mg,PROVIRON 25mg tablet B/20**,,TABLET,1677
+647,G03CA01001,Ethinylestradiol 50mcg,ETHYNYL -OESTRADIOL 50mcg tablet,GYN,TABLET,1112
+648,G03CA03001,Estradiol 5mg/ml,OESTRADIOL INJ 5MG/ml,,VIAL,294
+649,G03CA03002,Estradiol,OESTROGEL topical gel 80g,GYN,TUBE,25365
+650,G03CA03003,Estradiol 1mg,PROGYNOVA 1mg tablet B/20,,TABLET,175
+651,G03CA03004,Estradiol 2mg,PROGYNOVA 2mg tablet B/28,,TABLET,334
+652,G03DA02001,Medroxyprogesterone 10mg,PROVERA 10mg tablet,GYN,TABLET,434
+653,G03DA04001,Progesterone 25mg/ml,PROGESTERONE 25mg/ml injection,,VIAL,808
+654,G03DA04002,Progesterone 25mg/ml,AQUAGEST 25mg/1.119 ml injection,GYN & HU,VIAL,3605
+655,G03DA04003,Progesterone 100mg,UTROGESTAN 100mg oral capsules B/30,GYN,CAPSULE,676
+656,G03DA04004,Progesterone 200mg,UTROGESTAN 200mg oral capsules B/45,GYN,CAPSULE,1380
+657,G03DA04008,Progesterone 100mg,PROGESTERONE 100mg Capsules,,CAPSULE,646
+658,G03DA04007,Progesterone 200mg,PROGESTERONE 200mg Capsules,,CAPSULE,263
+659,G03DA04005,Progesterone,PROGESTOGEL topical gel 80g,GYN,TUBE,14418
+660,G03DA04006,Progesterone 200mg,UTROGESTAN 200mg vaginal capsules B/45,GYN,CAPSULE,1380
+661,G03DB01001,dydrogesterone 10mg,DUPHASTON 10mg tablet B/10,,TABLET,668
+662,G03DB04001,Nomegestrol 5mg,LUTENYL 5mg tablet B/10,,TABLET,1015
+663,G03DC02001,Norethisterone 5mg,PRIMOLUT- NOR 5mg tablet,,TABLET,490
+664,G03DC02002,Norethisterone 10mg,PRIMOLUT- NOR 10mg tablet,,TABLET,140
+665,G03DC02003,Norethisterone 5mg,NORETHISTERONE 5mg tablet,,TABLET,55
+666,G03DC03001,Lynestrenol 5mg,ORGAMETRIL 5mg tablet B/30,,TABLET,307
+667,G03GA01002,Human Chorionic Gonadotropin 5000iu,PREGNYL 5000 iu injection B/3 **,GYN,VIAL,11788
+668,G03GA01003,Human Chorionic Gonadotropin 5000 IU,HUCOG 5000 IU HP injection 1'S **,GYN,VIAL,24633
+669,G03GB02001,Clomifene 50mg,CLOMID 50mg tablet B/10**,SPEC,TABLET,1196
+670,G03HA01001,Cyproterone,ANDROCUR Tablet 50MG B/50,UROL,TABLET,1385
+671,G03HB01001,Ethinylestradiol 0.035mg +Cyproterone 2mg,DIANE 35 0.035mg/2mg tablet 21/cycle,GYNEC,CYCLE /21,21717
+672,G04BD04001,Oxybutinin,DITROPAN 5mg tablet B/60,,TABLET,178
+673,G04BD07001,Tolterodine,DETRUSITOL 2mg tablet,IM,TABLET,2813
+674,G04BE03001,Sildenafil 50mg,SILDENAFIL 50mg tablet **,,TABLET,61
+675,G04BE03002,Sildenafil 100mg,SILDENAFIL 100mg tablet **,,TABLET,200
+676,G04BE08001,Tadalafil ODS 10MG,ZIMFIL ODS 10mg **,UROL,TABLET,165
+677,G04BE08002,Tadalafil ODS 20MG,ZIMFIL ODS 20mg **,UROL,TABLET,207
+678,G04BE08003,Tadalafil 20mg,TADAFORCE 20mg tablet **,UROL,TABLET,291
+679,G04CA01001,Alfusosine 2.5mg,XATRAL 2.5mg tablet,UROL,TABLET,319
+680,G04CA01002,Alfusosine 5mg,XATRAL 5mg tablet,UROL,TABLET,832
+681,G04CA01003,Alfusosine 10mg,XATRAL LP 10mg tablet,UROL,TABLET,1341
+682,G04CA01004,Alfusosine hydrochloride 10mg,PROSTALEN 10mg tablet,UROL,TABLET,666
+683,G04CA02001,Tamsulosine 0.4mg,OMIX 0.4mg tablet,IM or ONCO,TABLET,663
+684,G04CA03001,Terazocin,TERAZOSINE 2mg tablet,,TABLET,1064
+685,G04CA52001,Tamsulosine 0.4mg+Dutasteride 0.5mg,"DUTASTERIDE 0,5mg+TAMSULOSINE 0,4mg tablet",ONCO or IM or UROL,TABLET,657
+686,G04CB01001,Finasteride 5mg,PROSCAR 5mg tablet B/28,UROL,TABLET,1181
+687,G04CB01002,Finasteride 5mg,FINASTERIDE 5mg tablet,UROL,TABLET,1081
+688,G04CB02001,Dutasteride 0.5mg,AVODART 0.5mg tablet,IM or ONCO or  UROL,TABLET,1681
+689,G04CB02002,Dutasteride 0.5mg,DUTASTERIDE 0.5mg tablets,IM or ONCO or  UROL,TABLET,410
+690,H01BA01001,Desmopressine,DESMOPRESSINE 0.2mg tablet TEVA or EG,SPEC & M,TABLET,2937
+691,H01BB02001,Oxytocine 5 UI Injection,OXYTOCIN 5 UI Injection,HU,VIAL,392
+692,H01BB02002,Oxytocine 10 UI Injection,OXYTOCIN 10UI Injection,HU,VIAL,668
+693,H01CB02001,Octreotide 0.5mg/ml,"SANDOSTATINE 0,5MG/ml injection",HU & M,VIAL,3200
+694,H02AB02001,Dexamethasone,"DEXAMETHASONE 0,5mg tablet",,TABLET,21
+695,H02AB02002,Dexamethasone 5mg/ml or 4mg/ml Injection,DEXAMETHASONE 5mg/ml or 4mg/ml Injection,,VIAL,267
+696,H02AB04001,Methylprednisolone 40 mg/ml Injection,DEPO-MEDROL 40mg/ml Injection,SPEC,VIAL,16688
+697,H02AB04002,Methylprednisolone 80mg/2ml Injection,DEPOT-MEDROL 80mg/2ml Injection,SPEC,VIAL,24030
+698,H02AB06002,Prednisolone 5mg/5ml,PREDNISOLONE syrup 100ml,SPEC,BOTTLE,7343
+699,H02AB06001,Prednisolone 5mg,PREDNISOLONE 5mg tablet,,TABLET,16
+700,H02AB07001,Prednisone 20mg,CORTANCYL 20mg tablet B/30,,TABLET,414
+701,H02AB08001,Triamcinolone 40mg,KENACORT RETARD 40mg injection,,VIAL,8411
+702,H02AB08002,Triamcinolone 80mg,KENACORT RETARD 80mg injection,,VIAL,8260
+703,H02AB08003,Triamcinolone 40mg,TRIAMCINOLONE DENK 40mg injection,,VIAL,4167
+704,H02AB09001,Hydrocortisone 10mg,HYDROCORTISONE 10mg tablet,,TABLET,228
+705,H02AB09002,Hydrocortisone 100mg/ml Injection,HYDROCORTISONE 100mg/ml Injection,,VIAL,601
+706,H02AB09003,Hdrocortisone,HYDROCORTISONE INJ LYOPH.VIAL.100MG,,VIAL,420
+707,H02AB13001,Deflazacort 6mg,DEFAL 6mg tablet B/20,SPEC,TABLET,517
+708,H02AB13002,Deflazacort 30mg,DEFAL 30mg tablet,SPEC,TABLET,2285
+709,H02AB13003,Deflazacort,DEFAL oral drops 13ml,SPEC,BOTTLE,22695
+710,H02AB13004,Deflazacort 6mg,DEFLAZACORT 6mg tablet,SPEC,TABLET,337
+711,H02AB13005,Deflazacort 18mg,DEFLAZACORT 18mg tablet,SPEC,TABLET,362
+712,H02AB13006,Deflazacort 30mg,DEFLAZACORT 30mg tablet,SPEC,TABLET,513
+713,H02AB13007,Deflazacort,DEFLAZACORT oral suspension 30ml,SPEC,BOTTLE,11348
+714,H03AA01001,Levothyroxine Sodium 25µg,LEVOTHYROXINE 25µg tablet,,TABLET,83
+715,H03AA01002,Levothyroxine Sodium 150µg,LEVOTHYROXINE 150µg tablet,,TABLET,157
+716,H03AA01003,Levothyroxine 50µg,LEVOTHROXINE 50µg tablet,,TABLET,95
+717,H03AA01004,Levothyroxine 75µg,LEVOTHROXINE 75µg tablet,,TABLET,105
+718,H03AA01005,Levothyroxine 100 µg,LEVOTHROXINE 100µg tablet,,TABLET,138
+719,H03BA02001,Propylthiouracil 50mg,PROPYLTHIOURACILE 50mg tablet B/60,,TABLET,343
+720,H03BB01001,Carbimazole 5mg,NEOMERCAZOLE 5mg tablet B/50,,TABLET,31
+721,H03BB01002,Carbimazole 20mg,NÉOMERCAZOLE 20mg tablet B/30,,TABLET,400
+722,H03BB02001,Thiamazole 10mg,STRUMAZOL 10mg tablet,,TABLET,130
+723,J01AA02001,Doxycycline 100mg,DOXYCYCLINE 100mg tablet,,TABLET,41
+724,J01AA02002,Doxycycline 200mg,DOXY 200mg tablet B/8,,TABLET,501
+725,J01AA07001,Tetracycline 250mg,TETRACYCLINE 250mg capsule,,CAPSULE,24
+726,J01BA01001,Chloramphenicol 250mg,CHLORAMPHENICOL 250mg capsule,,CAPSULE,53
+727,J01BA01002,Chloramphenicol 125mg/5ml,CHLORAMPHENICOL 125mg/5ml syrup 100 ml,,BOTTLE,1202
+728,J01BA01003,Chloramphenicol 125mg/5ml,CHLORAMPHENICOL 125mg/5ml syrup 60ml,,BOTTLE,232
+729,J01BA01004,Chloramphenicol Injection 1g,CHLORAMPHENICOL 1g Injection,,VIAL,467
+730,J01BA02001,Thiamphenicol 250mg,THIOBACTIN 250mg tablet B/16,,TABLET,219
+731,J01BA02002,Thiamphenicol 500mg,THIOBACTIN 500mg tablet B/24,,TABLET,612
+732,J01BA02003,Thiamphenicol 250mg/5ml,THIOBACTIN 250mg/5 ml syrup 60ml,,BOTTLE,7700
+733,J01CA01001,Ampicilline injection 500mg,AMPICILLIN 500mg Injection,,VIAL,227
+734,J01CA01002,Ampicilline injection 1g,AMPICILLIN 1g injection,,VIAL,334
+735,J01CA04001,Amoxycillin 250mg,AMOXYCILLIN 250mg capsule,,CAPSULE,37
+736,J01CA04002,Amoxycillin 500mg,AMOXYCILLIN 500mg capsule,,CAPSULE,69
+737,J01CA04003,Amoxycillin 125mg/5ml 60ml,AMOXYCILLIN 125mg/5ml syrup 60ml,,BOTTLE,507
+738,J01CA04004,Amoxycillin 125mg/5ml 100ml,AMOXYCILLIN 125mg/5ml syrup 100ml,,BOTTLE,734
+739,J01CA04005,Amoxycillin 250mg/5ml 60ml,AMOXYCILLIN 250mg/5ml syrup 60 ml,,BOTTLE,560
+740,J01CA04006,Amoxycillin 250mg/5ml 100ml,AMOXYCILLIN 250mg/5ml syrup 100ml,,BOTTLE,1041
+741,J01CA04011,Amoxycillin 125mg/5ml 60ml,BACTOX 125mg/5ml Syrup 60 ml,,BOTTLE,3711
+742,J01CA04012,Amoxycillin 250mg/5ml 60ml,BACTOX 250mg/5ml Syrup 60 ml,,BOTTLE,4873
+743,J01CA08001,Pivmecillinam 200mg,SELEXID 200mg tablet B/12,SPEC,TABLET,1222
+744,J01CE02001,Phenoxymethylpenicillin 250mg,PENI V 250mg oral tablet,,TABLET,40
+745,J01CE08001,Benzathine Benzylpenicillin,PENICILLIN G SODIC 1 M UI injection,,VIAL,175
+746,J01CE08002,"Benzathine Benzylpenicilline 2,4 MUI injection","BENZATHINE BENZYLPENICILLINE 2,4 MUI injection .",,VIAL,481
+747,J01CE09001,Procaine Benzylpenicillin,PENICILLIN PROCAINE 4 MUI injection,,VIAL,534
+748,J01CE09002,Procaine Benzylpenicillin,BENZYLPENICILLIN PROCAINE 4MUI Injection,,VIAL,454
+749,J01CF02001,Cloxacillin 250mg,CLOXACILLINE 250mg capsule,,CAPSULE,40
+750,J01CF02002,Cloxacillin 500mg,CLOXACILLINE 500mg capsule,,CAPSULE,80
+751,J01CF02003,Cloxacillin 125mg/5ml,CLOXACILLINE125mg/5ml Syrup 100ml,,BOTTLE,935
+752,J01CF02004,Cloxacilline injection 200 mg/ml,CLOXACILLINE 200 mg/ml Injection,,VIAL,467
+753,J01CF05002,Flucloxacillin 500mg,FLUCLOXACILLINE 500mg Capsules,SPEC,CAPSULE,684
+754,J01CF05003,Flucloxacillin 250mg/5ml,FLUCLOXACILLINE 250mg/5ml Syrup 100ml,SPEC,BOTTLE,7743
+755,J01CR02001,Amoxycillin 500mg +clavulanic acid 125mg,AMOXICILLIN + CLAVULANIC ACID 625mg tablet,,TABLET,257
+756,J01CR02002,Amoxycillin 100mg +clavulanic acid 25mg,AMOXICILLIN +CLAVULANIC ACID 125mg/5ml Syrup 100ml,,BOTTLE,2670
+757,J01CR02003,Amoxycillin 200mg +clavulanic acid 50mg,AMOXICILLIN + CLAVULANIC ACID 250mg/5ml Syrup 100ml,,BOTTLE,2415
+758,J01CR02004,Amoxycillin 1000mg +clavulanic acid 200mg Injection,AMOXYCILLIN + CLAVULANIC ACID 1.2g Injection,,VIAL,3000
+759,J01CR02011,Amoxycillin 500mg +clavulanic acid 62.5mg,Amoxycillin 500mg +clavulanic acid 62.5mg,,TABLET,434
+760,J01CR02012,Amoxycillin 100mg +clavulanic acid 12.5mg,Amoxycillin 100mg +clavulanic acid 12.5mg 60ml,,BOTTLE,7343
+761,J01CR02013,Amoxycillin 500mg + Clavulanic acid 65mg,SAPHIR 500 mg/62.5 mg B/12 Sachets,,SACHET,712
+762,J01CR02014,Amoxycillin 1000mg + Clavulanic acid 125mg,SAPHIR 1000 mg/125 mg B/12 Sachets,,SACHET,1068
+763,J01CR02005,Amoxycillin 500mg +clavulanic acid 62.5mg,AUGMENTIN 500mg/62.5mg tablet B/16,SPEC,TABLET,776
+764,J01CR02006,Amoxycillin 100mg +clavulanic acid 12.5mg,"AUGMENTIN Nourrisson 100 mg/12,5 mg/ml Powder for oral suspension 30ml",,BOTTLE,8144
+765,J01CR02007,Amoxycillin 100mg +clavulanic acid 12.5mg,"AUGMENTIN Enfant 100 mg/12,5 mg/ml Powder for oral suspension 60ml",,BOTTLE,12883
+766,J01CR02008,Amoxycillin 500mg +clavulanic acid 50mg,AUGMENTIN 500mg injection B/1,,VIAL,2760
+767,J01CR02009,Amoxycillin 200mg +clavulanic acid 28mg,DAFRACLAV SP 228MG/5ml 70ml,,BOTTLE,6094
+768,J01CR02010,Amoxycillin 400mg +clavulanic acid 56mg,DAFRACLAV SP 456MG/5ml 70ml,,BOTTLE,8370
+769,J01CR50001,Flucloxacillin Sodium 125mg + Amoxicillin Trihydrate 125mg,FLUCLOXACILLIN + AMOXICILLIN 250mg/5ml,,BOTTLE,2804
+770,J01DB01002,Cefalexin 250mg,CEFALEXIN 250 mg tablet,,TABLET,78
+771,J01DB04001,Cefazolin,CEFAZOLIN 1G injection,,VIAL,845
+772,J01DB05008,Cefadroxil 125mg/5ml,CEFADROXIL 125mg/5ml syrup 60ml,,BOTTLE,1175
+773,J01DB05009,Cefadroxil 250mg/5ml,CEFADROXIL 250mg/5ml syrup 60ml,,BOTTLE,1282
+774,J01DC02001,Cefuroxim 250mg,ZINNAT 250mg tablet B/8,SPEC,TABLET,718
+775,J01DC02004,Cefuroxim 250mg,CEFUROXIM 250mg tablet,,TABLET,294
+776,J01DC02005,Cefuroxim 500mg,CEFUROXIM 500mg tablet,,TABLET,441
+777,J01DC02006,Cefuroxime 750 mg/ml Injection,CEFUROXIME 750mg/ml Injection,,VIAL,1137
+778,J01DC02007,Cefuroxim Axetil,CEFUROXIME AXETIL 125mg/5ml syrup 100ml,,BOTTLE,3220
+779,J01DD01001,Cefotaxime Injection 1g,CEFOTAXIME 1g Injection,,VIAL,534
+780,J01DD04001,Ceftriaxon 250mg,CEFTRIAXONE 250mg injection,,VIAL,360
+781,J01DD04002,Ceftriaxone injection 1g,CEFTRIAXONE 1g injection,,VIAL,668
+782,J01DD08004,Cefixime 200mg,CEFIXIME 200mg tablet,,TABLET,180
+783,J01DD08005,Cefixime 50mg/5ml,CEFIXIME 50mg/5ml syrup 100ml,,BOTTLE,5340
+784,J01DD08011,Cefixime 50mg/5ml,CEFIXIME 50mg/5ml syrup 60ml,,BOTTLE,2670
+785,J01DD08006,Cefixime 200mg,GRAMOCEF 200mg tablet,SPEC,TABLET,1242
+786,J01DD08007,Cefixime 50mg/5ml,GRAMOCEF 50mg /5ml Powder for oral suspension,SPEC,BOTTLE,10013
+787,J01DD08008,Cefixime 100mg/5ml,GRAMOCEF 100mg/5ml Powder for oral suspension,SPEC,BOTTLE,12923
+788,J01DD08009,Cefixime 200mg,BEKRACINE 200mg tablet B/10,SPEC,TABLET,903
+789,J01DD08010,Cefixime,BEKRACINE Syrup 20mg/ ml syrup 60ml,SPEC,BOTTLE,9510
+790,J01DD13001,Cefpodoxime 50mg/5ml,CEFPODOXIME 50mg/5ml Syrup 100ml,SPEC,BOTTLE,4900
+791,J01DD54001,Ceftrisone 1.5g,CEFTRISONE-S 1.5g injection,,VIAL,1120
+792,J01DH02001,Meropenem 500mg,MEROPENEM 500mg injection,HU & SPEC,VIAL,4673
+793,J01DH02002,Meropenem 1g,MEROPENEM 1g injection,HU & SPEC,VIAL,10680
+794,J01DH51001,Imipenem 500mg + Cilastatin 500mg,TIENAM/Imipenem 500mg+Cilastatin 500mg injection,HU & SPEC,VIAL,9345
+795,J01EC02001,Sulfadiazine 500mg,ADIAZINE 500mg tablet B/20,,TABLET,140
+796,J01EE01001,Sulfamethoxazole 100mg +Trimethoprim 20mg,CO-TRIMOXAZOLE 120mg tablet,,TABLET,6
+797,J01EE01002,Sulfamethoxazole 400mg +Trimethoprim80mg,CO-TRIMOXAZOLE 480mg tablet,,TABLET,24
+798,J01EE01003,Sulfamethoxazole 800mg +Trimethoprim 160mg,CO-TRIMOXAZOLE 960mg tablet,,TABLET,76
+799,J01EE01004,Sulfamethoxazole 200mg +Trimethoprim 40mg,CO-TRIMOXAZOLE SP 240mg/5ml 100ml,,BOTTLE,574
+800,J01EE01005,Sulfamethoxazole 200mg +Trimethoprim 40mg,CO-TRIMOXAZOLE SP 240mg/5ml 60ml,,BOTTLE,467
+801,J01EE01006,Sulfamethoxazole 400mg +Trimethoprim 80mg Injection,COTRIMOXAZOLE 480mg/5ml Injection,,VIAL,886
+802,J01EE01007,Sulfamethoxazole 200mg +Trimethoprim 40mg,STEROPRIM 24mg/5ml syrup 100ml,,BOTTLE,1820
+803,J01FA01001,Erythromycin 250mg,ERYTHROMYCIN 250mg tablet,,TABLET,80
+804,J01FA01002,Erythromycin 250mg/5ml 60ml,ERYTHROMYCIN 250mg/5ml syrup 60ml,,BOTTLE,630
+805,J01FA01003,Erythromycin 125mg/5ml 60ml,ERYTHROMYCIN 125mg/5ml syrup 60ml,,BOTTLE,350
+806,J01FA01004,Erythromycin 125mg/5ml 100ml,ERYTHROMYCIN 125mg/5ml syrup 100ml,,BOTTLE,1068
+807,J01FA02001,Spiramycin 1.5MIU,"ROVAMYCINE 1,5 MIU tablet B/16",SPEC,TABLET,1448
+808,J01FA02002,Spiramycin 3MIU,ROVAMYCINE 3MIU tablet B/10,SPEC,TABLET,1731
+809,J01FA06001,"Roxithroxin 100mg , 150mg",RULID Tablet 100mg & 150mg,SPEC,TABLET,1400
+810,J01FA09001,Clarithromycin 250mg,CLARITHROMYCIN 250mg tablet,,TABLET,143
+811,J01FA09002,Clarithromycin 500mg,CLARITHROMYCIN 500mg tablet,,TABLET,463
+812,J01FA10001,Azithromycin 500mg,AZITHROMYCIN 500mg tablet,,TABLET,356
+813,J01FA10002,Azithromycin 100mg/5ml 30ml,AZITHROMYCIN 100mg/5ml oral suspension 30ml,,BOTTLE,630
+814,J01FA10003,Azithromycin 200mg/5ml 15ml,AZITHROMYCIN 200mg/5ml 15ml oral suspension,,BOTTLE,1135
+815,J01FA10004,Azithromycin 200mg/5ml 30ml,AZITHROMYCIN 200mg/5ml 30ml oral suspension,,BOTTLE,2136
+816,J01FF01001,Clindamycin 150mg,DALACIN 150mg capsule B/16,SPEC,CAPSULE,718
+817,J01FF01002,Clindamycin 300mg,DALACIN 300mg capsule B/16,SPEC,CAPSULE,1093
+818,J01FF01003,Clindamycin 300mg,CLINDAMYCINE 300mg capsule,SPEC,CAPSULE,1093
+819,J01FF02001,Lincomycin 500mg,LINCOCIN 500mg capsule B/12,,CAPSULE,1991
+820,J01GB03001,Gentamycine injection 40mg/2ml,GENTAMYCINE 40mg/2ml injection,,VIAL,85
+821,J01GB03002,Gentamycine inj. 80mg/2ml,GENTAMYCINE 80mg/2ml Injection,,VIAL,160
+822,J01GB04001,Kanamycin Injection 1g,KANAMYCINE 1g Injection,,VIAL,256
+823,J01GB06001,Amikacin 100mg/2ml,AMIKACIN 100mg/2ml IV injection,SPEC,VIAL,1560
+824,J01MA01003,Ofloxacin 200mg,OFLOCET 200mg tablet B/10,SPEC,TABLET,2203
+825,J01MA02002,Ciprofloxacine injection 200mg/100ml,CIPROFLOXACINE 200mg/100ml IV injection,,VIAL,601
+826,J01MA03001,Ciprofloxacin 500mg,CIPROFLOXACIN 500mg tablet,,TABLET,51
+827,J01MA06001,Norfloxacin 400mg,NORFLOXACIN 400mg tablet,,TABLET,34
+828,J01MA12001,Levofloxacin 500mg,LEVOFLOXACINE 500mg tablet,,TABLET,179
+829,J01MA12002,Levofloxacin 750mg,LEVOFLOXACINE 750mg tablet,,TABLET,748
+830,J01MB02001,Nalidixic Acid 500mg,NALIDIXIC ACID 500mg tablet,,TABLET,96
+831,J01RA04001,Spiramycin 0.75 MIU+ Metronidazole 125mg,RODOGYL tablet B/20,DT or DENTAL SURGEON,TABLET,726
+832,J01RA09001,Ofloxacin 200mg + Ornidazole 500mg,LOOBID 200mg/500mg tablet,,TABLET,367
+833,J01RA09002,Ofloxacin 200mg + Ornidazole 500mg,OFLOXACIN + ORNIDAZOLE 200mg/500mg tablet,,TABLET,248
+834,J01XA01001,Vancomycin 500mg,VANCOMYCIN 500mg injection,HU,VIAL,5607
+835,J01XB02001,"Polymyxin 500,000U","POLYMYXIN B 500,000 UNITS (BSVL) 1'S",HU & M,VIAL,43602
+836,J01XC01001,Fusidic Acid 250mg,FUCIDINE 250mg tablet B/10,SPEC,TABLET,2803
+837,J01XD01001,Metronidazole 500mg,METRONIDAZOLE 500mg/100ml solution for IV injection,,BOTTLE,601
+838,J01XE01001,Nitrofurantoin 100mg,NITROFURANTOINE 100mg tablet,,TABLET,35
+839,J01XX04001,Spectinomycin 2g,SPECTINOMYCINE 2g injection,,BOTTLE,6675
+840,J02AA01001,Amphotericin B 50mg,AMPHOTERICINE B 50mg injection,SPEC,VIAL,17222
+841,J02AC01001,Fluconazole 200mg,FLUCONAZOLE 200mg tablet B/10,,TABLET,261
+842,J02AC01002,Fluconazole 100mg,FLUCONAZOLE 100mg tablet B/10,,TABLET,367
+843,J02AC01003,Fluconazole 50mg/5ml,FLUCONAZOLE 50MG/5ml syrup 60ml,,BOTTLE,4038
+844,J02AC01004,Fluconazole 150mg,FLUCONAZOLE 150mg tablet,,TABLET,340
+845,J02AC02001,Itraconazole 100mg,ITRACONAZOLE 100mg tablet,SPEC,TABLET,639
+846,J04BA02001,Dapsone 100mg,DAPSONE 100mg tablet,,TABLET,543
+847,J05AB01001,Aciclovir 200mg,ACICLOVIR 200mg tablet,,TABLET,122
+848,J05AB01002,Aciclovir 400mg,ACICLOVIR 400mg tablet,,TABLET,334
+849,J05AB01003,Aciclovir 800mg,ACICLOVIR 800mg tablet,,TABLET,481
+850,J05AB01004,Aciclovir 250mg injection,ACICLOVIR 250mg injection,SPEC,VIAL,15000
+851,J05AB11005,Valaciclovir 500mg,ZELITREX 500mg tablet,M,TABLET,3085
+852,J06AA02001,Tetanus Antitoxin,ANTITETANIC SERUM 1500 UI injection,,VIAL,2403
+853,J06AA03001,Snake Vonom Antiserum,SERUM ANTI-VENOMOUS injection,,VIAL,40050
+854,J06AA06001,Rabies serum,SERUM ANTI- RABIES 10ml/1500UI injection,,VIAL,12015
+855,J06BB01001,Anti Rh D Immunoglobulin 300mcg,RHOCLONE 300mcg injection,HU & M,VIAL,80000
+856,J06BB04001,Human Immune Globulin,HEPATITIS B IMMUNOGLOBULIN injection,SPEC,VIAL,100125
+857,J07AM01001,Tetanus Toxoid,ANTI-TETANIC VACCIN injection 20doses,,VIAL,2400
+858,J07BC01001,"Hepatitis B , Purified Antigen",ANTI-HEPATITIS B VACCIN** injection,,VIAL,3640
+859,J07BG01001,"RABIES, INACTIVATED, WHOLE VIRUS 2.5UI","ANTI- RABIC VACCINE 2,5 UI injection",,VIAL,12432
+860,L01AA01001,Cyclophosphamide 200mg,ENDOXAN 200mg injection,AC,VIAL,1028
+861,L01AA01002,Cyclophosphamide 500mg,ENDOXAN 500mg injection,AC,VIAL,2670
+862,L01AA01003,Cyclophosphamide 50mg,ENDOXAN 50mg tablet B/50,AC,TABLET,735
+863,L01AA02001,Chlorambucil 2mg,LEUKERAN 2mg tablet,AC,TABLET,250
+864,L01BB02001,Mercaptopurine 50mg,PURI_NETHOL 50mg tablet,AC,TABLET,331
+865,L01BC05001,Gemcitabine 200 mg Powder for Solution for Infusion,GEMCITABIN 200mg Powder for solution for infusion,AC,Vial,21360
+866,L01BC05002,Gemcitabine 1000 mg Powder for Solution for Infusion,GEMCITABIN 1000mg Powder for solution for infusion,AC,Vial,39990
+867,L01BC02001,Fluorouracil 50mg/g,EFFUDIX 5% cream 20g,AC or D,TUBE,44723
+868,L01BC02002,Fluorouracil 50mg/g,EFFUDIX ointment 20g,AC or D,TUBE,53000
+869,L01BC06001,Capecitabin 500mg,CAPECITABIN 500mg tablet,AC,TABLET,1114
+870,L01BC52001,Fluorouracil +Salicylic Acid +Dimethylsulfoxyde 8%,VERRUMAL topical solution 13ml,D,BOTTLE,10013
+871,L01CD01001,Paclitaxel 30mg,PACLITAXEL 30mg injection,AC,VIAL,20065
+872,L01CD01002,Paclitaxel 300mg,PACLITAXEL 300mg injection 50ml,AC,VIAL,45150
+873,L01CD02001,Docetaxel 80mg,DOCETAXEL 80mg/2ml injection,AC,VIAL,32250
+874,L01DB03001,Epirubicin 50mg,EPIRUBICIN 50mg injection,AC,VIAL,9888
+875,L01XA03001,Oxaliplatin 100mg/50ml,OXALIPLATIN 100mg/50ml injection,AC,VIAL,32250
+876,L01XE01001,Imatinib 100mg,VEENAT 100mg tablet,AC,TABLET,132
+877,L01XE01002,Imatinib 400mg,IMATINIB 400mg tablet,AC,TABLET,2403
+878,L01DB01001,Doxorubicin hydrochloride 2mg/ml,DOXORUBICIN HYDROCHLORIDE 2mg/ml injection,AC,VIAL,14018
+879,L01XX05001,Hydroxycarbamide 500mg,HYDREA / HYDROXYUREA 500mg capsule,AC,CAPSULE,652
+880,L01XX19001,Irinotecan 100mg/5ml,IRINOTECAN 100mg/5ml injection,AC,VIAL,38700
+881,L02AE02001,Leuprolide 3.75mg,LEUPROLIDE 3.75mg injection,GYN or UROL or ONCO or PED,VIAL,140322
+882,L02AE03001,Gosereline Acetate 3.6mg implant,ZOLADEX VIAL 3.6mg Implant,GYN or UROL or ONCO & M,PIECE,181500
+883,L02AE03002,Gosereline Acetate 10.8mg implant,ZOLADEX 10.8mg Implant,GYN or UROL or ONCO & M,PIECE,328510
+884,L02BA01001,Tamoxifene 10mg,TAMOXYFENE 10mg tablet,GYN or UROL or ONCO,TABLET,174
+885,L02BA01002,Tamoxifene 20mg,TAMOXYFENE 20mg tablet,GYN or UROL or ONCO,TABLET,87
+886,L02BA01003,Tamoxifene 20mg,NOLVADEX 20mg tablet,GYN or ONCO,TABLET,1376
+887,L02BB03001,Bicalutamide 50mg,CASODEX 50mg Tablet,UROL or  ONCO,TABLET,5143
+888,L02BB03002,Bicalutamide 150mg,CASODEX 150mg Tablet,UROL or ONCO,TABLET,11375
+889,L02BG03001,Anastrosole 1mg,ARIMIDEX 1mg tablet B/28,AC,TABLET,2756
+890,L02BG03002,Anastrosole 1mg,ANASTROZOLE 1mg tablet,AC,TABLET,1014
+891,L02BG04001,Letrozole 2.5mg,LETROZOLE 2.5mg tablet,,TABLET,356
+892,L02BX03001,Abiraterone Acetate 250mg,ABIRATERONE 250mg tablet,AC,TABLET,1936
+893,L02BX03002,Abiraterone Acetate 500mg,ABIRATERONE 500mg tablet,AC,TABLET,3872
+894,L03AB07001,Interferon Beta- 1A 30mcg/0.5ml,AVONEX 30mcg/0.5mL solution injection,M,VIAL,180000
+895,L01XC07001,Bevacizumab 400mg/16ml,BEVACIZUMAB 400mg/16ml solution injection,M,VIAL,409500
+896,L01XC02001,Rituximab 500mg/50ml,RITUXIMAB 500mg/50ml solution injection,M,VIAL,293510
+897,L04AA06001,Mycophenolate Mofetil 500mg,MYCOPHENOLATE MOFILET 500mg tablet,SPEC,TABLET,1025
+898,L04AD01001,Ciclosporine 50mg,CICLOSPORINE 50 mg Capsules,IM,CAPSULE,1282
+899,L04AD02001,Tacrolimus 0.5mg,TACROLIMUS 0.5mg capsule,IM,CAPSULE,502
+900,L04AD02002,Tacrolimus 1mg,TACROLIMUS 1mg capsule,IM,CAPSULE,979
+901,L04AD02003,Tacrolimus 2mg,TACROLIMUS 2mg capsule,IM,CAPSULE,935
+902,L04AX01001,Azathioprine 50mg,AZATHIOPRINE tablet 50mg,SPEC,TABLET,529
+903,L04AX03001,Methotrexate 2.5mg,"METHOTREXATE 2,5mg tablet B/20",SPEC,TABLET,364
+904,M01AB01001,Indomethacin 25mg,INDOMETHACINE 25mg tablet,,TABLET,22
+905,M01AB01002,Indomethacin 100mg,INDOMETHACINE 100mg suppository B/10,,SUPPOSITORY,147
+906,M01AB05002,Diclofenac 50mg,DICLOFENAC 50mg tablet,,TABLET,8
+907,M01AB05003,Diclofenac 100mg,DICLOFENAC RETARD 100mg tablet,,TABLET,26
+908,M01AB05004,Diclofenac 100mg,DICLOFENAC 100mg suppository,,SUPPOSITORY,162
+909,M01AB05005,Diclofenac 75mg/ml Injection,DICLOFENAC 75mg/ml Injection,,VIAL,267
+910,M01AB05006,Diclofenac Potassique 50mg,KNAC 50mg tablet,,TABLET,80
+911,M01AB05007,Diclofenac Potassique 75mg,KNAC 75mg tablet,,TABLET,154
+912,M01AB16001,Aceclofenac 100mg,ACECLOFENAC 100mg tablet,,TABLET,101
+913,M01AB55003,Aceclofenac 100mg + Paracetamol 325mg,ACECLOFENAC 100mg + PARACETAMOL 325mg tablet,,TABLET,123
+914,M01AB55002,Paracetamol 500 mg + Aceclofenac 100 mg + Chlorzoxazone 375 mg,PARACETAMOL 500mg + ACECLOFENAC 100mg + CHLORZOXAZONE 375mg tablet,,TABLET,227
+915,M01AB55001,Paracetamol 500mg +Diclofenac 50mg,CLOFAINS 500mg/50mg tablet B/10,,TABLET,230
+916,M01AC01001,Piroxicam 10mg,FELDENE 10mg tablet or capsule,,CAPSULE,172
+917,M01AC01002,Piroxicam 20mg,FELDENE 20mg tablet or capsule B/15,,CAPSULE,534
+918,M01AC01003,Piroxicam 20mg,FELDENE 20mg suppository B/12,,SUPPOSITORY,756
+919,M01AC01004,Piroxicam 20mg/ml,FELDENE 20mg/1ml injection,,VIAL,700
+920,M01AC01005,Piroxicam 20mg,PIROXICAM 20mg capsule,,TABLET,19
+921,M01AC01006,Piroxicam 20mg,PIROXEN 20mg dispersible tablet B/12,SPEC,TABLET,724
+922,M01AC02001,Tenoxicam 20mg,TILCOTIL 20mg film-coated tablet B/30,,TABLET,346
+923,M01AC06001,Meloxicam 7.5mg,MELOXICAM 7.5mg tablet,,TABLET,92
+924,M01AC06002,Meloxicam 15mg,MELOXICAM 15mg tablet,,TABLET,138
+925,M01AE01001,Ibuprofen 200mg,IBUPROFEN 200mg tablet,,TABLET,15
+926,M01AE01002,Ibuprofen 400mg,IBUPROFEN 400mg tablet,,TABLET,24
+927,M01AE01003,Ibuprofen 100mg/5ml 60ml,IBUPROFEN 100mg/5ml syrup 60ml,,BOTTLE,441
+928,M01AE01004,Ibuprofen 100mg/5ml 100ml,IBUPROFEN 100mg/5ml syrup 100ml,,BOTTLE,654
+929,M01AE02002,Naproxen 550mg,APRANAX 550mg tablet B/30,SPEC,TABLET,530
+930,M01AE03005,Ketoprofen 100mg,PROFENID 100mg tablet B/30,,TABLET,601
+931,M01AE03004,Ketoprofen 50mg,PROFENID 50mg capsule B/24,,TABLET,62
+932,M01AE03006,Ketoprofen 100mg,BI-PROFENID 100mg tablet B/20,SPEC,TABLET,514
+933,M01AE03007,Ketoprofen 100mg,PROFENID 100mg suppository B/12,,SUPPOSITORY,879
+934,M01AE17001,Dexketoprofen 25mg,KETESSE 25mg tablet,SPEC,TABLET,574
+935,M01AE17002,Dexketoprofen 50mg/2ml,KETESSE 50mg/2ml injection,HU,VIAL,2804
+936,M01AE51004,Paracetamol + Ibuprofen,PARACETAMOL + IBUPROFEN SYRUP 60ml,,BOTTLE,1001
+937,M01AE51003,Ibuprofen +Paracetamol +Caffeine,TRIALGIC tablet,,TABLET,204
+938,M01AG01001,Mefenamic Acid 500mg,MEFTAL 500mg tablet,,TABLET,176
+939,M01AG01002,Mefenamic Acid +Dicyclomine,MEFTAL SPAS tablet B/60,,TABLET,147
+940,M01AH01001,Celecoxib 100mg,CELEBREX 100mg capsule B/30,SPEC,CAPSULE,364
+941,M01AH01002,Celecoxib 200mg,CELEBREX 200mg capsule B/30,SPEC,CAPSULE,1118
+942,M01AH01003,Celecoxib 200mg,CELECOXIB 200mg tablet B/10,,TABLET,394
+943,M01AX02001,Niflumic Acid 250mg,NIFLURIL 250mg capsule B/30,,CAPSULE,140
+944,M01AX02002,Niflumic Acid 250mg,NIFLURIL ENFANTS 400mg suppository B/8,,SUPPOSITORY,526
+945,M01AX02003,Niflumic Acid 250mg,NIFLURIL ADULTE 700mg suppository B/8,,SUPPOSITORY,567
+946,M01AX25001,Glucosamine 500mg +chondroitin 100mg,CARTIL FORTE tablet,SURG or IM,TABLET,504
+947,M01AX25002,Glucosamine 500mg +chondroitin 400mg,OSTEOMINE tablet,SURG or IM,TABLET,863
+948,M09AX01001,Sodium Hyaluronate 10 mg/1mL,SODIUM HYALURONATE (HYALURONIC ACID) 1% INJECTION,M,,169400
+949,M02AA06001,Etofenamate,DOLO GEL DENK 20g,,TUBE,6475
+950,M02AA10003,Ketoprofen 2.5% w/w,Ketoprofen 2.5% w/w topical gel 30g,,TUBE,2403
+951,M02AA10001,Ketoprofen 2.5% w/w,FASTUM 2.5% w/w topical gel 30g,,TUBE,6315
+952,M02AA10002,Ketoprofen 2.5% w/w,FASTUM 2.5% w/w topical gel 50g,,TUBE,10133
+953,M02AA13001,Ibuprofen 5%,IBUMEX 5% topical gel 25g,,TUBE,1469
+954,M02AA15001,Diclofenac,DICLOFENAC topical gel 20g,,TUBE,467
+955,M02AA15002,Diclofenac,VOLTARENE EMULGEL topical gel 50g,,TUBE,5126
+956,M02AA17001,Niflumic Acid,NIFLUGEL topical gel 60g,,TUBE,6275
+957,M02AC002,Methyl Salicylate+ Menthol 10%+Camphor 5%,MEFTAL FORT cream 30g,,TUBE,4552
+958,M02AX10001,Camphree + Vaseline,CAMPHRE 10 % ointment 50g,,POT,908
+959,M02AX10003,Salicylic Acid + diethylamine + Myrtecaine,ALGESAL SURACTIVE CREAM 40 G,,TUBE,8010
+960,M02AX10004,Salicylic Acid +Diethylamine,ALGESAL BAUME cream 40g,,TUBE,7343
+961,M03AB01001,Suxamethonium 50mg/ml,SUXAMETHONIUM 50mg/ml solution for injection 10 ml,HU,VIAL,2149
+962,M03BA53002,Methocarbamol 380+ Paracetamol 300mg,DISTEM 380mg/300mg tablet B/50,,TABLET,260
+963,M03BA53003,Methocarbamol 500mg +Ibuprofen 200mg,FLEXDOL 500mg/200mg tablet,,TABLET,351
+964,M03BB53001,Paracetamol 500mg +Chlorzoxazone 250mg,MYOSPAZ Tablet B/100,,TABLET,266
+965,M03BX01001,Baclofen 10mg,BACLOFENE 10mg tablet B/50,,TABLET,263
+966,M03BX01002,Baclofen 25mg,BACLOFENE 25mg tablet B/50,,TABLET,218
+967,M03BX01003,Baclofen 10mg,LIORESAL 10mg tablet B/50,,TABLET,295
+968,M03BX01004,Baclofen 25mg,LIORESAL 25mg tablet B/50,,TABLET,430
+969,M03BX05001,Thiocolchicoside 4mg,COLTRAMYL 4mg tablet B/12,,TABLET,420
+970,M03BX05002,Thiocolchicoside 8mg,THIOCOLCHICOSIDE 8mg,,TABLET,793
+971,M03BX06001,Mephenesin,DECONTRACTYL 250mg tablet B/50,,TABLET,101
+972,M03BX06002,Mephenesin,DECONTRACTYL BAUME ointment 80g,,TUBE,8237
+973,M04AA01001,Allopurinol 100mg,ALLOPURINOL 100 mg tablet,,TABLET,138
+974,M04AA01002,Allopurinol 300mg,ALLOPURINOL 300mg tablet,,TABLET,277
+975,M04AA01003,Allopurinol 100mg,ZYLORIC 100mg tablet B/28,,TABLET,138
+976,M04AA01004,Allopurinol 200mg,ZYLORIC 200mg tablet B/28,,TABLET,200
+977,M04AA01005,Allopurinol 300mg,ZYLORIC 300mg tablet B/28,,TABLET,277
+978,M04AA03001,Febuxostat 40mg,FEBUXOSTAT 40mg tablet,,TABLET,495
+979,M04AA03002,Febuxostat 80mg,FEBUXOSTAT 80mg tablet,,TABLET,626
+980,M04AC01001,Colchicine 1mg,COLCHICINE 1mg tablet B/20,,TABLET,620
+981,M05BA04001,Alendronic Acid 10mg,FOSAMAX 10mg tablet,GYN or ORTH,TABLET,1000
+982,M05BA06001,Ibandronic acid 150mg,CADRONATE 150mg tablet B/3,GYN or ORTH or ONCO,TABLET,10941
+983,M05BA08001,Zoledronic Acid 4mg/ml,ZOLEDRONIC ACID 4mg/ml injection,AC or ORTHO,VIAL,18690
+984,M09AX001,Cytidine 5'-Monophosphate Disodium 5 mg + Uridine Triphosphate Trisodium 3 mg,NUCLEO C.M.P FORTE capsules B/30,SPEC,CAPSULE,445
+985,M09AX002,Cytidine 5'-Monophosphate Disodium 5 mg; Uridine Triphosphate Trisodium 3 mg,NUCLEO C.M.P FORTE injection B/3,SPEC,VIAL,3000
+986,N01AF03001,Thiopental 1g IV Injection 20ml,THIOPENTHAL 1g IV Injection 20ml,HU,VIAL,2070
+987,N01AX03001,Ketamine 50mg/ml 10ml Injection,KETAMINE 50mg/ml 10ml Injection,HU & M,VIAL,3671
+988,N01AX10001,Propofol 10 mg/ml Emulsion for injection/infusion 20ml,PROPOFOL 10mg/ml Emulsion for injection/infusion 20ml,HU & M,VIAL,4673
+989,N01BB01001,Bupivacaine 0.5%,MARCAINE INJ 0.5% SPINAL HEAVY 4ml,,VIAL,9238
+990,N02AA01001,Morphine 10mg/ml injection,MORPHINE 10mg/ml Injection,SPEC,VIAL,1148
+991,N02AA01002,Morphine 30mg/ml injection,MORPHINE 30mg/ml Injection,SPEC,VIAL,2614
+992,N02AA01003,Morphine 30mg tablet,ZOMORPH 30mg tablet,IM,TABLET,501
+993,N02AA01004,Morphine 10mg tablet,ZOMORPH 10mg tablet,IM,TABLET,211
+994,N02AB02001,Pethidine Hydrochloride 50 mg/ml Injection,PETHIDINE 50mg/ml Injection,SPEC,VIAL,854
+995,N02AB03001,Fentanyl 0.05mg/ml,"FENTANYL 0,05mg/ml injection 10ml",HU & M,VIAL,2203
+996,N02AD01001,Pentazocine 50mg,PENTAZOCINE 50mg tablet,SPEC,TABLET,266
+997,N02AX02001,Tramadol Hydrochloride 50mg,TRAMADOL HYDROCHLORIDE 50mg capsule,,CAPSULE,40
+998,N02AX02003,Tramadol 100mg/ml injection,TRAMADOL 100mg/ml Injection,HU & M,VIAL,467
+999,N02AX02004,Tramadol 50mg/ml injection,TRAMADOL 50mg/ml Injection,HU & M,VIAL,534
+1000,N02AX06001,Tapentadol 50mg tablet,TAPENTADOL 50mg tablet,SPEC,TABLET,547
+1001,N02AX52001,Tramadol 37.5mg +Paracetamol 325mg,ANTALGEX T 325mg/37.5mg tablet,,TABLET,206
+1002,N02BA01001,Acetylsalicylic Acid 500mg,ACETYLSALISYLIC ACID 500mg tablet,,TABLET,8
+1003,N02BA01002,Acetylsalicylic Acid 300mg,ACETYLSALISYLIC ACID 300mg tablet,,TABLET,4
+1004,N02BA01003,Lysine Acetylsalicylate 500mg Injection,"ACETYLSALICYLIC ACID, LYSINE 500mg Injection",,VIAL,350
+1005,N02BA01005,Acetylsalicylate DL- lysine 100mg,ASPEGIC 100mg Powder for oral solution in sachet B/20,,SACHET,240
+1006,N02BA01006,Acetylsalicylate DL- lysine 250mg,ASPEGIC 250mg Powder for oral solution in sachet B/20,,SACHET,247
+1007,N02BA01007,Acetyl salicylate DL- lysine 500mg,ASPEGIC 500mg Powder for oral solution in sachet B/20,,SACHET,234
+1008,N02BA01008,Acetylsalicylate DL- lysine 1000mg,ASPEGIC 1000mg Powder for oral solution in sachet B/20,,SACHET,441
+1009,N02BA01009,Acetylsalicylic Acid 500mg Injection,ASPEGIC 500mg Injection,,VIAL,528
+1010,N02BA01010,Acetylsalicylic Acid 1g Injection,ASPEGIC 1g Injection,,VIAL,528
+1011,N02BE01001,Paracetamol 100mg,PARACETAMOL 100mg tablet,,TABLET,4
+1012,N02BE01002,Paracetamol 500mg,PARACETAMOL 500mg tablet,,TABLET,10
+1013,N02BE01004,Paracetamol 120mg/5ml 60ml,PARACETAMOL 120mg /5 ml Syrup 60ml,,BOTTLE,374
+1014,N02BE01005,Paracetamol 120mg/5ml 100ml,PARACETAMOL 120mg/5 ml Syrup 100ml,,BOTTLE,521
+1015,N02BE01009,Paracetamol 125mg/5ml 60ml,PARACETAMOL 125mg /5 ml Syrup 60ml,,BOTTLE,387
+1016,N02BE01010,Paracetamol 125mg/5ml 100ml,PARACETAMOL 125mg/5 ml Syrup 100ml,,BOTTLE,521
+1017,N02BE01006,paracetamol 125mg,PARACETAMOL 125mg suppository,,SUPPOSITORY,187
+1018,N02BE01007,paracetamol 250mg,PARACETAMOL 250mg suppository,,SUPPOSITORY,200
+1019,N02BE01008,Paracetamol 1g 100ml Injection,PARACETAMOL 1g injection 100ml,HU,VIAL,1602
+1020,N02BE51001,Acetylsalicylic Acid 500mg +Ascorbic Acid 100mg +Caffein 10mg,ANTIGRIPPINE tablet B/12,,TABLET,367
+1021,N02BE51002,Paracetamol 450mg +Codeine Phosphate 10mg +Caffein 50mg + +Doxylamine Succinate,BETAPYN tablet B/18,,TABLET,415
+1022,N02BE51003,Paracetamol 400mg +Codeine 20mg,CODOLIPRANE tablet B/8,,TUBE OF 8 Tablets,1268
+1023,N02BE51004,Caffein Anhydrous 30mg +Pseudoephedrine 30mg +Chlorpheniramine Maleate 4mg,COLD CAP Capsules,,CAPSULE,77
+1024,N02BE51016,Caffein Anhydrous 30mg +Pseudoephedrine 30mg +Chlorpheniramine Maleate 4mg,DACOLD capsules,,CAPSULE,64
+1025,N02BE51005,Paracetamol 120mg+pseudoephedrine 10mg + Chlorpheniramine Maleate 2mg,COLD CAP syrup 100ml,,BOTTLE,1736
+1026,N02BE51017,Paracetamol 120mg+pseudoephedrine 10mg + Chlorpheniramine Maleate 2mg,DACOLD syrup 100ml,,BOTTLE,1202
+1027,N02BE51006,Paracetamol+phenylephrin + chlorpheniramin+ Caffein,COLDAREST Tablet,,TABLET,49
+1028,N02BE51007,Paracetamol 500mg+Codeine 30mg,EFFERALGAN CODEINE EFF. TBE 8Tablet,,TUBE OF 8 Tablets,2837
+1029,N02BE51008,Paracetamol 125mg +Cholrpheniramin maleate 2mg,FEBRILEX JUNIOR Syrup 125 MG/ml BTTLE 150ml,,BOTTLE,4806
+1030,N02BE51009,Paracetamol 125mg +Dextromethorphan 5mg +Chlorpheniramin Maleate 1mg,FEBRILEX Syrup 150 ml,,BOTTLE,4806
+1031,N02BE51010,Paracetamol 500mg +Phenylephrin Hydrochloride 5mg +Chlorpheniramin maleate 2mg,FEBRILEX Tablet B/4,,TABLET,143
+1032,N02BE51011,Paracetamol 0.500g+Ascorbic Acid 0.200g +Pheniramine 0.025 g,FERVEX ADULT SACHET B/8,,SACHET,844
+1033,N02BE51012,Paracetamol 280mg +Ascorbic Acid 100mg +Pheniramine Maleate 10mg,FERVEX ENFANT SACHET B/8,,SACHET,784
+1034,N02BE51013,Paracetamol 125mg +Phenylephrine 2.5mg+Chlopheniramine 1mg,FEVAROL Syrup 100ml,,BOTTLE,3353
+1035,N02BE51014,Paracetamol 500mg + Caffein 30mg +phenylephrine Hydrochloride 5mg + Chlorpheniramine maleate 2mg,FEVAROL tablet B/200,,TABLET,124
+1036,N02BE51015,Paracetamol 125mg/5ml +chlorpheniramine 2mg/5ml + Phenylephrine 1mg/5ml,FLUCOLDEX syrup 100ml,,BOTTLE,1513
+1037,N02CA52001,Tartrate D Ergotamine 1mg +Caffein 100mg,CAFERGOT 100mg/1mg tablet,,TABLET,516
+1038,N02CC01001,Sumatriptan,SUMATRIPTAN 50mg tablet,SPEC,TABLET,3649
+1039,N03AA02001,Phenobarbital 30mg,PHENOBARBITAL 30mg tablet,,TABLET,69
+1040,N03AA02002,Phenobarbital 50mg,PHENOBARBITAL 50mg tablet STEROP,,TABLET,110
+1041,N03AA02003,Phenobarbital 100mg,PHENOBARBITAL 100mg tablet,,TABLET,117
+1042,N03AA02004,Phenobarbital 100mg/ml 2ml Injection,PHENOBARBITAL 100mg/ml 2ml Injection,,VIAL,2129
+1043,N03AB02001,Phenytoin 100mg,PHENYTOIN 100mg tablet,,TABLET,17
+1044,N03AB02002,Phenytoin,PHENYTOIN 200mg injection,,VIAL,963
+1045,N03AE01001,Clonazepam 0.5mg,"RIVOTRIL 0,5mg tablet B/50",PSYCH or NEUROL,TABLET,206
+1046,N03AE01002,Clonazepam 2mg,RIVOTRIL 2mg tablet B/40,PSYCH or NEUROL,TABLET,537
+1046,N03AE01003,Clonazepam 2.5mg/1ml,RIVOTRIL 2.5 mg/ml oral drops 10 ml,PSYCH or NEUROL or PED,BOTTLE,9345
+1048,N03AF01001,Carbamazepine 200mg,CARBAMAZEPINE 200mg tablet,,TABLET,49
+1049,N03AF01002,Carbamazepine 100mg/5ml,TEGRETOL 100mg/5ml syrup 250 ml,,BOTTLE,5760
+1050,N03AG01001,Valproate Sodium 200mg,SODIUM VALPROATE 200mg tablet,,TABLET,37
+1051,N03AG01002,Valproate Sodium 300mg,SODIUM VALPROATE 300mg tablet,,TABLET,54
+1052,N03AG01003,Valproate Sodium 500mg,SODIUM VALPROATE 500mg tablet,,TABLET,60
+1053,N03AG01004,Valproic Acid 150mg,DEPAKINE 50mg tablet B/40,,TABLET,205
+1054,N03AG01005,Valproic Acid 200mg,DEPAKINE 200mg tablet B/40,,TABLET,197
+1055,N03AG01006,Valproic Acid 300mg,DEPAKINE 300mg tablet B/40,,TABLET,134
+1056,N03AG01007,Valproic Acid 500mg,DEPAKINE 500mg tablet B/40,,TABLET,509
+1057,N03AG01008,Valproic Acid 300mg/5ml,"DEPAKINE 57,64 mg/ml Syrup 150 ml",,BOTTLE,14285
+1058,N03AG01009,Valproic Acid 300mg/ml,DEPAKINE 200mg/ml oral solution 40ml,,BOTTLE,11214
+1059,N03AG01010,Valproic Acid 500mg,DEPAKINE Chronodose 500mg tablet B/30,,TABLET,801
+1060,N03AG03001,Magnesium Glutamate Hydrobromide 75mg + Aminobutyric Acid 37mg + Pyridoxine Hydrochloride,GAMALATE B6 tablet B/20,SPEC,TABLET,441
+1061,N03AG03002,Magnesium Glutamate Hydrobromide 75mg + Aminobutyric Acid 37mg,GAMALATE B6 syrup 80ml,SPEC,BOTTLE,8678
+1062,N03AX09001,Lamotrigine 100mg,LAMOTRIGINE 100mg tablet,PSYCH or NEUROL or PED,TABLET,512
+1063,N03AX09002,Lamotrigine 25mg,LAMICTAL 25mg tablet,PSYCH or NEUROL or PED,TABLET,645
+1064,N03AX09003,Lamotrigine 50mg,LAMICTAL 50mg tablet,PSYCH or NEUROL or PED,TABLET,957
+1065,N03AX09004,Lamotrigine 100mg,LAMICTAL 100mg tablet,PSYCH or NEUROL or PED,TABLET,1307
+1066,N03AX12001,Gabapentin 100mg,NEURONTIN 100mg tablet,,TABLET,233
+1067,N03AX12002,Gabapentin 300mg,GABAPENTIN 300mg capsule,,CAPSULE,338
+1068,N03AX14001,Levetiracetam 500mg tablets,LEVETIRACETAM UCB 500mg Film- Coated tablets,PSYCH or NEUROL or PED or IM,TABLET,320
+1069,N03AX14002,Levetiracetam UCB 100 mg/ml oral solution,LEVETIRACETAM UCB 100 mg/ml oral solution 300ml Bottle,PSYCH or NEUROL or PED or IM,BOTTLE,32389
+1070,N03AX16001,Pregabalin 25mg,PREGABALIN 25mg capsule,,TABLET,157
+1071,N03AX16002,Pregabalin 75mg,PREGABALIN 75mg capsule,,TABLET,162
+1072,N03AX16004,Pregabalin 150mg,NEUROGIL 150mg capsule,SPEC,CAPSULE,1068
+1073,N03AX16005,Pregabalin 150mg,PREGABALIN 150mg tablet,,TABLET,460
+1074,N04AA01001,Trihexyphenidyl 2mg,ARTANE 2mg tablet,,TABLET,119
+1075,N04AA01002,Trihexyphenidyl 5mg,ARTANE 5mg tablet,,TABLET,155
+1076,N04AA02001,Biperidene 2mg,AKINETON 2mg tablet B/20,SPEC,TABLET,166
+1077,N04BA02001,Levodopa 200mg +Carbidopa 50mg,SINEMET 200mg/50mg tablet,NEUROL or PSYCH,TABLET,616
+1078,N04BA02002,Levodopa 100mg +Benserazide 25mg,PROLOPA 100mg/25mg capsule,,CAPSULE,493
+1079,N04BA02003,Levodopa 200mg +Benserazide 50mg,PROLOPA 200mg/50mg capsule,,CAPSULE,722
+1080,N04BA02004,Levodopa 250 mg + Carbidopa 25mg Tablets,LEVODOPA 250MG + CARBIDOPA 25mg tablets,NEUROL or PSYCH,TABLET,467
+1081,N05AA01001,Chlorpromazine 25mg,CHLORPROMAZINE 25mg tablet,,TABLET,18
+1082,N05AA01002,Chlorpromazine 100mg,CHLORPROMAZINE 100mg tablet,,TABLET,26
+1083,N05AA01003,Chlorpromazine 25mg/ml 2ml Injection,CHLORPROMAZINE 25mg/ml 2ml Injection,,AMPOULE,126
+1084,N05AA02001,Levomepromazine 25mg,NOZINAN 25mg tablet B/50,,TABLET,435
+1085,N05AA02002,Levomepromazine 100mg,NOZINAN 100mg tablet B/20,,TABLET,645
+1086,N05AD01001,Haloperidol 1mg,HALOPERIDOL 1mg tablet,,TABLET,9
+1087,N05AD01002,Haloperidol 5mg,HALOPERIDOL 5mg tablet,,TABLET,20
+1088,N05AD01003,Halopéridol 5mg/5ml Injection,HALOPERIDOL 5mg/5ml Injection,,VIAL,240
+1089,N05AD01004,Haloperidol 2mg/1ml,HALDOL 2mg/1ml oral drops 30ml,,BOTTLE,2380
+1090,N05AD01005,Haloperidol 50mg,HALDOL DECANOAS 50mg/ml IM injection,,VIAL,7585
+1091,N05AD01006,Haloperidol 100mg,HALDOL DECANOAS 100mg/ml IM injection,,VIAL,13778
+1092,N05AD05001,Pimpaperone 40mg,DIPIPERON 40mg tablet,,TABLET,184
+1093,N05AD05002,Pimpaperone 40mg/ml 60ml,DIPIPERON 40mg/ml oral solution 30ml,,BOTTLE,6098
+1094,N05AF01001,Flupentixol 1mg,FLUANXOL 1mg tablet B/50,,TABLET,131
+1095,N05AF01002,Flupentixol 20mg/ml,FLUANXOL DEPOT 20mg/1ml,,VIAL,5280
+1096,N05AH03001,Olanzapine 5mg,ZYPREXA 5mg tablet,PSYCH or NEUROL,TABLET,2003
+1097,N05AH03002,Olanzapine 10mg,ZYPREXA 10mg tablet,PSYCH or NEUROL,TABLET,2272
+1098,N05AH03003,Olanzapine 5mg,OLANZAPINE 5mg tablets,PSYCH or NEUROL,TABLET,467
+1099,N05AH03004,Olanzapine 10mg,OLANZAPINE 10mg tablets,PSYCH or NEUROL,TABLET,601
+1100,N05AL01001,Sulpiride 50mg,DOGMATIL 50mg tablet B/30,SPEC,TABLET,218
+1101,N05AL01002,Sulpiride 200mg,DOGMATIL 200mg tablet B/30,SPEC,TABLET,654
+1102,N05AX08001,Risperidone 2mg,RISPERDAL 2mg tablet,PSYCH or NEUROL,TABLET,1268
+1103,N05AX08002,Risperidone 4mg,RISPERDAL 4mg tablet,PSYCH or NEUROL,TABLET,1880
+1104,N05BA01001,Diazepam 5mg,DIAZEPAM 5mg tablet,,TABLET,16
+1105,N05BA01002,Diazepam 10mg,DIAZEPAM 10mg tablet,,TABLET,14
+1106,N05BA01003,Diazepam 10mg/2ml Injection,DIAZEPAM 10mg/2 ml Injection,,VIAL,1101
+1107,N05BA05001,Clorazepate Potassium,TRANXENE 5mg tablet B/30,,TABLET,238
+1108,N05BA05002,Clorazepate Potassium,TRANXENE 10mg tablet B/30,,TABLET,378
+1109,N05BA06001,Lorazepam 1mg,TEMESTA 1mg tablet,,TABLET,169
+1110,N05BA06002,Lorazepam 1mg,"TEMESTA 2,5mg table B/30",,TABLET,240
+1111,N05BA08001,Bromazepam 3mg,LEXOTAN 3mg tablet B/20,,TABLET,334
+1112,N05BA08002,Bromazepam 6mg,LEXOTAN 6mg tablet B/20,,TABLET,538
+1113,N05BA12001,Alprazolam 0.25mg,XANAX 0.25mg tablet B/50,PSYCH,TABLET,364
+1114,N05BA12002,Alprazolam 0.5mg,XANAX 0.5mg tablet,PSYCH,TABLET,603
+1115,N05BB01001,Hydroxyzine 25mg,ATARAX 25mg tablet B/30,,TABLET,159
+1116,N05BX03001,Etifoxine 50mg,STRESAM 50mg tablet B/24,SPEC,TABLET,278
+1117,N05CD08001,Midazolam 15mg/ml,MIDAZOLAM 15mg/ml injection 3 ml,,VIAL,2083
+1118,N05CF01001,Zopiclone 7.5mg,IMOVANE 7.5mg tablet,PSYCH,TABLET,1050
+1119,N05CF02001,Zolpidem 10mg,STILNOCT 10mg tablet B/30,PSYCH,TABLET,591
+1120,N06AA02001,Imipramine 10mg,TOFRANIL 10mg tablet B/60,,TABLET,28
+1121,N06AA02002,Imipramine 25mg,TOFRANIL 25mg tablet B/60,,TABLET,70
+1122,N06AA04001,Clomipramine 10mg,ANAFRANIL 10mg tablet B/60,,TABLET,117
+1123,N06AA04002,Clomipramine 25mg,ANAFRANIL 25mg tablet B/30,,TABLET,264
+1124,N06AA04003,Clomipramine 75mg,ANAFRANIL FORT 75mg tablet B/20,,TABLET,154
+1125,N06AA09001,Amitripyline 25mg,AMITRIPTYLINE 25mg tablet,,TABLET,19
+1126,N06AB03001,Fluoxetine 20mg,FLUOXETINE 20mg capsule,,CAPSULE,423
+1127,N06AB03002,Fluoxetine 20mg,PROZAC 20mg capsule,,CAPSULE,876
+1128,N06AB04001,Citalopram 10mg,CITALOPRAM 10mg tablet,,TABLET,27
+1129,N06AB04002,Citalopram 20mg,CITALOPRAM 20mg tablet,,TABLET,651
+1130,N06AB04003,Citalopram 40mg,CITALOPRAM 40mg tablet,,TABLET,45
+1131,N06AB10001,Escitalopram 10 mg,ESCITALOPRAM 10mg tablets,,TABLET,620
+1132,N06AB10002,Escitalopram 20 mg,ESCITALOPRAM 20mg tablets,,TABLET,668
+1133,N06AX05001,Trazodone 100mg,TRAZOLAN 100mg tablet,PSYCH,TABLET,334
+1134,N06BA07001,Provigil 100mg,MODAFINIL 100mg tablet,SPEC,TABLET,2106
+1135,N06BC01001,Caffein Citrate 10mg/ml,CAFFEINE CITRATE 10mg/ml injection,SPEC,VIAL,6415
+1136,N06BX03001,Piracetam 400mg,PIRACETAM 400mg tablet,,TABLET,87
+1137,N06BX03002,Piracetam 800mg,PIRACETAM 800mg tablet,,TABLET,280
+1138,N06BX03003,Piracetam,PIRACETAM 1g injection,,VIAL,80
+1139,N06BX03004,Piracetam 800mg,NOOTROPIL 800mg tablet B/45,,TABLET,430
+1140,N06BX03006,Piracetam,NOOTROPIL 1g injection B/12,SPEC,VIAL,211
+1141,N06BX06001,Citicoline 10%,TRAUSAN 10% oral drops 50ml,PSYCH or NEUROL or PED or IM,BOTTLE,35475
+1142,N06BX06002,Citicoline 500mg,CITICOLINE 500mg tablet,PSYCH or NEUROL or IM or PED,TABLET,398
+1143,N06CA02001,Meltracen 10mg + Flupentixol 0.5mg,DEANXIT 10mg/0.5mg tablet B/30,PSYCH,TABLET,445
+1144,N07AA01001,"Neostigmine Injection 0,5mg/ml","NEOSTIGMINE Injection 0,5mg/ml",,VIAL,1469
+1145,N07AA02002,Pyridostigmine 10mg,MESTINON 10mg tablet B/50,,TABLET,220
+1146,N07AA02003,Pyridostigmine 60mg,MESTINON 60mg tablet B/150,,TABLET,834
+1147,N07BB01001,Disulfiram 400mg,ANTABUSE 400mg tablet B/50,,TABLET,263
+1148,N07CA01001,Betahistine 8mg,BETASERC 8mg tablet,,TABLET,240
+1149,N07CA02001,Cinnarizine 25mg,STUGERON 25mg tablet B/50,,TABLET,187
+1150,N07CA02002,Cinnarizine 75mg,STUGERON FORTE 75mg tablet B/20,,TABLET,64
+1151,N07CA02003,Cinnarizine 75mg,CINNARIZINE 75mg tablet,,TABLET,37
+1152,P01AB01001,Metronidazole 250mg,METRONIDAZOLE 250mg tablet,,TABLET,14
+1153,P01AB01002,Metronidazole 120mg/5ml 60ml,METRONIDAZOLE SP 125mg/5ml 60ml,,BOTTLE,227
+1154,P01AB01003,Metronidazole 120mg/5ml 100ml,METRONIDAZOLE SP 125mg/5ml100ml,,BOTTLE,574
+1155,P01AB01004,Metronidazole 4% 120ml,FLAGYL 4% syrup 120ml,,BOTTLE,4662
+1156,P01AB02001,Tinidazole 500mg,TINIDAZOLE 500mg tablet,,TABLET,45
+1157,P01AB07002,Secnidazole 500mg,UNIGENTYL 500mg tablet,,TABLET,294
+1158,P01AB51001,Diloxanide 250mg +Metronidazole 200mg,DILOXANIDE 250mg +METRONIDAZOLE 200mg tablet B/30,,TABLET,134
+1159,P01AB51002,Diloxanide 500mg +Metronidazole 400mg,DILOXANIDE 500mg +METRONIDAZOLE 400mg tablet B/15,,TABLET,441
+1160,P01AB51003,Diloxanide furoate 250mg +Metronidazole benzoate 320mg,DILOXANIDE 250mg +METRONIDAZOLE 320mg syrup 100 ml,,BOTTLE,3818
+1161,P01AB51004,Diloxanide 250mg +Metronidazole 200mg,DILOXANIDE 250mg +METRONIDAZOLE 200mg syrup 100ml,,BOTTLE,2937
+1162,P01BA02001,Hydroxychloroquine 200mg,HYDROXYCHLOROQUINE 200mg tablet,,TABLET,407
+1163,P01BC01001,Quinine 300mg,QUININE 300mg tablet,,TABLET,92
+1164,P01BC01002,Quinine 600 mg/2ml injection,QUININE 600 mg/2ml injection,,VIAL,480
+1165,P01BC01003,Quinine 500mg /2ml Injection,QUININE 500mg/2ml Injection,,VIAL,434
+1166,P01BC02001,Mephaquine,MEFLOQUINE 250mg tablet,,TABLET,330
+1167,P01BE03001,"Artesunate 60mg/ml IM , IV injection","ARTESUNAT 60 mg IM , IV Injection",,VIAL,4673
+1168,P01BF01001,Artemether 20mg+ Lumefantrine 120mg tablet,ARTEMETHER LUMEFANTRINE 20/120 tablet B/24,,24 Tablets,1322
+1169,P01BF01002,Artemether 20mg+ Lumefantrine 120mg tablet,COARTEM 20mg/120mg tablet 0 - 15 KG B/6,,6 Tablets,4272
+1170,P01BF01003,Artemether 20mg+ Lumefantrine 120mg tablet,COARTEM 20mg/120mg tablet 15 - 25KG B/12,,12 Tablets,6675
+1171,P01BF01004,Artemether 20mg+ Lumefantrine 120mg tablet,COARTEM 20mg/120mg tablet 25 - 35 KG B/18,,18 Tablets,7009
+1172,P01BF01005,Artemether 20mg+ Lumefantrine 120mg tablet,COARTEM 20mg/120mg tablet 35KG - AD B/24,,24 Tablets,6141
+1173,P01BF01006,Dihydroartemisinin 40mg + Piperaquine Phosphate 320mg Tablets,DIHYDROARTEMISININ 40mg + PIPERAQUINE PHOSPHATE 320mg Tablets,,1 of 9 Tablets,636
+1174,P01BF01007,Dihydroartemisinin 40mg + Piperaquine Phosphate 320mg Tablets,DIHYDROARTEMISININ 40mg + PIPERAQUINE PHOSPHATE 320mg Tablets,,1 of 12 Tablets,636
+1175,P02BA01001,Praziquantel 600mg,PRAZIQUANTEL 600mg tablet,,TABLET,219
+1176,P02CA01001,Mebendazole 100mg tablet,MEBENDAZOLE 100mg tablet,,TABLET,17
+1177,P02CA01002,Mebendazole 100mg/5ml,MEBENDAZOLE 100MG/5ml syrup 30ml,,BOTTLE,387
+1178,P02CA03001,Albendazole,ALBENDAZOLE 400mg tablet,,TABLET,138
+1179,P02CA03002,Albendazole,ALBENDAZOLE 200mg/5ml syrup 10ml,,BOTTLE,334
+1180,P02CA03003,Albendazole 4% 10ml,VERZOL 4% syrup 10ml,,BOTTLE,2003
+1181,P02CB02001,Diethylcarbamazine 50mg,DIETHYLCARBAMAZINE 50mg tablet,,TABLET,5
+1182,P02CC01001,Pyrantel 250mg,HELMINTOX 250mg tablet,,TABLET,1780
+1183,P02CC01002,Pyrantel 125mg/2.5ml,HELMINTOX syrup 15ml,,BOTTLE,5066
+1184,P02DA01001,Niclosamide 500mg,NICLOSAMIDE 500mg tablet B/4,,TABLET,43
+1185,P03AX01001,Benzyl Benzoate 25%,ASCABIOL 25% topical solution 125ml,,BOTTLE,11015
+1186,P03AX01002,Benzyl Benzoate 25%,BENZYL BENZOATE topical solution 25% 50ml,,BOTTLE,1682
+1187,R01AA05001,Oxymetazoline 0.05%,SINAREST 0.05% nasal drops 10ml,,BOTTLE,2857
+1188,R01AA05002,Oxymetazoline 0.025%,SINAREST 0.025% nasal drops 10ml,,BOTTLE,2603
+1189,R01AA07001,Xylometazoline 0.05%,"OTRIVINE 0,05% nasal drops 10 ml",,BOTTLE,3605
+1190,R01AA07002,Xylometazoline 0.1%,"OTRIVINE 0,1% nasal drops 10 ml",,BOTTLE,4272
+1191,R01AA07003,Xylometazoline 0.05%,XYLOMETAZOLINE 0.05% nasal drops 15ml,,BOTTLE,401
+1192,R01AA07004,Xylometazoline 0.1%,XYLOMETAZOLINE 0.1% nasal drops 15ml,,BOTTLE,280
+1193,R01AA07005,Xylometazoline 0.1%,"XYLOMETAZOLINE 0,1% nasal spray",,BOTTLE,3271
+1194,R01AA07006,Xylometazoline 0.05%,"XYLOMETAZOLINE 0,05% nasal spray",,BOTTLE,3204
+1195,R01AB01001,Phenylephrine 2.5mg + Dimetindene 0.25mg,VIBROCIL nasal spray 15 ml,,BOTTLE,12549
+1196,R01AD01001,Beclomethasone 50mcg,BECLOMETHASONE 50mcg nasal spray,,BOTTLE,4900
+1197,R01AD01002,"Beclomethasone 250mcg ,200mcg",BECLOMETHAZONE nasal spray 250mcg or 200mcg,,BOTTLE,6608
+1198,R01AD05001,Budesonide 64mcg,RHINOCORT AQUA 64mcg aqueous nasal spray 120 doses,,BOTTLE,9650
+1199,R01AD08001,Fluticasone 50mcg,FLIXONASE AQUA 50mcg aqueous nasal spray 120 doses,SPEC,BOTTLE,22295
+1200,R01AD08002,Fluticasone 50mcg,FLIXOTIDE 50mcg Inhaler 120 doses,SPEC,BOTTLE,25365
+1201,R01AD08003,Fluticasone 125mcg,FLIXOTIDE 125mcg nasal spray 120 doses,SPEC,BOTTLE,31137
+1202,R01AD08004,Fluticasone 50mcg,FLUTICASONE 50mcg nasal spray,SPEC,BOTTLE,11615
+1203,R01AD58001,Fluticasone 50mcg + Azelastine 137mcg,FLUTICASONE 50mcg + AZELASTINE 137mcg nasal spray,SPEC,BOTTLE,15286
+1204,R01AD09001,Mometasone Furoate 50mcg,NASONEX 50µg nasal spray 40doses,SPEC,BOTTLE,17355
+1205,R01AD09002,Mometasone Furoate 50mcg,NASONEX 50µg nasal spray 120doses,SPEC,BOTTLE,30038
+1206,R01AD09003,Mometasone Furoate 50mcg,MOMETASONE 50µg nasal spray 140doses,SPEC,BOTTLE,14018
+1207,R01AD12001,"Fluticasone Furoate 27,5 μg/1 dose","AVAMYS 27,5 μg/1 dose nasal spray 120doses",,BOTTLE,14718
+1208,R01AD57001,Toxicortol+neomycin,PIVALONE nasal spray 10 ml,,BOTTLE,5874
+1209,R01AX06001,Mupirocin,BACTROBAN NASAL nasal ointment 10g or 15g or 30g,,TUBE,10947
+1210,R01AX10001,Sodium Chloride 0.9%,PHYSIOLOGICAL SOLUTION nasal drops 15ml,,BOTTLE,534
+1211,R01AX30001,Argyrol 0.5%,"ARGYROL 0,5% nasal drops 15ml or 20ml",,BOTTLE,935
+1212,R01AX30002,Argyrol 1%,ARGYROL 1% nasal drops 15ml or 20ml,,BOTTLE,1335
+1213,R01AX30003,Argyrol +Ephedrine,ARGYROEPHEDRINE 0.5% nasal drops 20ml,,BOTTLE,611
+1214,R01BA02002,Pseudoephedrine +Paracetamol,SINUTAB tablet,,TABLET,557
+1215,R01BA52002,Paracetamol +Triprolidine,ACTIFED Syrup 100ml,,BOTTLE,4060
+1216,R01BA52003,Paracetamol+triprolidine,ACTIFED JOUR ET NUIT tablet,,TABLET,1101
+1217,R01BA53001,Phenylephrine +Chlorpheniramine +Diphenydramine,PAIDOTERIN Syrup 100ml,,BOTTLE,5340
+1218,R02AB02001,Dequalinium chloride +Enoxolone +Hydrocortisone Acetate +Lidocaine Hydrochloride +Tyrothricin,ANGINOVAG SPRAY 10ml,,BOTTLE,6675
+1219,R03AA01001,"Adrénaline 0,5mg/ml Injection",ADRENALINE 0.5mg/ml Injection,,VIAL,467
+1220,R03AA01002,Adrénaline 1mg/ml Injection,ADRENALINE 1mg/ml Injection,,VIAL,467
+1221,R03AC02001,Salbutamol 2mg,SALBUTAMOL 2MG tablet,,TABLET,4
+1222,R03AC02002,Salbutamol 4mg,SALBUTAMOL 4mg tablet,,TABLET,4
+1223,R03AC02003,Salbutamol,SALBUTAMOL 2mg/5ml syrup 100ml,,BOTTLE,601
+1224,R03AC02004,Salbutamol 0.5mg/ml Injection,"SALBUTAMOL 0,5mg/ml Injection",,VIAL,280
+1225,R03AC02005,Salbutamol 100mcg Spray,SALBUTAMOL 100mcg Spray 200 doses,,BOTTLE,2670
+1226,R03AC02006,Salbutamol 2mg/5ml,VENTOLIN 2mg/5ml Syrup 150 ml,,BOTTLE,3380
+1227,R03AC02007,Salbutamol 100mcg/dose spray 200doses,VENTOLIN 100 mcg/dose Spray 200 doses,,BOTTLE,10680
+1228,R03AC02008,Salbutamol Nebulizer 10ml,VENTOLIN NEBULIZER 10ml,,BOTTLE,4200
+1229,R03AC02009,Salbutamol Nebulizer 2.5mg /2.5ml 20doses,"VENTOLIN NEBULIZER 2,5mg/2.5ml 20 doses",,DOSE,668
+1230,R03AK06001,Salmeterol 25µg+ Fluticasone 50µg,SERETIDE SPRAY EVOHALER 25µg /50µg 120 doses,SPEC,BOTTLE,7840
+1231,R03AK06002,Salmeterol 25µg+ Fluticasone 125µg,SERETIDE SPRAY EVOHALER 25µg /125µg 120 doses,SPEC,BOTTLE,18200
+1232,R03AK06003,Salmeterol 25µg+ Fluticasone 250µg,SERETIDE SPRAY EVOHALER25µg /250µg 120 doses,SPEC,BOTTLE,18754
+1233,R03AK06004,Salmeterol 50µg+ Fluticasone 100µg,SERETIDE DISKUS 100µg /50 µg 60 doses,SPEC,BOTTLE,17220
+1234,R03AK06005,Salmeterol 50µg+ Fluticasone 250µg,SERETIDE DISKUS 250µg /50µG 60 doses,SPEC,BOTTLE,24597
+1235,R03AK06006,Salmeterol 50µg+ Fluticasone 500µg,SERETIDE DISKUS 500µg /50µG 60 doses,SPEC,BOTTLE,31837
+1236,R03AK07001,Formoterol 4.5µg+Budesonide 160µg,SYMBICORT TURBOHALER 160/4.5 60 doses,IM or PED or ENT,BOTTLE,37410
+1237,R03AL01001,Fenoterol Bromydrate 50µg +Ipratropium Bromide 20µg,DUOVENT AEROSOL 200doses,,BOTTLE,15000
+1238,R03AL02001,Salbutamol Sulfate 2.5mg/2.5ml +Ipratropium bromide 0.5mg/2.5ml,"COMBIVENT SOL. INHALATION PAR NEBUL. 2,5ml Ampoule",,AMPOULE,7076
+1239,R03BA01001,Béclométhazone 50μg aérosol,BECLO-ASMA 50 μg aérosol,,BOTTLE,4480
+1240,R03BA01002,Béclométhazone 250 μg aérosol,BECLO-ASMA 250 μg aérosol 200Doses,,BOTTLE,18156
+1241,R03BA04001,Betamethasone 0.5mg,"CELESTENE 0,5mg tablet B/30",,TABLET,34
+1242,R03BA04002,Betamethasone 2mg,CELESTENE 2mg tablet B/20,,TABLET,360
+1243,R03BA04003,Betamethasone 0.5mg/ml,"CELESTENE 0,5mg/ml oral drops 30ml",SPEC,BOTTLE,10013
+1244,R03BA04004,Betamethasone 4mg/ml,CELESTENE 4mg/ml injection B/3,,VIAL,1353
+1245,R03CC02001,Salbutamol 2mg/5ml,BUTO-ASTHMA 2mg/5ml Syrup 100 ml,,BOTTLE,2380
+1246,R03CC02002,Salbutamol 0.1mg/dose,"BUTO-ASTHMA 0,1 mg/dose pressurized inhalation, suspension 200doses",,BOTTLE,7543
+1247,R03CC53001,Terbutaline +Guaphenesin,BENYLIN PEDIATRIC Syrup 100ml,,BOTTLE,8945
+1248,R03CC53002,Terbutaline +Guaphenesin,BENYLLIN Syrup 100ml,,BOTTLE,9612
+1249,R03DA05001,Aminophylline 100mg,AMINOPHYLLINE 100mg tablet,,TABLET,21
+1250,R03DA05002,Aminophylline 25 mg /ml Injection,AMINOPHYLLINE 25 mg /ml Injection,,VIAL,601
+1251,R03DC03001,Montelukast 4mg,KIPEL 4mg tablet,IM or PED,TABLET,623
+1252,R03DC03002,Montelukast 5mg,KIPEL 5mg tablet,IM or PED,TABLET,668
+1253,R03DC03003,Montelukast 10mg,KIPEL/SINGULAIR 10mg tablet,IM,TABLET,797
+1254,R03DC03004,Montelukast 5mg,MONTELUKAST 5mg tablet,PED or IM,TABLET,70
+1255,R03DC03005,Montelukast 10mg,MONTELUKAST 10mg tablet,IM or PED,TABLET,117
+1256,R03DC53001,Levocetirizine 5mg +Montelukast 10mg,XERIN tablet B/100,,TABLET,136
+1257,R05CA10001,Guaphenesin +Amonium Chloride +Mnthol +Chlorpheniramine,CADISTIN Syrup 100ml,,BOTTLE,2002
+1258,R05CA10002,Salbutamol +Bromhexin +Guaphenesin,SALCOF syrup 100 ml,,TABLET,2403
+1259,R05CA10003,Guaphenesin 50mg +Salbutamol 1mg+Sodium Propylparaben +Menthol,RESPIMAX Syrup 100ml,,BOTTLE,5273
+1260,R05CA10004,Diphenhydramine Hydrochloride 14.08mg + Ammonium Chloride 138mg + Sodium Citrate 57.03mg Menthol 0.900mg,ABACOFF COUGH Syrup 100ml,,BOTTLE,1602
+1261,R05CB01001,N- Acetylcysteine 200mg,MUCOMYST 200mg Powder for oral solution in sachet B/30,,SACHET,1602
+1262,R05CB01002,N-Acetylcysteine 200mg/5ml,MUCOMYST 200mg/5ml syrup,,BOTTLE,3360
+1263,R05CB02001,Bromhexine 8mg,BISOLVON Tablet 8mg tablet B/20,,TABLET,505
+1264,R05CB02002,Bromhexine 4mg/5ml,BISOLVON 8mg/5ml syrup 200ml,,BOTTLE,12149
+1265,R05CB02003,Bromhexine 8mg,BROMHEXINE 8mg tablet,,TABLET,28
+1266,R05CB02004,Bromhexine,BROMHEXINE Syrup 60ml,,BOTTLE,525
+1267,R05CB02005,Bromhexine,BROMHEXINE Syrup 100ml,,BOTTLE,755
+1268,R05CB02006,Sulfamethoxazole 400 +Trimethoprime 80 + Bromhexine,BRONQUIDIAZINE syrup 150ml,,BOTTLE,8411
+1269,R05CB03001,Carbocisteine 2%,RHINATHIOL Expectorant 2% syrup 125 ml Children,,BOTTLE,6008
+1270,R05CB03002,Carbocisteine 5%,RHINATHIOL Expectorant 5% syrup 125 ml Adults,,BOTTLE,5607
+1271,R05CB03003,Carbocisteine 2%,FLUDITEC 2% Syrup 125ml Children,,BOTTLE,6141
+1272,R05CB03004,Carbocisteine 5%,FLUDITEC 5% Syrup 125ml Adults,,BOTTLE,6942
+1273,R05CB03005,Carbocisteine 2%,BRONCATHIOL 2% Syrup 150ml Children,,BOTTLE,5607
+1274,R05CB03006,Carbocisteine 5%,BRONCATHIOL 5% Syrup 150 ml Adults,,BOTTLE,7343
+1275,R05CB03007,Carbocisteine 100mg/5ml + promethazine 2.5mg/5ml,RHINATHIOL PROMETHAZINE syrup 125 ml Children and Adults,,BOTTLE,6675
+1276,R05CB06001,Ambroxol 15mg/5ml,SEKROL 15mg/5ml Pediatric Syrup 100ml,,BOTTLE,5207
+1277,R05CB06002,Ambroxol 30mg/5ml,SEKROL 30mg/5ml Adult Syrup 150ml,,BOTTLE,7209
+1278,R05CB06003,Ambroxol 60mg,AMBROXOL 60mg tablet B/10,,TABLET,294
+1279,R05CB06004,Ambroxol 15mg/5ml,AMBROXOL 15mg / 5ml syrup 100ml,,BOTTLE,2940
+1280,R05CB06005,Ambroxol 30mg/5ml,AMBROXOL 30mg /5ml syrup 100ml,,BOTTLE,3650
+1281,R05CB10001,Salbutamol Hydrochloride 2mg+ Bromhexine 4mg +Guafenesine 100mg + Menthol 1mg,ASCORIL Expectorant 100ml,,BOTTLE,2336
+1282,R05CB10004,Salbutamol 1mg +Guaphenesin 50mg +Bromhexine 2mg,VIFEX Syrup 100ml,,BOTTLE,2069
+1283,R05CB10005,Dextromethorphan 5mg +Bromhexine 50mg +Chlopheniramine 2mg +Amonium Chloride 50mg,MUCOLYN syrup 100ml,,BOTTLE,1869
+1284,R05DA04001,Codeine,CODEINE 30mg tablet,,TABLET,22
+1285,R05DA04002,"Codéine camphosulfonate 25 mg soit Codéine 14,93 mg Grindélia, extrait mou 17 mg Sulfogaïacol 100 mg",NEOCODION tablet B/20,,TABLET,214
+1286,R05DA04003,"Grindélia teinture, Polygala sirop, Sodium benzoate",NEOCODION Infants Syrup 125 ml,,BOTTLE,4005
+1287,R05DA04004,Codéine,NÉOCODION children Syrup 125 ml,,BOTTLE,2800
+1288,R05DA04005,Codéine + Codéine camsilate,NÉOCODION Adults Syrup 180 ml,,BOTTLE,5073
+1289,R05DA20003,Eucalyptol 150mg+Guaphenesine 150mg +Camphre 50mg,EUCALYPTINE syrup 200ml,,BOTTLE,8160
+1290,R05DB21001,Cloperastine 3.54mg/ml,SEKISAN 3.54mg/ml syrup 120ml,,BOTTLE,6408
+1291,R05FB02001,Terpine +Eucalyptol,TERPONE syrup 180 ml children,,BOTTLE,4673
+1292,R05FB02002,Terpine +Eucalyptol,TERPONE syrup 180 ml Adults,,BOTTLE,4940
+1293,R05FB02003,Chlorpheniramine 2mg +Pseudoephedrine 30mg +Guaphenesin 100mg,TRIMEX Syrup 100ml,,BOTTLE,1802
+1294,R05X002,"Alcool éthylique 80%, eau, huile essentielle de menthe poivrée (Menthae piperitae) (1,32% soit en moyenne 0,01 ml pour 18 gouttes).",ALCOHOL MENTHOLETED 5% Oral Solution 120ml,,PIECE,4130
+1295,R06AB03001,Dimetindene Maleate 1mg,FENISTIL SIMPLE 1mg tablet B/20,,TABLET,175
+1296,R06AB03002,Dimetindene Maleate 1mg/ml,FENISTIL 1mg/ml oral drops 20ml,,BOTTLE,10680
+1297,R06AB04001,Chlorpheniramine 4mg,CHLORPHENIRAMINE 4mg tablet,,TABLET,5
+1298,R06AB04002,Chlorpheniramine,CHLORPHENIRAMINE SP 60ml,,BOTTLE,367
+1299,R06AD02001,Promethazine 25mg,PROMETHAZINE 25mg tablet,,TABLET,11
+1300,R06AD02002,Promethazine,PROMETHAZINE Syrup 60ml,,BOTTLE,434
+1301,R06AD02003,Promethazine,PROMETHAZINE Syrup 100ml,,BOTTLE,367
+1302,R06AD02004,Promethazine 25mg/ml injection,PROMETHAZINE 25mg/ml injection,,VIAL,200
+1303,R06AD02005,Promethazine,PHENERGAN Syrup 150 ml,,BOTTLE,4272
+1304,R06AD08001,Oxomemazine,TOPLEXIL Syrup 150ml,,BOTTLE,6942
+1305,R06AE05001,Meclozine 25mg,AGYRAX 25mg tablet B/15,,TABLET,392
+1306,R06AE05002,Meclozine 25mg,POSTAFENE 25mg tablet B/25,,TABLET,342
+1307,R06AE07001,Cetirizine 10mg,CETIRIZINE Tablet 10MG,,TABLET,12
+1308,R06AE07002,Cetirizine 5mg/5ml,CETIRIZINE 5mg/5ml Syrup 60 ml,,BOTTLE,534
+1309,R06AE09001,Levocetirizine 5mg,LEVOCETRIZINE 5mg tablet,,TABLET,214
+1310,R06AX13001,Loratadine 10mg,LORATADINE 10mg tablets,,TABLET,85
+1311,R06AX13002,Loratadine 10mg,CLARYTINE 10mg tablet,,TABLET,1015
+1312,R06AX13003,Loratadine 5mg/5ml,CLARYTINE 5mg/5ml syrup 100ml,,BOTTLE,16688
+1313,R06AX13004,Loratadine 5mg/5ml,LORHISTINA 5mg/5ml syrup 60ml,,BOTTLE,2603
+1314,R06AX17001,Ketotifen 1mg,ZADITEN 1mg tablet B/30,,TABLET,336
+1315,R06AX17002,Ketotifen,ZADITEN oral solution 150ml,,BOTTLE,12282
+1316,R06AX17003,Ketotifen,KETOTIFEN syrup 100ml,,BOTTLE,5385
+1317,R06AX22001,Ebastine 10mg,EROSTIN 10mg tablet,,TABLET,427
+1318,R06AX22002,Ebastine 5mg/5ml,EROSTIN 5mg/5ml Syrup,,BOTTLE,5140
+1319,R06AX27001,Desloratatine 0.5mg/5ml,"AERIUS Syrup 0,5mg/5ml 60ml",PED or ENT,BOTTLE,9746
+1320,R06AX27002,Desloratatine 5mg,DESLOR 5mg tablet B/15,SPEC,TABLET,565
+1321,R06AX27003,Desloratadine 5mg,AKEROL 5mg tablet B/20,,TABLET,383
+1322,R06AX27005,Desloratadine 5mg,DESLORATADINE 5mg tablet,,TABLET,76
+1323,R06AX27004,Desloratadine 2.5mg/5ml 60ml,AKEROL 2.5mg/5ml syrup 60ml,,BOTTLE,7209
+1324,R06AX27006,Desloratadine 2.5mg/5ml 60ml,"DESLORATADINE 2,5mg/5ml syrup 60ml",,BOTTLE,2403
+1325,S01AA01001,Chloramphenicol,CHLORAMPHENICOL eye ointment,,TUBE,252
+1326,S01AA01002,Chloramphenicol 0.5%,"CHLORAMPHENICOL 0,5% eye drops 10ml",,BOTTLE,534
+1327,S01AA09001,Tetracycline 1%,TETRACYCLINE 1% eye ointment 5g,,TUBE,507
+1328,S01AA10001,Natamycin,NATAMYCINE eye drops,OPHT or OCO,BOTTLE,3900
+1329,S01AA11001,Gentamycin,GENTAMYCIN eye ointment,,TUBE,300
+1330,S01AA11002,Gentamycin 0.3%,GENTAMYCIN 0.3% eye drops,,BOTTLE,543
+1331,S01AA12001,Tobramycin 0.3%,TOBREX 0.3% eye ointment 3.5g,,TUBE,3500
+1332,S01AA12002,Tobramycin,TOBREX eye drops,,BOTTLE,4200
+1333,S01AA12003,Tobramycin 0.3%,TOBRAMYCIN 0.3% eye drops,,BOTTLE,1207
+1334,S01AA16001,Rifamycin,RIFAMYCINE eye drops 10ml,,BOTTLE,4424
+1335,S01AD03001,Aciclovir 3%,ACICLOVIR 3% eye ointment 4.5g or 5g,,TUBE,840
+1336,S01AD03002,Aciclovir,"ZOVIRAX eye ointment 4,5g",OPHT or OCO,TUBE,10360
+1337,S01AE02001,Norfloxacin 0.3%,CHIBROXINE 0.3% eye drops,OPHT or OCO,BOTTLE,10213
+1338,S01AE02002,Norfloxacin 0.3%,"FLOXSOL 0,3% eye drops",,BOTTLE,2276
+1339,S01AE07001,Moxifloxacin 0.5% eye drops 5ml,OXCIN 0.5% eye drops 5ml,,BOTTLE,2697
+1340,S01AX001,Fluconazole,FLUZOL eye /ear drops 10ml,,BOTTLE,1495
+1341,S01BA01001,Dexamethasone,DEXAMETHASONE eye drops 5ml,,BOTTLE,601
+1342,S01BA01002,Dexamethasone 0.1%,MAXIDEX 0.1% eye drops 3ml,,BOTTLE,4272
+1343,S01BA04001,Prednisolone 0.5%,"PREDNISONE 0,5% eye drops",,BOTTLE,1335
+1344,S01BA04002,Prednisolone Acetate 1%,PRED FORTE 1% eye drops,OPHT or OCO,BOTTLE,10513
+1345,S01BA07001,Fluorometholone 1mg/ml,FLUCON 1mg/ml eye drops 5ml or 3ml,,BOTTLE,4673
+1346,S01BC03001,Diclofenac 0.1%,DIFENASOL 0.1% eye drops,,BOTTLE,1869
+1347,S01BC03002,Diclofenac 0.1%,DICLOFENAC 0.1% eye drops 5ml,,BOTTLE,1869
+1348,S01CA01001,Dexamethasone 1mg +Polymyxin B sulfate 6000IU+Neomycin sulfate 3500IU,MAXITROL eye drops 3ml,,BOTTLE,4139
+1349,S01CA01002,Dexamethasone 1mg +Polymyxin B sulfate 6000IU+Neomycin sulfate 3500IU,"MAXITROL eye ointment 3,5g",,TUBE,5741
+1350,S01CA01003,Dexamethasone 1mg +Tobramycin 3mg,TOBRADEX eye drops 5ml,OPHT or OCO,BOTTLE,7343
+1351,S01CA01009,Dexamethasone 1% + tobramycin 0.3% eye drops 5ml,DEXAMETHASONE 1% + TOBRAMYCIN 0.3% eye drops 5ml,,BOTTLE,1922
+1352,S01CA01004,Dexamethasone 1mg +Tobramycin 3mg,TOBRADEX eye ointment 3.5g,OPHT or OCO,TUBE,4906
+1353,S01CA01005,Dexamethasone + +Neomycine,CHIBRO-CADRON eye drops 5ml,,BOTTLE,4406
+1354,S01CA01006,Dexamethasone +Gentamycin,DEXAGENTA eye drops 5ml,,BOTTLE,401
+1355,S01CA01007,Dexamethasone +Neomycin,NEOMDEXSOL eye drops,,BOTTLE,2350
+1356,S01CA01008,Moxifloxacin+ Dexamethasone,OXCIN-D eye drops,,BOTTLE,4673
+1357,S01CA02001,Neomycin +Prednisolone,NEOPRED eye drops,,BOTTLE,5874
+1358,S01CA03001,Hydrocortisone + Oxytetracycline hydrochloride,TERRA-CORTRIL eye ointment 3.5g,,TUBE,8544
+1359,S01CA03002,Hydrocortisone + Oxytetracycline hydrochloride,TERRA-CORTRYL eye drops 5ml,,BOTTLE,5287
+1360,S01EA05001,Brimonidine tartrate 2mg/ml,ALPHAGAN eye drops 5ml,OPHT,BOTTLE,18557
+1361,S01EB01001,Pilocarpine Hydrochloride 1%,PILOCARPINE 1% eye drops,OPHT or OCO,BOTTLE,4231
+1362,S01EB01002,Pilocarpine Hydrochloride 2%,PILOCARPINE 2% eye drops,OPHT or OCO,BOTTLE,2003
+1363,S01EC01001,Acetazolamide 250mg,ACETAZOLAMIDE 250mg tablet,,TABLET,84
+1364,S01EC01002,Acetazolamide 250mg,DIAMOX 250mg tablet,,TABLET,478
+1365,S01EC03001,Dorzolamide hydrochloride 20mg/ml,TRUSOPT 2% eye drops 5ml,OPHT or OCO,BOTTLE,23363
+1366,S01EC04001,Brinzolamide 10mg/ml,BRINZOLAMIDE 1% 5 ml eye drops,OPHT,BOTTLE,12958
+1367,S01EC54001,Brinzolamide 10mg/ml + timolol maleate 5mg/ml,BRINZOLAMIDE +TIMOLOL eye drops 5 ml,OPHT,BOTTLE,14254
+1368,S01ED01001,Timolol maleate 0.25%,TIMOLOL 0.25% eye drops 5 ml,,BOTTLE,2363
+1369,S01ED01002,Timolol maleate 0.5%,TIMOLOL 0.5% eye drops 5ml,,BOTTLE,2350
+1370,S01ED51001,Latanoprost 50µg/ml +Timolol maleate 5mg/ml,XALACOM eye drops 2.5 ml,OPHT,BOTTLE,12040
+1371,S01ED51002,Dorzolamide 2% & Timolol 0.5%,TWINZOL eye drops 5ml,OPHT,BOTTLE,15736
+1372,S01ED51003,Travoprost 40µg/ml+Timolol +5mg/ml,DUOTRAV eye drops 2.5ml,OPHT,BOTTLE,26567
+1373,S01EE01001,Latanoprost 50µg/ml,"XALATAN 0,005% eye drops 2.5 ml",OPHT or OCO,BOTTLE,15035
+1374,S01EE01002,Latanoprost 0.005% eye drops 2.5ml,LATANOPROST 0.005% eye drops 2.5ml,OPHT or OCO,BOTTLE,9105
+1375,S01EE03001,"Bimatoprost 0,1mg/ml eye drops 3ml","LUMIGAN 0,1mg/ml eye drops 3ml",OPHT or OCO,BOTTLE,21560
+1376,S01EE04001,Travoprost 40µg/ml,"TRAVATAN eye drops 2,5ml",OPHT or OCO,BOTTLE,15833
+1377,S01EE04002,Travoprost 0.0004% 5ml,"TRAVOPROST 0,0004% eye drops 5ml",OPHT or OCO,BOTTLE,22161
+1378,S01EE03003,Bimatoprost Ophthalmic Solution 0.03% w/v,BIMATOPROST 0.03% w/v EYE DROPS 3ml,OPHT or OCO,BOTTLE,15045
+1379,S01FA01001,Atropine Sulfate 0.5%,"ATROPINE 0,5% eye drops 10ml",,BOTTLE,1400
+1380,S01FA01002,Atropine Sulfate 1%,ATROPINE 1% eye drops 10ml,,BOTTLE,2296
+1381,S01FA04001,Cyclopentolate 1%,CYCLOGYL 1% eye drops 5ml,OPHT or OCO,BOTTLE,8040
+1382,S01FA06001,Tropicamide 0.5%,MYDRIACYL eye drops 0.5%,OPHT or OCO,BOTTLE,2860
+1383,S01FA06002,Tropicamide 1%,MYDRIACYL 1% eye drops,OPHT or OCO,BOTTLE,2380
+1384,S01GA52001,Pheniramine Maleate +Tetrazoline Chlorhydrate,LRJ eye drops 10ml,,BOTTLE,11214
+1385,S01GX01001,Cromglycate Disodique 2%,CROMSOL 2% eye drops 5ml,,BOTTLE,2203
+1386,S01GX03001,Spaglumic Acid 4.9%,"NAAXIA 4,9% eye drops 10ml or 5ml",,BOTTLE,4550
+1387,S01GX05001,Lodoxamide 0.1%,"ALMIDE 0,1% eye drops 5ml",,BOTTLE,5180
+1388,S01GX06001,Emedastine 0.005%,EMADINE 0.05% eye drops 5ml,,BOTTLE,5273
+1389,S01GX08,Ketotifene 0.025%,"ORCHAZID 0,025% eye drops 5ml",OPHT or OCO,BOTTLE,9111
+1390,S01GX09001,Olopatadine 1mg/ml,OLOPATADINE 1mg/ml eye drops 5ml,OPHT or OCO,BOTTLE,3204
+1391,S01XA20001,Artificial tears and other indifferent preparations,DURATEARS eye ointment 3.5g,OPHT or OCO,TUBE,7801
+1392,S01XA20002,Artifiacial tears,GEL LARME ophthalmic gel 15g,OPHT or OCO,TUBE,4806
+1393,S01XA20004,Lanolone liquide 30mg/g /Paraffine liquide 30mg/g/ Vaseline 940mg/g,ARTIFICIAL TEARS eye drops 10ml,,BOTTLE,3071
+1394,S01XA20005,Dextran 0.3% + Hypromellose 70l,TEARS NATURALE eye drops 15ml,,BOTTLE,4900
+1395,S01XA20006,Methylcellulose 1%,METHYLCELLULOSE 1% eye drops,OPHT or OCO,BOTTLE,2460
+1396,S01XA20007,Carboxymethylcellulose 5% eye drops 10ml,CARBOXYMETHYLCELLULOSE 5% eye drops 10ml,OPHT or OCO,BOTTLE,3885
+1397,S01XA20008,Carboxymethylcellulose Sodium 0.5 % w/v + Glycerin 0.5 % w/v,SOFTDROPS 10ml,OPHT or OCO,BOTTLE,5180
+1398,S01XA20009,Sodium Hyaluronate 2mg/ml,POLYFRESH 10ml,OPHT or OCO or D,BOTTLE,9100
+1399,S02AA01001,Chloramphenicol 0.5%,CHLORAMPHENICOL 0.5% ear drops 10 ml,,BOTTLE,558
+1400,S02AA16001,Ofloxacin 1.5mg/0.5ml,OFLOCET 1.5mg/0.5ml ear drops 20 doses,,DOSE,688
+1401,S02AA30001,Chloramphenicol +Betamethasone +Lidocaine+Clotrimazole,CANDIBIOTIC ear drops 5ml,,BOTTLE,3471
+1402,S02CA06001,Dexamethasone +Neomycin +Polymyxin B,POLYDEXA ear drops 10.5ml,,BOTTLE,6008
+1403,S02DA30001,"Lidocaine, Chlorydrate 1%+Phenasone 4%",OTIPAX ear drops 15ml,,BOTTLE,6028
+1404,S02DC02001,Xylol,CERULYX ear drops 10 ml,SPEC,BOTTLE,15753
+1405,S03AA07002,Oftacilox,CILOXAN 0.3% eye drops 5ml,,BOTTLE,8277
+1406,S03AA07003,Ciprofloxacin,CIPROFLOXACIN 0.3% 5ml ear/eye drops,,BOTTLE,5507
+1407,V03AB15001,"Naloxone 0.4mg/ml Injection IV, IM, SC","NALOXONE 0.4mg/ml IV, IM, SC injection",HU & M,VIAL,2870
+1408,V03AE01001,"Polystyrène sulfonate, calcium",KAYEXALATE CALCIUM Powder for oral suspension 300g,HU & M,POT,55535
+1409,V03AE01002,"Polystyrène sulfonate, Sodium",KAYEXALATE SODIUM Powder for oral suspension 450g,HU & M,POT,64552
+1410,42141501ENU001,COTTON HYDROPHILE 100G,COTTON HYDROPHILE 100G,,ROLL,587
+1411,42141501ENU002,COTTON HYDROPHILE 50G,COTTON HYDROPHILE 50G,,ROLL,551
+1412,V07AB001,water for injection,WATER FOR INJECTION 10ml,,AMPOULE,73
+1413,V08AA01001,sodium amidotrizoate 100mg +meglumine amidotrizoate 660mg,GASTROGRAPHINE injection 100ml,HU & M,BOTTLE,32760
+1414,V08AA01002,sodium amidotrizoate 40mg +meglumine amidotrizoate 260mg,UROGRAPHINE injection 20ml,,VIAL,5368
+1415,42311708EHK004,ADHESIVE TAPE,"SPARADRAP 2,5 CM",,PIECE,401
+1416,42311708EHK005,ADHESIVE TAPE,SPARADRAP 5 CM,,PIECE,734
+1417,42311708EHK006,ADHESIVE TAPE,SPARADRAP 7 CM,,PIECE,975
+1418,42271802FDM011,Delivery System for Inhaled medication,AERO CHAMBER WITH MASK CHILD 1-5YEARS 1PCE,PED & M,PIECE,32708
+1419,42271802FDM012,Delivery System for Inhaled medication,AERO CHAMBER WITH MASK CHILD 5YEARS 1PC,PED & M,PIECE,20345
+1420,42271802FDM004,Delivery System for Inhaled medication,AERO CHAMBER WITH MASK INFANT 0-18 MONTHS 1PCE,PED & M,PIECE,32708
+1421,42271802FDM005,Delivery System for Inhaled medication,AEROCHAMBER PLUS FLOW-VU 0-18M SMALL MASK 1KIT,PED & M,PIECE,31500
+1422,42271802FDM006,Delivery System for Inhaled medication,AEROCHAMBER PLUS FLOW-VU ADULT LARGE MASK 1KIT,IM or ENT & M,PIECE,32708
+1423,42271802FDM007,Delivery System for Inhaled medication,AEROCHAMBER PLUS FLOW-VU ADULT MEDIUM MASK 1KIT,IM or ENT & M,PIECE,23450
+1424,42271802FDM008,Delivery System for Inhaled medication,AEROCHAMBER PLUS FLOW-VU ADULT MOUTHPIECE 1KIT,IM or ENT & M,PIECE,24698
+1425,42271802FDM009,Delivery System for Inhaled medication,AEROCHAMBER PLUS FLOW-VU ADULT SMALL MASK 1KIT,IM or ENT & M,PIECE,32708
+1426,42271802FDM010,Delivery System for Inhaled medication,BABY HALER,PED & M,PIECE,37410
+1427,42311511ELZ007,GAUZE BANDAGE,"BANDE DE GAZE 10 CM X 5 M , 1PIECE",,PIECE,145
+1428,42311511ELZ005,GAUZE BANDAGE,"BANDE DE GAZE 5 CM X 5 M, 1PIECE",,PIECE,84
+1429,42311511ELZ006,GAUZE BANDAGE,"BANDE DE GAZE 7,5 CM X 5 M, 1PIECE",,PIECE,111
+1430,42311505EDB005,ADHESIVE ELASTIC BANDAGE,BANDE ELASTIQUE 10CM,,PIECE,574
+1431,42311505EDB004,ADHESIVE ELASTIC BANDAGE,"BANDE ELASTIQUE 7,5 CM",,PIECE,334
+1432,42311505EDB006,ADHESIVE ELASTIC BANDAGE,BANDE ELASTIQUE 15 CM,,PIECE,668
+1433,42311505EDB007,ADHESIVE ELASTIC BANDAGE,BANDE ELASTIQUE 20 CM,,PIECE,734
+1434,42311505EDB001,ADHESIVE ELASTIC BANDAGE,BANDE ELASTIQUE 5 CM,,PIECE,267
+1435,42241506EAA002,ADHESIVE PLASTER BANDAGE,BANDE PLATRE 10 CM,,PIECE,441
+1436,42241506EAA003,ADHESIVE PLASTER BANDAGE,BANDE PLATRE 15 CM,,PIECE,587
+1437,42241506EAA005,ADHESIVE PLASTER BANDAGE,BANDE PLATRE 7.5 CM,,PIECE,350
+1438,42311511ELZ004,STERILE GAUZE COMPRESS,COMPRESSE STERILE 20CMX20CM,,PIECE,80
+1439,42311511ELZ001,STERILE GAUZE COMPRESS,COMPRESSE STERILE 5CM X 5CM,,PIECE,35
+1440,42311511ELZ002,STERILE GAUZE COMPRESS,COMPRESSE STERILE 7.5CM X 7.5CM,,PIECE,53
+1441,42311511ELZ003,STERILE GAUZE COMPRESS,COMPRESSE STERILE 10CMX10CM B,,PIECE,64
+1442,42142609FMR001,SYRINGE FOR INSULINE,SYRINGE FOR INSULINE 100UI/ml,,PIECE,67
+1443,V07AT01001,Blood glucose test strips,BLOOD GLUCOSE TEST STRIPS,,50 STRIPS,12015
+1444,V03AB17001,Methylthioninium chloride 1% topical solution 20ml,METHYLENE BLUE 1% topical solution 20ml,,BOTTLE,490
+1445,V03AB17002,Methylthioninium chloride 2% topical solution 20ml,METHYLENE BLUE 2% topical solution 20ml,,BOTTLE,935
+1446,D05AA002,Ichthammol ointment 50g,POMMADE ICHTYOLEE ointment 50g,,POT,2804

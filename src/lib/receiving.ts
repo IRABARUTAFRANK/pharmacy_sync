@@ -1,8 +1,9 @@
-import { supabase, branchArg } from "./supabase"
+import { fetchAll, supabase, branchArg } from "./supabase"
 
 // Reference/lookup data for the receiving wizard. Everything here is loaded once
 // when the page mounts and filtered client-side: branch catalogues are small and
-// re-querying per keystroke would be wasteful.
+// re-querying per keystroke would be wasteful. products/product_variants are the
+// exception -- see fetchAll() in ./supabase for why those two are paged.
 
 export type ProductType = "medicine" | "supply" | "other"
 
@@ -41,18 +42,18 @@ export interface ReceivingReference {
 }
 
 export async function loadReceivingReference(): Promise<ReceivingReference> {
-  const results = await Promise.all([
-    supabase.from("products").select("id, name, generic_name, product_type, tax_rate_id").order("name"),
-    supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
+  const [products, variants, ...rest] = await Promise.all([
+    fetchAll<any>("products", "id, name, generic_name, product_type, tax_rate_id", "name"),
+    fetchAll<any>("product_variants", "id, product_id, dosage, form, unit", "id"),
     // product_categories is branch-owned and RLS already restricts it to this branch.
     supabase.from("product_categories").select("*").order("name"),
     // RLS returns the global (branch_id null) rows plus this branch's own rows.
     supabase.from("suppliers").select("id, supplier_name").order("supplier_name"),
     supabase.from("tax_rates").select("id, name, rate_percentage"),
   ])
-  const failed = results.find(result => result.error)
+  const failed = rest.find((result: any) => result.error)
   if (failed?.error) throw failed.error
-  const [products, variants, categories, suppliers, taxRates] = results.map(result => result.data ?? []) as any[][]
+  const [categories, suppliers, taxRates] = rest.map((result: any) => result.data ?? []) as any[][]
   const taxById = new Map(taxRates.map(row => [row.id, row]))
   return {
     products: products.map(row => {
