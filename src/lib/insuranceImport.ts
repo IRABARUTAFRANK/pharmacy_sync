@@ -1,15 +1,22 @@
-// Turns an insurer's reimbursable-medicines price list -- CSV or Excel, in
-// whatever layout that insurer happens to use -- into rows ready for
-// admin_import_insurance_price_list(). Three stages, mirroring how this was
-// done by hand the first time (see scripts/import_insurance_price_list.js):
+// Turns a spreadsheet of medicines -- CSV or Excel, in whatever layout the
+// source happens to use -- into rows ready for either
+// admin_import_insurance_price_list() (one insurer's price list) or
+// admin_import_product_catalog() (a general catalog upload, not tied to any
+// insurer -- see 2026-09-18_admin_product_catalog_import.sql). Three stages,
+// mirroring how this was done by hand the first time (see
+// scripts/import_insurance_price_list.js):
 //   1. detectHeaderRow()  -- skip the title/blank rows every one of these
 //      sheets seems to have above the real header.
 //   2. autoMapColumns()   -- guess which column is the drug code, name,
-//      generic name, unit and price from the header text.
+//      generic name, unit and (for an insurance list only) price from the
+//      header text.
 //   3. buildImportPreview() -- turn the guessed mapping into actual rows,
 //      dropping section-header/blank/unparseable rows the same way the
 //      original RHIA import did, and reporting what got dropped so an admin
-//      can sanity-check nothing real was skipped.
+//      can sanity-check nothing real was skipped. `requirePrice` (default
+//      true, so the existing insurance-import call site is untouched) turns
+//      off the price column entirely for a general catalog upload, where
+//      there's no insurer-specific price to capture.
 // The UI shows the guess from steps 1-2 and lets the admin correct it before
 // anything is imported -- this file never has to be perfectly right on its
 // own, only a good enough starting guess.
@@ -135,7 +142,10 @@ export interface ImportRow {
   dosage: string | null
   form: string
   unit: string
-  price: number
+  // Null for a general catalog import (buildImportPreview's requirePrice:
+  // false) -- there's no insurer to set a fixed price for. Always a real
+  // number for an insurance price-list import (the default), same as before.
+  price: number | null
 }
 
 export interface SkippedRow {
@@ -149,7 +159,9 @@ export interface ImportPreview {
   skipped: SkippedRow[]
 }
 
-export function buildImportPreview(rows: string[][], headerRowIndex: number, mapping: ColumnMapping): ImportPreview {
+export function buildImportPreview(
+  rows: string[][], headerRowIndex: number, mapping: ColumnMapping, requirePrice = true,
+): ImportPreview {
   const out: ImportRow[] = []
   const skipped: SkippedRow[] = []
   const cell = (row: string[], col: number | null) => (col === null ? "" : (row[col] ?? "").toString().trim())
@@ -161,10 +173,10 @@ export function buildImportPreview(rows: string[][], headerRowIndex: number, map
 
     const drugCode = cell(row, mapping.code)
     const priceRaw = cell(row, mapping.price)
-    const price = parsePrice(priceRaw)
+    const price = requirePrice ? parsePrice(priceRaw) : null
 
     if (!drugCode) { skipped.push({ rowNumber, reason: "No drug code in the mapped column", raw: row }); continue }
-    if (price === null) { skipped.push({ rowNumber, reason: `Price column didn't parse as a number ("${priceRaw}")`, raw: row }); continue }
+    if (requirePrice && price === null) { skipped.push({ rowNumber, reason: `Price column didn't parse as a number ("${priceRaw}")`, raw: row }); continue }
 
     const genericName = cell(row, mapping.genericName)
     const name = cell(row, mapping.name) || genericName

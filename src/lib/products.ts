@@ -138,6 +138,46 @@ export async function adminCreateProduct(input: {
   return data as string
 }
 
+// General catalog import (admin_import_product_catalog, see
+// 2026-09-18_admin_product_catalog_import.sql) -- a file that isn't tied to
+// any one insurer, for medicines every branch should have regardless of
+// insurance coverage. Same idempotent upsert as the insurance price-list
+// import (src/lib/sales.ts's adminImportInsurancePriceList), just no
+// provider/price involved. Rows come from the same buildImportPreview()
+// (src/lib/insuranceImport.ts) called with requirePrice: false.
+export interface CatalogImportRow {
+  drugCode: string
+  productType: "medicine" | "supply"
+  productName: string
+  genericName: string | null
+  dosage: string | null
+  form: string
+  unit: string
+}
+
+export interface CatalogImportResult {
+  createdProducts: number
+  updatedProducts: number
+  createdVariants: number
+  reusedVariants: number
+}
+
+export async function adminImportProductCatalog(taxRateId: string, rows: CatalogImportRow[]): Promise<CatalogImportResult> {
+  const { data, error } = await supabaseAdmin.rpc("admin_import_product_catalog", {
+    p_tax_rate_id: taxRateId,
+    p_rows: rows.map(r => ({
+      drugCode: r.drugCode, productType: r.productType, productName: r.productName, genericName: r.genericName,
+      dosage: r.dosage, form: r.form, unit: r.unit,
+    })),
+  })
+  if (error) raise(error)
+  const row = (Array.isArray(data) ? data[0] : data) as any
+  return {
+    createdProducts: Number(row.created_products), updatedProducts: Number(row.updated_products),
+    createdVariants: Number(row.created_variants), reusedVariants: Number(row.reused_variants),
+  }
+}
+
 export async function adminSetProductTax(productId: string, taxRateId: string): Promise<void> {
   const { error } = await supabaseAdmin.rpc("admin_set_product_tax", { p_product_id: productId, p_tax_rate_id: taxRateId })
   if (error) raise(error)

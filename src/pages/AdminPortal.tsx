@@ -58,6 +58,7 @@ import {
   adminCreateCategory,
   adminCreateProduct,
   adminCreateTaxRate,
+  adminImportProductCatalog,
   adminListCategories,
   adminListProductRequests,
   adminListProducts,
@@ -68,6 +69,7 @@ import {
   type AdminCategoryRow,
   type AdminProduct,
   type AdminProductRequestRow,
+  type CatalogImportResult,
   type ProductVariantInput,
   type TaxRate,
 } from "../lib/products";
@@ -2024,6 +2026,7 @@ function ProductsView() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showAddTax, setShowAddTax] = useState(false);
+  const [showImportCatalog, setShowImportCatalog] = useState(false);
   const [savingTaxFor, setSavingTaxFor] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -2073,6 +2076,13 @@ function ProductsView() {
           <button onClick={() => setShowAddTax(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
             <Tag className="w-3.5 h-3.5" /> {t("admin.addTaxRate")}
+          </button>
+          {/* Not tied to any one insurer -- see ImportCatalogModal above and
+              2026-09-18_admin_product_catalog_import.sql. The per-insurer
+              upload (with pricing) stays on the Insurance tab, unchanged. */}
+          <button onClick={() => setShowImportCatalog(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
+            <Upload className="w-3.5 h-3.5" /> {t("admin.catalogImportButton")}
           </button>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
@@ -2135,6 +2145,9 @@ function ProductsView() {
       )}
       {showAddTax && (
         <AddTaxRateModal onClose={() => setShowAddTax(false)} onCreated={() => { setShowAddTax(false); void refresh(); }} />
+      )}
+      {showImportCatalog && (
+        <ImportCatalogModal taxRates={taxRates} onClose={() => setShowImportCatalog(false)} onImported={() => void refresh()} />
       )}
     </div>
   );
@@ -2666,7 +2679,9 @@ function ImportPriceListModal({ provider, taxRates, onClose, onImported }: {
     setBusy(true);
     setError("");
     try {
-      const outcome = await adminImportInsurancePriceList(provider.id, taxRateId, preview.rows);
+      // price is always set here -- this modal always calls buildImportPreview
+      // with its requirePrice default (true), unlike ImportCatalogModal below.
+      const outcome = await adminImportInsurancePriceList(provider.id, taxRateId, preview.rows.map((r) => ({ ...r, price: r.price! })));
       setResult(outcome);
       setStep("result");
       onImported();
@@ -2768,7 +2783,7 @@ function ImportPriceListModal({ provider, taxRates, onClose, onImported }: {
                         <td className="px-2 py-1 text-slate-700">{r.productName}</td>
                         <td className="px-2 py-1 text-slate-500">{r.genericName ?? "—"}</td>
                         <td className="px-2 py-1 text-slate-500">{r.unit}</td>
-                        <td className="px-2 py-1 text-right text-slate-700 font-mono">{r.price.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right text-slate-700 font-mono">{r.price!.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2800,6 +2815,199 @@ function ImportPriceListModal({ provider, taxRates, onClose, onImported }: {
               <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultUpdatedProducts")}</span><span className="font-bold text-slate-700">{result.updatedProducts}</span></div>
               <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultNewVariants")}</span><span className="font-bold text-slate-700">{result.createdVariants}</span></div>
               <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultPrices")}</span><span className="font-bold text-slate-700">{result.pricesSet}</span></div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button onClick={onClose} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">{t("admin.insImportDone")}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// General catalog import -- not tied to any insurer (see
+// 2026-09-18_admin_product_catalog_import.sql). Same wizard shape as
+// ImportPriceListModal above, minus the provider picker and the price
+// column/step: buildImportPreview's requirePrice:false drops the price
+// column from both the mapping grid and the row-validity check, and
+// adminImportProductCatalog (src/lib/products.ts) has no
+// insurance_variant_prices step to report on.
+function ImportCatalogModal({ taxRates, onClose, onImported }: {
+  taxRates: TaxRate[]; onClose: () => void; onImported: () => void;
+}) {
+  const { t } = useTranslation();
+  const [step, setStep] = useState<ImportStep>("upload");
+  const [fileName, setFileName] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [error, setError] = useState("");
+  const [rawRows, setRawRows] = useState<string[][]>([]);
+  const [headerRowIndex, setHeaderRowIndex] = useState(0);
+  const [mapping, setMapping] = useState<ColumnMapping>({ code: null, name: null, genericName: null, unit: null, price: null });
+  const [taxRateId, setTaxRateId] = useState(taxRates.find((r) => r.rate_percentage === 0)?.id ?? taxRates[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [showSkipped, setShowSkipped] = useState(false);
+  const [result, setResult] = useState<CatalogImportResult | null>(null);
+  const catalogFields = IMPORT_FIELDS.filter((f): f is Exclude<ImportField, "price"> => f !== "price");
+
+  async function handleFile(file: File) {
+    setError("");
+    setParsing(true);
+    setFileName(file.name);
+    try {
+      const rows = await parseSpreadsheetFile(file);
+      if (rows.length === 0) throw new Error(t("admin.insImportEmptyFile"));
+      const headerIdx = detectHeaderRow(rows);
+      setRawRows(rows);
+      setHeaderRowIndex(headerIdx);
+      setMapping(autoMapColumns(rows[headerIdx] ?? []));
+      setStep("map");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("admin.insImportParseError"));
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const headerRow = rawRows[headerRowIndex] ?? [];
+  const preview = useMemo(() => buildImportPreview(rawRows, headerRowIndex, mapping, false), [rawRows, headerRowIndex, mapping]);
+
+  async function submit() {
+    if (preview.rows.length === 0) { setError(t("admin.catalogImportNoRowsError")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const outcome = await adminImportProductCatalog(taxRateId, preview.rows);
+      setResult(outcome);
+      setStep("result");
+      onImported();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not import this catalog.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.catalogImportTitle")} onClose={onClose} wide>
+      <div className="space-y-4">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+
+        {step === "upload" && (
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500">{t("admin.catalogImportIntro")}</p>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.insImportTaxRateLabel")}</label>
+              <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
+                {taxRates.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.rate_percentage}%)</option>)}
+              </select>
+            </div>
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl py-10 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors">
+              <Upload className="w-6 h-6 text-slate-400" />
+              <span className="text-sm font-semibold text-slate-600">{parsing ? t("admin.insImportParsing") : t("admin.insImportChooseFile")}</span>
+              <span className="text-[10px] text-slate-400">{t("admin.insImportFileHint")}</span>
+              <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={parsing}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ""; }} />
+            </label>
+          </div>
+        )}
+
+        {step === "map" && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <FileSpreadsheet className="w-3.5 h-3.5" /> {fileName}
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-600 mb-2">{t("admin.insImportMappingTitle")}</p>
+              <div className="grid grid-cols-2 gap-3">
+                {catalogFields.map((field) => (
+                  <div key={field}>
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                      {t(`admin.insImportCol_${field}` as TranslationKey)}
+                    </label>
+                    <select value={mapping[field] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value === "" ? null : Number(e.target.value) }))}
+                      className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
+                      <option value="">{t("admin.insImportColumnNone")}</option>
+                      {headerRow.map((h, i) => (
+                        <option key={i} value={i}>{h.trim() || `Column ${i + 1}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between text-xs flex-wrap gap-2">
+              <span className="font-semibold text-slate-700">{t("admin.insImportValidCount", { count: preview.rows.length })}</span>
+              {preview.skipped.length > 0 && (
+                <button onClick={() => setShowSkipped((v) => !v)} className="text-blue-700 font-semibold hover:underline">
+                  {t("admin.insImportSkippedCount", { count: preview.skipped.length })}
+                </button>
+              )}
+            </div>
+
+            {showSkipped && preview.skipped.length > 0 && (
+              <div className="border border-slate-100 rounded-lg max-h-32 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <tbody className="divide-y divide-slate-50">
+                    {preview.skipped.slice(0, 50).map((s) => (
+                      <tr key={s.rowNumber}>
+                        <td className="px-2 py-1 text-slate-400 whitespace-nowrap">{t("admin.insImportRowLabel", { row: s.rowNumber })}</td>
+                        <td className="px-2 py-1 text-slate-500">{s.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {preview.rows.length > 0 && (
+              <div className="border border-slate-100 rounded-lg overflow-x-auto max-h-48 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      <th className="text-left px-2 py-1.5 font-semibold text-slate-500">{t("admin.insImportPreviewName")}</th>
+                      <th className="text-left px-2 py-1.5 font-semibold text-slate-500">{t("admin.insImportPreviewGeneric")}</th>
+                      <th className="text-left px-2 py-1.5 font-semibold text-slate-500">{t("admin.insImportPreviewUnit")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {preview.rows.slice(0, 8).map((r, i) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1 text-slate-700">{r.productName}</td>
+                        <td className="px-2 py-1 text-slate-500">{r.genericName ?? "—"}</td>
+                        <td className="px-2 py-1 text-slate-500">{r.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-between gap-2 pt-2">
+              <button onClick={() => setStep("upload")} className="flex items-center gap-1.5 px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
+                <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.insImportBack")}
+              </button>
+              <button onClick={() => void submit()} disabled={busy || preview.rows.length === 0}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+                {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {t("admin.insImportConfirmButton", { count: preview.rows.length })}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "result" && result && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-blue-700">
+              <CheckCircle2 className="w-5 h-5" />
+              <p className="text-sm font-semibold">{t("admin.insImportSuccess")}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultNewProducts")}</span><span className="font-bold text-slate-700">{result.createdProducts}</span></div>
+              <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultUpdatedProducts")}</span><span className="font-bold text-slate-700">{result.updatedProducts}</span></div>
+              <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultNewVariants")}</span><span className="font-bold text-slate-700">{result.createdVariants}</span></div>
             </div>
             <div className="flex justify-end pt-2">
               <button onClick={onClose} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">{t("admin.insImportDone")}</button>
