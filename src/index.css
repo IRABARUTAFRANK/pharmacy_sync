@@ -347,6 +347,24 @@ button:focus:not(:focus-visible) { outline: none; }
   .dashboard-card-clickable:hover { transform: none; }
 }
 
+/* Topbar overflow (App.tsx's Walkthrough + Notifications strip) — nothing
+   here ever hides; the strip slides left/right instead, the same way the
+   search box already shrinks instead of vanishing. What crowds this out
+   isn't the window getting narrower, it's showingBranchDrillIn's wider
+   "org view" pill (branch name + code + badge + "Back to Organization")
+   eating into the same row on an otherwise perfectly normal-width screen.
+   App.tsx gives this strip min-width:0 (so it can actually give up width
+   instead of forcing the whole topbar wider) and overflow-x:auto (so
+   whatever doesn't fit is reachable by wheel/trackpad/touch/drag scroll);
+   this just makes that scrollbar unobtrusive instead of a raw OS one. */
+.topbar-trailing-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.topbar-trailing-scroll::-webkit-scrollbar { height: 4px; }
+.topbar-trailing-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.topbar-trailing-scroll::-webkit-scrollbar-track { background: transparent; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────────
    The shell was built desktop-first: a permanent sidebar, a single top-bar
    row, and multi-column grids declared with inline styles on each page.
@@ -359,6 +377,29 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Tablet — tighten the page gutter, keep the multi-column layouts. */
 @media (max-width: 1024px) {
   .app-main { padding: 16px 14px !important; }
+}
+
+/* Drilled into a branch from Organization > Branches (App.tsx's
+   showingBranchDrillIn -- see .app-topbar-drilled), the topbar carries a
+   second sidebar's width (the org rail) PLUS a much wider pill (branch name
+   + code + "org view" badge + "Back" button vs. the plain branch code shown
+   everywhere else) in the same row. That combination runs out of room
+   earlier than the plain topbar does -- measured genuinely overflowing at
+   1024px wide (still comfortably above the 768px breakpoint below) -- so
+   this wraps to two rows at a wider threshold specifically when drilled in,
+   same technique as the 768px rule below, just triggered sooner. */
+@media (max-width: 1200px) {
+  .app-topbar-drilled {
+    height: auto !important;
+    flex-wrap: wrap;
+    padding: 8px 12px !important;
+    row-gap: 8px;
+  }
+  .app-topbar-drilled [data-tour="search"] {
+    order: 10;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
 }
 
 /* Narrow — one column everywhere, and let the top bar wrap onto two rows
