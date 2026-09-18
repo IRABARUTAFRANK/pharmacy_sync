@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, type LiveAlert } from '../lib/alerts'
+import { ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, type AlertScope, type LiveAlert } from '../lib/alerts'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
 import { errorMessage } from '../lib/supabase'
@@ -18,14 +18,16 @@ const sourceColors: Record<string, { c: string; bg: string }> = {
   out_of_stock:              { c: '#dc2626', bg: '#fef2f2' },
 }
 
-// NOTE: loadLiveAlerts() reads public.notifications directly under RLS
-// scoped to the caller's own branch -- there is currently no way to point it
-// at a different branch (see the read-path migration's own scope notes).
-// `branchId` is accepted (App.tsx always passes it) so this page still shows
-// the CALLER's own branch's alerts while "viewing" another branch, rather
-// than erroring -- widening notifications' RLS policy is a follow-up.
-export default function AlertsPage({ branchId: _branchId }: { branchId?: string } = {}) {
+// `branchId` doubles as the scope passed straight to loadLiveAlerts():
+// undefined -> the caller's own branch, a single id -> that one branch (a
+// "View Branch" drill-in -- auto-mark-as-read still applies, same as always,
+// since viewing one branch this way carries that branch's full operational
+// authority), an array -> every branch in it combined (Organization >
+// Alerts' "All branches" view). `branchNames` is only ever passed alongside
+// an array scope, to label each row's branch in that combined table.
+export default function AlertsPage({ branchId, branchNames }: { branchId?: AlertScope; branchNames?: Record<string, string> } = {}) {
   const { t } = useTranslation()
+  const isMultiBranch = Array.isArray(branchId) && !!branchNames
   const COLUMN_DEFS: { key: ColKey; label: string }[] = [
     { key: 'source_type', label: t('alertsPage.colSourceType') },
     { key: 'is_read',     label: t('alertsPage.colReadStatus') },
@@ -43,22 +45,30 @@ export default function AlertsPage({ branchId: _branchId }: { branchId?: string 
     setLoading(true)
     setError(null)
     try {
-      const rows = await loadLiveAlerts()
+      const rows = await loadLiveAlerts(branchId)
       setAlerts(rows)
       // Opening this page IS reading its notifications -- no separate click
       // required. Best-effort: a failed mark-read here just leaves the row
       // unread until the next visit, same as any other transient failure.
-      const unreadIds = rows.filter(n => !n.isRead).map(n => n.id)
-      if (unreadIds.length > 0) {
-        void markAllAlertsRead(unreadIds).catch(() => { /* retried on next visit */ })
-        setAlerts(rows.map(n => ({ ...n, isRead: true })))
+      // Skipped for the multi-branch "All branches" aggregate specifically --
+      // an org_owner/org_manager glancing at the combined feed hasn't
+      // actually reviewed any one branch's alerts individually, so silently
+      // clearing every branch's unread flag here would hide them from the
+      // branch staff who still need to act on them.
+      if (!isMultiBranch) {
+        const unreadIds = rows.filter(n => !n.isRead).map(n => n.id)
+        if (unreadIds.length > 0) {
+          void markAllAlertsRead(unreadIds).catch(() => { /* retried on next visit */ })
+          setAlerts(rows.map(n => ({ ...n, isRead: true })))
+        }
       }
     } catch (reason) {
       setError(errorMessage(reason, t('alertsPage.loadError')))
     } finally {
       setLoading(false)
     }
-  }, [t])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, Array.isArray(branchId) ? branchId.join(",") : branchId, isMultiBranch])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -149,6 +159,7 @@ export default function AlertsPage({ branchId: _branchId }: { branchId?: string 
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colMessage')}</th>
+                {isMultiBranch && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colBranch')}</th>}
                 {visibleCols.has('source_type') && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colSourceType')}</th>}
                 {visibleCols.has('is_read')     && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colStatus')}</th>}
                 {visibleCols.has('created_at')  && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colDate')}</th>}
@@ -165,6 +176,7 @@ export default function AlertsPage({ branchId: _branchId }: { branchId?: string 
                       <div style={{ fontWeight: n.isRead ? 400 : 600, color: 'var(--ink)', fontSize: 12 }}>{t(n.titleKey)}</div>
                       <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 3, lineHeight: 1.4 }}>{n.msg}</div>
                     </td>
+                    {isMultiBranch && <td style={{ padding: '10px 10px', color: 'var(--ink-muted)' }}>{branchNames?.[n.branchId] ?? "—"}</td>}
                     {visibleCols.has('source_type') && <td style={{ padding: '10px 10px' }}><StatusBadge label={label} color={sc.c} bg={sc.bg} /></td>}
                     {visibleCols.has('is_read')     && <td style={{ padding: '10px 10px' }}><StatusBadge label={n.isRead ? t('alertsPage.read') : t('alertsPage.unread')} color={n.isRead ? '#16a34a' : '#dc2626'} bg={n.isRead ? '#d1fae5' : '#fef2f2'} /></td>}
                     {visibleCols.has('created_at')  && <td style={{ padding: '10px 10px', fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString()}</td>}

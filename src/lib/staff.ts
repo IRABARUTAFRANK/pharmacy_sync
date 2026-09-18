@@ -80,6 +80,26 @@ export async function updateStaffRole(userId: string, role: StaffRole, branchId?
   if (error) throw error
 }
 
+// Sets a new password for someone else's login -- the only thing possible
+// once "see their credentials" runs into Supabase Auth never storing a real,
+// reversible password anywhere. Authorization (who may reset whose password)
+// is entirely server-side, in assert_can_reset_staff_password() -- this just
+// calls the one Edge Function that can reach the service-role Admin API.
+// Works for both a branch-scoped target (BranchSettingsPage's Users & Roles)
+// and an org-level org_manager target (OrganizationPage's Members tab) --
+// the target's own id is enough for the server to resolve which case applies.
+export async function resetStaffPassword(userId: string, newPassword: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("reset-staff-password", { body: { userId, newPassword } })
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const body = await error.context.json().catch(() => null)
+      throw new Error(body?.error ?? error.message)
+    }
+    throw error
+  }
+  if (data?.error) throw new Error(data.error)
+}
+
 export async function listSellerActivityToday(): Promise<SellerActivityRow[]> {
   const { data, error } = await supabase.rpc("list_seller_activity_today")
   if (error) throw error

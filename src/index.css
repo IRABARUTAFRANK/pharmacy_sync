@@ -250,6 +250,21 @@ button:focus:not(:focus-visible) { outline: none; }
 @keyframes psync-shake { 10%, 90% { transform: translateX(-2px); } 30%, 70% { transform: translateX(4px); } 50% { transform: translateX(-4px); } }
 @keyframes psync-spin  { to { transform: rotate(360deg); } }
 
+/* Logo loading spinner (components.tsx's <LogoSpinner>) -- replaces plain
+   "Loading..." text wherever a page is waiting on real data (OverviewPage's
+   own dashboard panel, App.tsx's route/session fallback). Pure CSS 3D
+   transform, no animation library or asset beyond the existing PNG mark --
+   .logo-spinner-tilt holds the perspective, .logo-spinner-spin does the
+   actual Y-axis turn, .logo-spinner-shadow breathes in sync so the turn
+   reads as genuine depth rather than a flat rotation. */
+@keyframes logo-spinner-turn   { from { transform: rotateY(0deg); }        to { transform: rotateY(360deg); } }
+@keyframes logo-spinner-bob    { 0%, 100% { transform: translateY(0); }    50% { transform: translateY(-8px); } }
+@keyframes logo-spinner-shadow { 0%, 100% { transform: scaleX(1); opacity: .35; } 50% { transform: scaleX(.55); opacity: .15; } }
+.logo-spinner-tilt   { perspective: 500px; }
+.logo-spinner-bob    { animation: logo-spinner-bob 2.4s ease-in-out infinite; }
+.logo-spinner-spin   { animation: logo-spinner-turn 2.4s cubic-bezier(.45,0,.55,1) infinite; transform-style: preserve-3d; }
+.logo-spinner-shadow { animation: logo-spinner-shadow 2.4s ease-in-out infinite; }
+
 /* Dashboard modal open transition (AdminPortal, StockReceivingPage,
    StockAdjustmentPage, HelpPage, LiveInventoryPage, etc. all share the one
    Modal component in components.tsx) — backdrop fades in, panel fades and
@@ -329,6 +344,9 @@ button:focus:not(:focus-visible) { outline: none; }
   @keyframes psync-grow      { from { transform: none; } to { transform: none; } }
   @keyframes psync-shake     { from { transform: none; } to { transform: none; } }
   @keyframes psync-spin      { from { transform: none; } to { transform: none; } }
+  @keyframes logo-spinner-turn   { from { transform: none; } to { transform: none; } }
+  @keyframes logo-spinner-bob    { from { transform: none; } to { transform: none; } }
+  @keyframes logo-spinner-shadow { from { opacity: .25; } to { opacity: .25; } }
   @keyframes modal-backdrop-in { from { opacity: 1; } to { opacity: 1; } }
   @keyframes modal-panel-in    { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
   @keyframes toast-in          { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }

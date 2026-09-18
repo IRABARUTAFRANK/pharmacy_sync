@@ -44,6 +44,23 @@ export interface StockTransferItem {
   quantityAvailable: number
 }
 
+// One row per physical item a scan-to-confirm screen expects to see --
+// a box, or a loose pack not sealed inside one -- for the transfer's own
+// batches. `status` selects which phase's manifest: 'active' while the
+// sending branch is scanning the outgoing package (dispatch), 'in_transit'
+// while the receiving branch is scanning it back in (receive) -- matching
+// exactly what dispatch_stock_transfer()/receive_stock_transfer() themselves
+// flip, so a scanned item always reflects the transfer's real current state.
+export interface StockTransferManifestItem {
+  barcodeId: string
+  code: string
+  barcodeType: "box" | "pack"
+  stockBatchId: string
+  productName: string
+  dosage: string | null
+  batchNumber: string
+}
+
 function mapTransfer(row: any): StockTransfer {
   return {
     id: row.id, fromBranchId: row.from_branch_id, fromBranchName: row.from_branch_name,
@@ -123,4 +140,50 @@ export async function listStockTransferItems(transferId: string): Promise<StockT
     stockBatchId: row.stock_batch_id, productName: row.product_name, batchNumber: row.batch_number,
     quantityAvailable: row.quantity_available,
   }))
+}
+
+export async function listStockTransferManifest(transferId: string, status: "active" | "in_transit"): Promise<StockTransferManifestItem[]> {
+  const { data, error } = await supabase.rpc("list_stock_transfer_manifest", { p_transfer_id: transferId, p_status: status })
+  if (error) throw error
+  return ((data ?? []) as any[]).map(row => ({
+    barcodeId: row.barcode_id, code: row.code, barcodeType: row.barcode_type as "box" | "pack",
+    stockBatchId: row.stock_batch_id, productName: row.product_name, dosage: row.dosage, batchNumber: row.batch_number,
+  }))
+}
+
+// Scan-to-add for RequestTransferModal's own batch picker: resolves a
+// scanned code straight to which of the caller's OWN branch's stock_batches
+// it belongs to, so scanning a pack adds its whole batch to the request the
+// same way ticking its checkbox already does -- no separate "transfer
+// scanning" RPC needed, this is the exact same read-only lookup_barcode()
+// the POS and receiving screens already call (branch-scoped server-side,
+// never returns another branch's stock). Real-time status/expiry are
+// re-checked here too, same as scanBarcode() in sales.ts, since the batch
+// list this modal loaded up front can go stale while the picker is open.
+export interface ScannedBranchBatch {
+  stockBatchId: string
+  productName: string
+  dosage: string | null
+  batchNumber: string
+}
+
+export async function scanBranchBatch(code: string): Promise<ScannedBranchBatch> {
+  const trimmed = code.trim()
+  if (!trimmed) throw new Error("Scan or type a barcode.")
+  const { data, error } = await supabase.rpc("lookup_barcode", { p_code: trimmed })
+  if (error) throw error
+  const row = Array.isArray(data) ? data[0] : data
+  // lookup_barcode() itself is branch-scoped (WHERE sb.branch_id =
+  // current_branch_id()) -- a code that's real but belongs to a different
+  // branch/organization comes back empty here exactly the same as one that
+  // doesn't exist at all, by design (never confirms or denies another
+  // org's barcode exists). The message below has to stay true either way,
+  // not claim the code is unknown everywhere -- it just isn't part of THIS
+  // branch's own stock, which is the only thing a transfer can ever send.
+  if (!row) throw new Error(`"${trimmed}" is not part of your branch's stock.`)
+  if (row.status !== "active") throw new Error(`This item is ${row.status} and is not available to send.`)
+  if (row.expiry_date && row.expiry_date < new Date().toISOString().slice(0, 10)) {
+    throw new Error(`This item expired on ${row.expiry_date} and cannot be sent.`)
+  }
+  return { stockBatchId: row.stock_batch_id, productName: row.product_name, dosage: row.dosage, batchNumber: row.batch_number }
 }

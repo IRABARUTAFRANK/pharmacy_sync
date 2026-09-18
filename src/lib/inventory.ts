@@ -1,6 +1,16 @@
 import { getMyBranchDetails } from "./branch"
 import { fetchAllRows, supabase } from "./supabase"
 
+// undefined -> caller's own branch only (today's exact original behavior).
+// A single uuid -> that one branch (RLS -- see
+// 2026-09-16_org_wide_inventory_read_access.sql -- only actually returns
+// rows if the caller is that branch's own user OR an active member of its
+// organization; an unauthorized id silently comes back empty, never errors,
+// same as every other RLS-enforced read in this codebase).
+// An array -> exactly those branches combined ("All branches" org view);
+// pass every branch id in the org, not [] (an empty .in() matches nothing).
+export type InventoryScope = string | string[] | undefined
+
 export interface InventoryRow {
   product_id: string
   branch_id: string
@@ -45,19 +55,37 @@ const asNumber = (value: string | number | null | undefined) => Number(value ?? 
 // .select() -- an unbounded select silently truncates once a branch has
 // enough history to exceed PostgREST's row cap, with no error to explain
 // why stock or barcodes just stopped showing up.
-export async function loadInventoryDataset(): Promise<InventoryDataset> {
-  const [branch, batches, variants, products, barcodes, suppliers, reorderPoints, categories, categorizations, taxRates] = await Promise.all([
-    getMyBranchDetails(),
-    fetchAllRows<any>((from, to) => supabase.from("stock_batches").select("*").order("received_at", { ascending: false }).order("id").range(from, to)),
+//
+// `scope` narrows every branch-scoped table below to exactly the intended
+// branch(es) -- see InventoryScope above. This used to rely purely on RLS
+// (branch_id = current_branch_id(), nothing else), which was correct back
+// when that was the only row RLS could ever return; now that
+// 2026-09-16_org_wide_inventory_read_access.sql lets an org member's RLS
+// return every branch in their organization, the client has to do this
+// narrowing itself, exactly like every branchArg()-based RPC call already
+// does via effective_branch_id() server-side. barcodes has no branch_id
+// column of its own (only stock_batch_id), so it's narrowed by first
+// resolving which batch ids are in scope, not by its own filter.
+export async function loadInventoryDataset(scope?: InventoryScope): Promise<InventoryDataset> {
+  const branchFilter = (query: any) => Array.isArray(scope) ? query.in("branch_id", scope) : scope ? query.eq("branch_id", scope) : query
+  const [branch, batches, variants, products, suppliers, reorderPoints, categories, categorizations, taxRates] = await Promise.all([
+    getMyBranchDetails(typeof scope === "string" ? scope : undefined),
+    fetchAllRows<any>((from, to) => branchFilter(supabase.from("stock_batches").select("*")).order("received_at", { ascending: false }).order("id").range(from, to)),
     fetchAllRows<any>((from, to) => supabase.from("product_variants").select("*").order("id").range(from, to)),
     fetchAllRows<any>((from, to) => supabase.from("products").select("*").order("id").range(from, to)),
-    fetchAllRows<any>((from, to) => supabase.from("barcodes").select("*").order("code").range(from, to)),
-    fetchAllRows<any>((from, to) => supabase.from("suppliers").select("*").order("id").range(from, to)),
-    fetchAllRows<any>((from, to) => supabase.from("reorder_points").select("*").order("id").range(from, to)),
-    fetchAllRows<any>((from, to) => supabase.from("product_categories").select("*").order("id").range(from, to)),
-    fetchAllRows<any>((from, to) => supabase.from("branch_product_categorization").select("*").order("product_id").range(from, to)),
+    fetchAllRows<any>((from, to) => branchFilter(supabase.from("suppliers").select("*")).order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => branchFilter(supabase.from("reorder_points").select("*")).order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => branchFilter(supabase.from("product_categories").select("*")).order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => branchFilter(supabase.from("branch_product_categorization").select("*")).order("product_id").range(from, to)),
     fetchAllRows<any>((from, to) => supabase.from("tax_rates").select("*").order("id").range(from, to)),
   ])
+  // barcodes has no branch_id of its own, so it's scoped by the batch ids
+  // already resolved above rather than by branchFilter -- an empty `batches`
+  // (nothing in scope) would otherwise fall through to an unfiltered
+  // .select(), unintentionally returning every barcode RLS allows.
+  const batchIds = batches.map(b => b.id)
+  const barcodes = batchIds.length === 0 ? [] : await fetchAllRows<any>((from, to) =>
+    supabase.from("barcodes").select("*").in("stock_batch_id", batchIds).order("code").range(from, to))
   const expiryThresholdDays = branch.expiryAlertThresholdDays
   const defaultReorderMin = branch.defaultReorderMin
   const today = new Date()

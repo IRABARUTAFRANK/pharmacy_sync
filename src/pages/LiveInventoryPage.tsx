@@ -3,9 +3,10 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { Card, SectionHeader, StatusBadge, Btn, Modal, ChartTooltip } from "../components"
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
+import type { TranslationKey } from "../lib/i18n/en"
 import { useGlobalSearch } from "../lib/search"
 import { packagingSummary } from "../lib/barcodes"
-import { loadInventoryDataset, upsertStockLevels, type InventoryDataset, type InventoryRow } from "../lib/inventory"
+import { loadInventoryDataset, upsertStockLevels, type InventoryDataset, type InventoryRow, type InventoryScope } from "../lib/inventory"
 import { errorMessage } from "../lib/supabase"
 
 export function StockLevelsModal({ row, onClose, onSaved }: { row: InventoryRow; onClose: () => void; onSaved: () => void }) {
@@ -61,13 +62,13 @@ export function StockLevelsModal({ row, onClose, onSaved }: { row: InventoryRow;
 // `initialStatus` lets a caller (the sidebar's "Today so far" card) deep-link
 // straight into a filtered view instead of landing on "all" and making
 // someone re-click a tile themselves.
-// NOTE: loadInventoryDataset() reads stock_batches/barcodes/products/etc.
-// directly under RLS scoped to the caller's own branch -- there is currently
-// no way to point it at a different branch. `branchId` is accepted (App.tsx
-// always passes it) so this page still shows the CALLER's own branch's
-// inventory while "viewing" another branch, rather than erroring -- widening
-// the underlying RLS policies is tracked as a follow-up.
-export default function LiveInventoryPage({ initialStatus, branchId: _branchId }: { initialStatus?: "attention" | InventoryRow["stock_status"]; branchId?: string } = {}) {
+// `branchId` doubles as the scope passed straight to loadInventoryDataset():
+// undefined -> the caller's own branch, a single id -> that one branch (a
+// "View Branch" drill-in), an array -> every branch in it combined
+// (Organization > Inventory's "All branches" view -- see `branchNames`
+// below, which is only ever passed alongside an array scope, to label each
+// row's branch in that combined table).
+export default function LiveInventoryPage({ initialStatus, branchId, branchNames }: { initialStatus?: "attention" | InventoryRow["stock_status"]; branchId?: InventoryScope; branchNames?: Record<string, string> } = {}) {
   const { t } = useTranslation()
   const statusMeta = {
     ok: { label: t("inventoryPage.statusOk"), color: "#16a34a", background: "#d1fae5" },
@@ -113,13 +114,16 @@ export default function LiveInventoryPage({ initialStatus, branchId: _branchId }
     setLoading(true)
     setError(null)
     try {
-      setDataset(await loadInventoryDataset())
+      setDataset(await loadInventoryDataset(branchId))
     } catch (reason) {
       setError(errorMessage(reason, t("inventoryPage.loadError")))
     } finally {
       setLoading(false)
     }
-  }, [t])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, Array.isArray(branchId) ? branchId.join(",") : branchId])
+
+  const isMultiBranch = Array.isArray(branchId) && !!branchNames
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -156,12 +160,13 @@ export default function LiveInventoryPage({ initialStatus, branchId: _branchId }
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14 }}><div style={{ flex: 1 }}><h2 style={{ margin: 0, fontSize: 14 }}>{t("inventoryPage.tableTitle")}</h2><p style={{ margin: '3px 0 0', color: 'var(--ink-muted)', fontSize: 11 }}>{t("inventoryPage.tableSubtitle")}</p></div><input value={query} onChange={event => { setQuery(event.target.value); setGlobalTerm(event.target.value) }} placeholder={t("inventoryPage.searchPlaceholder")} style={{ width: 240, padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 7, fontFamily: 'inherit', fontSize: 12 }} /><Btn variant="secondary" small onClick={() => void refresh()}>{t("inventoryPage.refresh")}</Btn></div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{[t("inventoryPage.colProduct"), t("inventoryPage.colBatch"), t("inventoryPage.colExpiry"), t("inventoryPage.colSupplier"), t("inventoryPage.colAvailable"), t("inventoryPage.colCostPrice"), t("inventoryPage.colSellPrice"), t("inventoryPage.colTax"), t("inventoryPage.colStatus"), ""].map(label => <th key={label} style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--ink-muted)', fontSize: 10 }}>{label}</th>)}</tr></thead>
+          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>{[t("inventoryPage.colProduct"), ...(isMultiBranch ? [t("inventoryPage.colBranch" as TranslationKey)] : []), t("inventoryPage.colBatch"), t("inventoryPage.colExpiry"), t("inventoryPage.colSupplier"), t("inventoryPage.colAvailable"), t("inventoryPage.colCostPrice"), t("inventoryPage.colSellPrice"), t("inventoryPage.colTax"), t("inventoryPage.colStatus"), ""].map(label => <th key={label} style={{ textAlign: 'left', padding: '8px 10px', color: 'var(--ink-muted)', fontSize: 10 }}>{label}</th>)}</tr></thead>
           <tbody>
             {filtered.map(row => {
               const meta = statusMeta[row.stock_status]
               return <tr key={row.batch_id} style={{ borderBottom: '1px solid var(--bg-alt)' }}>
                 <td style={{ padding: '10px', fontWeight: 600 }}>{row.name}<div style={{ color: 'var(--ink-muted)', fontWeight: 400, fontSize: 10 }}>{row.category}</div></td>
+                {isMultiBranch && <td style={{ padding: '10px', color: 'var(--ink-muted)' }}>{branchNames?.[row.branch_id] ?? "—"}</td>}
                 <td style={{ padding: '10px', fontFamily: 'var(--font-mono)' }}>{row.batch_number}</td>
                 <td style={{ padding: '10px' }}>{row.expiry_date}</td>
                 <td style={{ padding: '10px' }}>{row.supplier_name}</td>

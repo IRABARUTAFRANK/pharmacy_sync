@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { fmtRWFExact, pct } from '../data'
-import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal } from '../components'
+import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal, LogoSpinner } from '../components'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
 import { loadOverview, loadOrgOverview, DATA_FALLBACK_KEYS, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
@@ -556,10 +556,10 @@ function PastelTile({ tile, palette, onClick }: { tile: Tile; palette: (typeof P
 
 // ─── States ──────────────────────────────────────────────────────────────────
 
-function Panel({ icon, title, msg }: { icon: string; title: string; msg: string }) {
+function Panel({ icon, title, msg }: { icon: ReactNode; title: string; msg: string }) {
   return (
     <div style={{ maxWidth: 620, margin: '56px auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: 32, textAlign: 'center' }}>
-      <div style={{ fontSize: 30, marginBottom: 12 }}>{icon}</div>
+      <div style={{ fontSize: 30, marginBottom: 12, display: 'flex', justifyContent: 'center' }}>{icon}</div>
       <h1 style={{ margin: 0, fontSize: 18, color: 'var(--ink)' }}>{title}</h1>
       <p style={{ color: 'var(--ink-muted)', lineHeight: 1.6, margin: '10px auto 0', maxWidth: 460, fontSize: 13 }}>{msg}</p>
     </div>
@@ -698,7 +698,7 @@ export default function OverviewPage({
     ? { borderRadius: 20, border: 'none', boxShadow: '0 6px 24px rgba(17,24,39,0.07)' }
     : undefined
 
-  if (loading && !data) return <Panel icon="◴" title={t('overviewPage.loadingTitle')} msg={t('overviewPage.loadingMsg', { branch: scopedBranchName })} />
+  if (loading && !data) return <Panel icon={<LogoSpinner size={52} />} title={t('overviewPage.loadingTitle')} msg={t('overviewPage.loadingMsg', { branch: scopedBranchName })} />
   if (error) return <Panel icon="⚠" title={t('overviewPage.errorTitle')} msg={error} />
   if (!data) return null
 

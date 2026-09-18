@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react"
-import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Btn, Card, CenterAlert, ChartTooltip, ExportModal, Modal, SectionHeader, StatusBadge, Table } from "../components"
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { Btn, Card, CenterAlert, ChartTooltip, ChartTypeSwitcher, ExportModal, Modal, SectionHeader, StatusBadge, Table } from "../components"
 import { fmtRWFExact } from "../data"
 import type { ReportSection } from "../lib/export"
 import { useTranslation } from "../lib/i18n"
@@ -9,12 +9,12 @@ import { resolveRange, toDateInputValue, type OverviewPeriod } from "../lib/over
 import { listBranchPatients } from "../lib/patients"
 import { loadReceivingReference, type ReceivingCategory, type ReceivingProduct } from "../lib/receiving"
 import {
-  loadBasketSize, loadBranchSnapshot, loadCategoryBreakdown, loadDeadStock, loadDiscountUsage, loadInsuranceClaimAging,
+  loadBasketSize, loadBranchSnapshot, loadCategoryBreakdown, loadDeadStock, loadDiscountUsage, loadForecastOutcomes, loadInsuranceClaimAging,
   loadInsuranceProviderComparison, loadInsuranceSummary, loadInventoryTurnover, loadPatientRetention, loadPatientSummary,
   loadRecallLog, loadSalesForecast, loadSalesForecastAccuracy, loadSalesForecastSeries, loadSalesHeatmap, loadSalesTrend, loadSellerPerformance, loadSellerProductivity,
   loadStockAdjustments, loadStockStatus, loadSupplierPerformance, loadTopProducts, saveSalesForecastSnapshot,
   type BasketSizePoint, type BranchSnapshot, type CategoryBreakdownRow, type ClaimAgingBucket, type DeadStockRow,
-  type DiscountUsageRow, type InsuranceSummaryRow, type InventoryTurnoverRow, type PatientRetentionRow, type PatientSummary,
+  type DiscountUsageRow, type ForecastOutcome, type InsuranceSummaryRow, type InventoryTurnoverRow, type PatientRetentionRow, type PatientSummary,
   type ProviderComparisonRow, type RecallLogRow, type SalesForecast, type SalesForecastAccuracyPoint, type SalesForecastPoint, type SalesHeatmapCell, type SalesTrendPoint,
   type SellerPerformanceRow, type SellerProductivityRow, type StockAdjustmentRow, type StockFilter, type StockStatusRow,
   type SupplierPerformanceRow, type TopProductRow, type TrendBucket,
@@ -23,6 +23,17 @@ import {
 // Same validated categorical palette as InsurancePage.tsx's donut chart --
 // see that file's comment for the ΔE/contrast numbers this order clears.
 const CATEGORICAL_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7", "#e34948", "#008300"]
+
+// Fixed training window for the Sales Forecast regression -- "history days"
+// used to be its own exposed input; the viewer now only ever picks how many
+// days AHEAD to project (forecastHorizon), so this is no longer configurable.
+// 90 days matches that old field's own starting default.
+const FORECAST_TRAINING_DAYS = 90
+
+// How often the Sales Forecast chart quietly re-fetches while a viewer has
+// it open, so the "live trading" segment (today's actual sales vs what was
+// predicted for today) updates as new sales land, with no reload needed.
+export const FORECAST_LIVE_REFRESH_MS = 60_000
 
 // ─── Customizable Reports ───────────────────────────────────────────────────
 // Each card fetches fresh data for whatever period the viewer picks in
@@ -205,7 +216,7 @@ const EMPTY_STATE_STYLE = { padding: 20, textAlign: "center" as const, color: "v
 // from the requested span rather than returning which one it chose -- this
 // infers it from the actual gap between the first two points so the x-axis
 // label style matches what was returned, without adding a second RPC field.
-function inferForecastGranularity(periods: string[]): "day" | "week" | "month" {
+export function inferForecastGranularity(periods: string[]): "day" | "week" | "month" {
   if (periods.length < 2) return "month"
   const gapDays = (new Date(periods[1]).getTime() - new Date(periods[0]).getTime()) / 86400000
   if (gapDays <= 2) return "day"
@@ -213,7 +224,7 @@ function inferForecastGranularity(periods: string[]): "day" | "week" | "month" {
   return "month"
 }
 
-function formatForecastPeriodLabel(iso: string, granularity: "day" | "week" | "month", lang: string): string {
+export function formatForecastPeriodLabel(iso: string, granularity: "day" | "week" | "month", lang: string): string {
   const d = new Date(iso)
   return granularity === "month"
     ? d.toLocaleDateString(lang, { month: "short", year: "2-digit" })
@@ -252,6 +263,11 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
   const [bucket, setBucket] = useState<TrendBucket>("day")
   const [trend, setTrend] = useState<SalesTrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(true)
+  // Which shape each chart renders as -- same underlying data, just
+  // visualized differently. Defaults match each chart's original look
+  // (trend was always a column chart, category breakdown was always a pie).
+  const [trendChartType, setTrendChartType] = useState<"line" | "column" | "bar" | "pie">("column")
+  const [categoryChartType, setCategoryChartType] = useState<"line" | "column" | "bar" | "pie">("pie")
 
   // Top-bar date-range dropdown pre-fills From/To below, same as
   // Transactions/History -- "Custom Range" leaves whatever's already picked
@@ -276,12 +292,22 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
   const [reference, setReference] = useState<{ products: ReceivingProduct[]; categories: ReceivingCategory[] } | null>(null)
   const [forecastProductId, setForecastProductId] = useState("")
   const [forecastCategoryId, setForecastCategoryId] = useState("")
+  // "Forecast days" is now the only day-count control -- how far ahead to
+  // project, and the chart re-analyzes on every change. The training window
+  // (how much past history to regress on) is no longer a separate exposed
+  // input -- fixed at FORECAST_TRAINING_DAYS below, same default the old
+  // "history" field used to start at.
   const [forecastHorizon, setForecastHorizon] = useState(30)
-  const [forecastHistory, setForecastHistory] = useState(90)
   const [forecast, setForecast] = useState<SalesForecast | null>(null)
   const [forecastSeries, setForecastSeries] = useState<SalesForecastPoint[]>([])
   const [forecastAccuracy, setForecastAccuracy] = useState<SalesForecastAccuracyPoint[]>([])
   const [forecastLoading, setForecastLoading] = useState(false)
+  // Durable track record -- every past forecast run for this branch (any
+  // scope/history/horizon) whose own predicted window has since fully
+  // elapsed. Independent of the live chart above -- fetched once per branch,
+  // not re-run on every forecastHorizon keystroke.
+  const [forecastOutcomes, setForecastOutcomes] = useState<ForecastOutcome[]>([])
+  const [forecastOutcomesLoading, setForecastOutcomesLoading] = useState(true)
 
   const [insurance, setInsurance] = useState<InsuranceSummaryRow[]>([])
   const [sellers, setSellers] = useState<SellerPerformanceRow[]>([])
@@ -370,11 +396,22 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchId])
 
-  async function runForecast() {
-    setForecastLoading(true)
+  useEffect(() => {
+    setForecastOutcomesLoading(true)
+    loadForecastOutcomes(20, branchId)
+      .then(setForecastOutcomes)
+      .catch(() => setForecastOutcomes([]))
+      .finally(() => setForecastOutcomesLoading(false))
+  }, [branchId])
+
+  // `silent` skips the loading spinner -- used by the background live-
+  // refresh below, so the chart quietly picks up new sales without
+  // flashing "Calculating..." over it every 60 seconds.
+  async function runForecast(silent = false) {
+    if (!silent) setForecastLoading(true)
     setError("")
     try {
-      const scope = { productId: forecastProductId || null, categoryId: forecastCategoryId || null, daysHistory: forecastHistory, horizonDays: forecastHorizon, branchId }
+      const scope = { productId: forecastProductId || null, categoryId: forecastCategoryId || null, daysHistory: FORECAST_TRAINING_DAYS, horizonDays: forecastHorizon, branchId }
       const [summary, series] = await Promise.all([loadSalesForecast(scope), loadSalesForecastSeries(scope)])
       setForecast(summary)
       setForecastSeries(series)
@@ -406,34 +443,69 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
         setForecastAccuracy([])
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("analyticsPage.errorForecast"))
+      if (!silent) setError(reason instanceof Error ? reason.message : t("analyticsPage.errorForecast"))
     } finally {
-      setForecastLoading(false)
+      if (!silent) setForecastLoading(false)
     }
   }
 
   // Runs on its own -- on first load, and again whenever the picked medicine/
-  // category or the history/horizon window changes -- so the chart is always
+  // category or the forecast-days window changes -- so the chart is always
   // showing the current selection without waiting on a button click. The
-  // 400ms debounce is only to stop every keystroke in the history/horizon
-  // number inputs from firing its own request; picking a product still feels
+  // 400ms debounce is only to stop every keystroke in the forecast-days
+  // number input from firing its own request; picking a product still feels
   // instant since a select's onChange only fires once per pick anyway.
   useEffect(() => {
     const handle = setTimeout(() => { void runForecast() }, 400)
     return () => clearTimeout(handle)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forecastProductId, forecastCategoryId, forecastHistory, forecastHorizon, branchId])
+  }, [forecastProductId, forecastCategoryId, forecastHorizon, branchId])
+
+  // Live trading: while this chart is on screen, quietly re-fetch every
+  // FORECAST_LIVE_REFRESH_MS so today's still-accumulating actual sales
+  // (and therefore the green/red "on trend vs off trend" segment below) stay
+  // current without the viewer ever needing to reload or click "Run
+  // forecast" again.
+  useEffect(() => {
+    const id = setInterval(() => { void runForecast(true) }, FORECAST_LIVE_REFRESH_MS)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forecastProductId, forecastCategoryId, forecastHorizon, branchId])
 
   const forecastGranularity = useMemo(() => inferForecastGranularity(forecastSeries.map(p => p.periodStart)), [forecastSeries])
+  // "Live trading" -- for every period that both already happened
+  // (actualRevenue) AND had a prediction made for it in advance
+  // (previouslyPredictedRevenue, from forecastAccuracy), this decides
+  // on-trend (actual met or beat the prediction -- green) vs off-trend
+  // (actual came in under -- red). tradingGreen/tradingRed are the SAME
+  // actualRevenue value, just split into two series so each can be drawn
+  // in its own color; at every color change, the earlier point's value is
+  // also written into the new color's series (the "bridge" below) so the
+  // two colored segments share a vertex instead of leaving a visual gap.
   const forecastChartData = useMemo(() => {
     const accuracyByPeriod = new Map(forecastAccuracy.map(a => [a.periodStart, a.predictedRevenue]))
-    return forecastSeries.map(p => ({
-      label: formatForecastPeriodLabel(p.periodStart, forecastGranularity, lang),
-      actualRevenue: p.actualRevenue,
-      forecastRevenue: p.forecastRevenue,
-      previouslyPredictedRevenue: accuracyByPeriod.get(p.periodStart) ?? undefined,
-      range: p.lowerBound != null && p.upperBound != null ? [p.lowerBound, p.upperBound] : undefined,
-    }))
+    const rows = forecastSeries.map(p => {
+      const previouslyPredictedRevenue = accuracyByPeriod.get(p.periodStart) ?? undefined
+      const onTrend = p.actualRevenue != null && previouslyPredictedRevenue != null
+        ? p.actualRevenue >= previouslyPredictedRevenue
+        : null
+      return {
+        label: formatForecastPeriodLabel(p.periodStart, forecastGranularity, lang),
+        actualRevenue: p.actualRevenue,
+        forecastRevenue: p.forecastRevenue,
+        previouslyPredictedRevenue,
+        range: p.lowerBound != null && p.upperBound != null ? [p.lowerBound, p.upperBound] : undefined,
+        onTrend,
+        tradingGreen: onTrend === true ? p.actualRevenue! : undefined,
+        tradingRed: onTrend === false ? p.actualRevenue! : undefined,
+      }
+    })
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].onTrend === null || rows[i - 1].onTrend === null || rows[i].onTrend === rows[i - 1].onTrend) continue
+      if (rows[i].onTrend) rows[i - 1].tradingRed = rows[i - 1].actualRevenue!
+      else rows[i - 1].tradingGreen = rows[i - 1].actualRevenue!
+    }
+    return rows
   }, [forecastSeries, forecastAccuracy, forecastGranularity, lang])
 
   const [pickerDef, setPickerDef] = useState<ReportDef | null>(null)
@@ -646,6 +718,11 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
     [categoryBreakdown],
   )
   const trendChartData = useMemo(() => trend.map(p => ({ name: new Date(p.periodStart).toLocaleDateString(undefined, { month: "short", day: "numeric" }), revenue: p.revenue })), [trend])
+  // Pie view has no time axis -- each period just becomes its own slice.
+  const trendPieData = useMemo(
+    () => trendChartData.map((p, i) => ({ name: p.name, value: p.revenue, color: CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length] })),
+    [trendChartData],
+  )
   const basketChartData = useMemo(() => basketSize.map(p => ({ name: new Date(p.periodStart).toLocaleDateString(undefined, { month: "short", day: "numeric" }), items: p.avgItemsPerSale })), [basketSize])
 
   const weekdayLabels = useMemo(() => {
@@ -761,20 +838,59 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
 
       {/* Sales trend */}
       <Card>
-        <SectionHeader title={t("analyticsPage.trendTitle")} subtitle={t("analyticsPage.trendSubtitle", { bucket: bucketLabel })} />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+          <SectionHeader title={t("analyticsPage.trendTitle")} subtitle={t("analyticsPage.trendSubtitle", { bucket: bucketLabel })} />
+          <ChartTypeSwitcher
+            value={trendChartType}
+            onChange={setTrendChartType}
+            options={[
+              { id: "line", label: t("analyticsPage.chartTypeLine") },
+              { id: "column", label: t("analyticsPage.chartTypeColumn") },
+              { id: "bar", label: t("analyticsPage.chartTypeBar") },
+              { id: "pie", label: t("analyticsPage.chartTypePie") },
+            ]}
+          />
+        </div>
         {trendLoading ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("analyticsPage.loading")}</div>
         ) : trendChartData.length === 0 ? (
           <div style={{ padding: 30, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("analyticsPage.noSalesRange")}</div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={trendChartData} margin={{ bottom: 8 }}>
-              <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
-              <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="revenue" name={t("analyticsPage.colRevenue")} fill="#2a78d6" radius={[5, 5, 0, 0]} />
-            </BarChart>
+            {trendChartType === "pie" ? (
+              <PieChart>
+                <Pie data={trendPieData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="var(--surface)" strokeWidth={2}>
+                  {trendPieData.map(d => <Cell key={d.name} fill={d.color} />)}
+                </Pie>
+                <Tooltip formatter={(v: any) => fmtRWFExact(Number(v))} contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }} itemStyle={{ color: "var(--ink)" }} labelStyle={{ color: "var(--ink-muted)" }} />
+                <Legend formatter={(value: string) => <span style={{ fontSize: 11, color: "var(--ink-mid)" }}>{value}</span>} />
+              </PieChart>
+            ) : trendChartType === "line" ? (
+              <LineChart data={trendChartData} margin={{ bottom: 8 }}>
+                <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Line type="monotone" dataKey="revenue" name={t("analyticsPage.colRevenue")} stroke="#2a78d6" strokeWidth={2.5} dot={{ r: 3 }} />
+              </LineChart>
+            ) : (
+              <BarChart data={trendChartData} layout={trendChartType === "bar" ? "vertical" : "horizontal"} margin={{ bottom: 8 }}>
+                <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+                {trendChartType === "bar" ? (
+                  <>
+                    <XAxis type="number" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} width={70} />
+                  </>
+                ) : (
+                  <>
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                  </>
+                )}
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="revenue" name={t("analyticsPage.colRevenue")} fill="#2a78d6" radius={trendChartType === "bar" ? [0, 5, 5, 0] : [5, 5, 0, 0]} />
+              </BarChart>
+            )}
           </ResponsiveContainer>
         )}
       </Card>
@@ -806,25 +922,68 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
         </Card>
 
         <Card style={{ flex: "1 1 280px", minWidth: 260 }}>
-          <SectionHeader title={t("analyticsPage.categoryTitle")} subtitle={t("analyticsPage.categorySubtitle")} />
-          {categoryChartData.length === 0 ? (
-            <div style={EMPTY_STATE_STYLE}>{t("analyticsPage.noSalesRange")}</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie data={categoryChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="var(--surface)" strokeWidth={2}>
-                  {categoryChartData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                </Pie>
-                <Tooltip
-                  formatter={(v: any) => fmtRWFExact(Number(v))}
-                  contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}
-                  itemStyle={{ color: "var(--ink)" }}
-                  labelStyle={{ color: "var(--ink-muted)" }}
-                />
-                <Legend formatter={(value: string) => <span style={{ fontSize: 11, color: "var(--ink-mid)" }}>{value}</span>} />
-              </PieChart>
-            </ResponsiveContainer>
-          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
+            <SectionHeader title={t("analyticsPage.categoryTitle")} subtitle={t("analyticsPage.categorySubtitle")} />
+          </div>
+          <ChartTypeSwitcher
+            value={categoryChartType}
+            onChange={setCategoryChartType}
+            options={[
+              { id: "line", label: t("analyticsPage.chartTypeLine") },
+              { id: "column", label: t("analyticsPage.chartTypeColumn") },
+              { id: "bar", label: t("analyticsPage.chartTypeBar") },
+              { id: "pie", label: t("analyticsPage.chartTypePie") },
+            ]}
+          />
+          <div style={{ marginTop: 10 }}>
+            {categoryChartData.length === 0 ? (
+              <div style={EMPTY_STATE_STYLE}>{t("analyticsPage.noSalesRange")}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                {categoryChartType === "pie" ? (
+                  <PieChart>
+                    <Pie data={categoryChartData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2} stroke="var(--surface)" strokeWidth={2}>
+                      {categoryChartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: any) => fmtRWFExact(Number(v))}
+                      contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8 }}
+                      itemStyle={{ color: "var(--ink)" }}
+                      labelStyle={{ color: "var(--ink-muted)" }}
+                    />
+                    <Legend formatter={(value: string) => <span style={{ fontSize: 11, color: "var(--ink-mid)" }}>{value}</span>} />
+                  </PieChart>
+                ) : categoryChartType === "line" ? (
+                  <LineChart data={categoryChartData} margin={{ bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Line type="monotone" dataKey="value" name={t("analyticsPage.colRevenue")} stroke="#2a78d6" strokeWidth={2.5} dot={{ r: 3 }} />
+                  </LineChart>
+                ) : (
+                  <BarChart data={categoryChartData} layout={categoryChartType === "bar" ? "vertical" : "horizontal"} margin={{ bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="var(--border)" />
+                    {categoryChartType === "bar" ? (
+                      <>
+                        <XAxis type="number" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                        <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} width={80} />
+                      </>
+                    ) : (
+                      <>
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                        <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} />
+                      </>
+                    )}
+                    <Tooltip content={<ChartTooltip />} />
+                    <Bar dataKey="value" name={t("analyticsPage.colRevenue")} radius={categoryChartType === "bar" ? [0, 5, 5, 0] : [5, 5, 0, 0]}>
+                      {categoryChartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    </Bar>
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            )}
+          </div>
         </Card>
       </div>
 
@@ -845,10 +1004,6 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
               <option value="">{t("analyticsPage.forecastAnyCategory")}</option>
               {reference?.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label style={FIELD_LABEL_STYLE}>{t("analyticsPage.forecastHistoryLabel")}</label>
-            <input type="number" min={7} max={730} value={forecastHistory} onChange={e => setForecastHistory(Number(e.target.value) || 90)} style={{ ...DATE_INPUT_STYLE, width: 90 }} />
           </div>
           <div>
             <label style={FIELD_LABEL_STYLE}>{t("analyticsPage.forecastHorizonLabel")}</label>
@@ -881,9 +1036,19 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
                     <Tooltip content={(props: any) => <ChartTooltip {...props} payload={props.payload?.filter((p: any) => p.value != null && p.dataKey !== "range")} />} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Area type="monotone" dataKey="range" name={t("analyticsPage.forecastBandLabel")} stroke="none" fill="url(#gForecastBand)" connectNulls legendType="none" />
-                    <Line type="monotone" dataKey="actualRevenue" name={t("analyticsPage.forecastActualLabel")} stroke="#16a34a" strokeWidth={2.5} dot={{ r: 3 }} />
+                    {/* Live trading: today's (and every other already-elapsed,
+                        already-predicted) actual sales, split green/on-trend
+                        vs red/off-trend -- see forecastChartData's own
+                        comment for how the two segments share a vertex at
+                        each color change. */}
+                    <Line type="monotone" dataKey="tradingGreen" name={t("analyticsPage.forecastOnTrendLabel")} stroke="#16a34a" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="tradingRed" name={t("analyticsPage.forecastOffTrendLabel")} stroke="#dc2626" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
+                    {/* Actual sales for periods with no prior prediction to
+                        compare against (outside the accuracy window) -- kept
+                        neutral rather than colored, since there's nothing to
+                        judge them against. */}
+                    <Line type="monotone" dataKey="actualRevenue" name={t("analyticsPage.forecastActualLabel")} stroke="var(--ink-faint)" strokeWidth={1.5} dot={false} connectNulls={false} legendType="none" />
                     <Line type="monotone" dataKey="forecastRevenue" name={t("analyticsPage.forecastDashedLabel")} stroke="#16a34a" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="previouslyPredictedRevenue" name={t("analyticsPage.forecastPredictedLabel")} stroke="#eb6834" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 3 }} connectNulls={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
                 <div style={{ fontSize: 11, color: "var(--ink-faint)", textAlign: "center", marginTop: 4 }}>{t("analyticsPage.forecastBandCaption")}</div>
@@ -905,6 +1070,43 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
               <StatTile label={t("analyticsPage.forecastProjectedQty", { days: forecastHorizon })} value={String(forecast.projectedQuantityNextPeriod)} accent="var(--primary)" />
               <StatTile label={t("analyticsPage.forecastProjectedRevenue", { days: forecastHorizon })} value={fmtRWFExact(forecast.projectedRevenueNextPeriod)} accent="var(--primary)" />
             </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Track record: every past forecast run for this branch whose own
+          predicted window has since elapsed -- what was predicted, what
+          actually happened, and a data-grounded reason for the gap. See
+          list_forecast_outcomes(). */}
+      <Card>
+        <SectionHeader title={t("organization.forecastOutcomesTitle" as TranslationKey)} subtitle={t("organization.forecastOutcomesSubtitle" as TranslationKey)} />
+        {forecastOutcomesLoading ? <p style={EMPTY_STATE_STYLE}>{t("analyticsPage.forecastCalculating")}</p> : forecastOutcomes.length === 0 ? (
+          <p style={EMPTY_STATE_STYLE}>{t("organization.forecastOutcomesEmpty" as TranslationKey)}</p>
+        ) : (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+            {forecastOutcomes.map(o => {
+              const pct = o.accuracyPct
+              const badge = pct == null ? null
+                : pct >= 85 && pct <= 115 ? { c: "#16a34a", bg: "#d1fae5" }
+                : pct < 60 || pct > 140 ? { c: "#dc2626", bg: "#fef2f2" }
+                : { c: "#d97706", bg: "#fef3c7" }
+              return (
+                <div key={o.snapshotId} style={{ padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{o.scope}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>{o.periodFrom} → {o.periodTo}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.forecastOutcomesPredicted" as TranslationKey)}: <strong style={{ color: "var(--ink)" }}>{fmtRWFExact(o.predictedRevenue)}</strong></span>
+                      <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.forecastOutcomesActual" as TranslationKey)}: <strong style={{ color: "var(--ink)" }}>{fmtRWFExact(o.actualRevenue)}</strong></span>
+                      {badge && pct != null && <StatusBadge label={`${pct}%`} color={badge.c} bg={badge.bg} />}
+                    </div>
+                  </div>
+                  {o.reason && <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 8 }}>{o.reason}</div>}
+                </div>
+              )
+            })}
           </div>
         )}
       </Card>

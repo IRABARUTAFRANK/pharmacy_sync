@@ -31,5 +31,8 @@
       "Bash(git add *)",
       "Bash(grep -oE '\"branchSettings\\\\.[A-Za-z0-9]+\"|t\\\\\\(`?branchSettings\\\\.[A-Za-z0-9]+`?' src/pages/BranchSettingsPage.tsx)"
     ]
+  },
+  "enabledPlugins": {
+    "playwright@claude-plugins-official": true
   }
 }

@@ -221,6 +221,38 @@ export async function loadSalesForecastAccuracy(opts: {
   }))
 }
 
+// One row per past forecast run whose OWN predicted horizon has fully
+// elapsed -- "here's what we predicted, here's what actually happened, and
+// here's why" -- see list_forecast_outcomes() in
+// 2026-09-17_forecast_outcomes.sql. Distinct from loadSalesForecastAccuracy()
+// above: that one re-derives a comparison point for the CURRENT chart's own
+// history window on every run; this one is the durable track record of every
+// snapshot saveSalesForecastSnapshot() has ever saved for the branch,
+// independent of whatever history/horizon the chart is showing right now.
+export interface ForecastOutcome {
+  snapshotId: string
+  scope: string
+  generatedAt: string
+  periodFrom: string
+  periodTo: string
+  predictedRevenue: number
+  actualRevenue: number
+  accuracyPct: number | null
+  // null only when predictedRevenue was 0 (no meaningful ratio to compute).
+  reason: string | null
+}
+
+export async function loadForecastOutcomes(limit = 20, branchId?: string): Promise<ForecastOutcome[]> {
+  const { data, error } = await supabase.rpc("list_forecast_outcomes", { p_limit: limit, ...branchArg(branchId) })
+  if (error) raise(error, "Could not load past forecast outcomes.")
+  return (data ?? []).map((row: any) => ({
+    snapshotId: row.snapshot_id, scope: row.scope, generatedAt: row.generated_at,
+    periodFrom: row.period_from, periodTo: row.period_to,
+    predictedRevenue: Number(row.predicted_revenue), actualRevenue: Number(row.actual_revenue),
+    accuracyPct: row.accuracy_pct == null ? null : Number(row.accuracy_pct), reason: row.reason ?? null,
+  }))
+}
+
 export interface InsuranceSummaryRow {
   providerName: string
   claimCount: number

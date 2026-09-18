@@ -18,6 +18,7 @@ export type AlertSeverity = "critical" | "warning" | "info"
 
 export interface LiveAlert {
   id: string
+  branchId: string
   sourceType: string
   type: AlertSeverity
   titleKey: TranslationKey
@@ -25,6 +26,17 @@ export interface LiveAlert {
   createdAt: string
   isRead: boolean
 }
+
+// Same shape as lib/inventory.ts's InventoryScope: undefined -> the caller's
+// own branch (RLS default), a single uuid -> that one branch (a "View
+// Branch" drill-in), an array -> every branch in it combined ("All
+// branches" org view -- pass every branch id in the org, not [], since an
+// empty .in() matches nothing). notifications' RLS already lets an active
+// org member read/update any branch in their organization (see
+// 2026-09-14_reorder_notifications_org_visibility.sql) -- this just narrows
+// the client-side query to exactly the intended branch(es), the same
+// widen-RLS-then-narrow-client-side pattern loadInventoryDataset() uses.
+export type AlertScope = string | string[] | undefined
 
 export const ALERT_SOURCE_TITLE_KEYS: Record<string, TranslationKey> = {
   batch_recall: "alerts.source.batchRecall",
@@ -66,12 +78,15 @@ interface NotificationRow {
 // (out-of-stock reminders, restock recommendations, stock adjustments,
 // ...), so an unbounded select eventually hits PostgREST's row cap and
 // silently drops the oldest ones instead of erroring.
-export async function loadLiveAlerts(): Promise<LiveAlert[]> {
-  const data = await fetchAllRows<NotificationRow>((from, to) =>
-    supabase.from("notifications").select("*").order("created_at", { ascending: false }).order("id").range(from, to),
-  )
+export async function loadLiveAlerts(scope?: AlertScope): Promise<LiveAlert[]> {
+  const data = await fetchAllRows<NotificationRow>((from, to) => {
+    let query = supabase.from("notifications").select("*")
+    query = Array.isArray(scope) ? query.in("branch_id", scope) : scope ? query.eq("branch_id", scope) : query
+    return query.order("created_at", { ascending: false }).order("id").range(from, to)
+  })
   return (data ?? []).map(row => ({
     id: row.id,
+    branchId: row.branch_id,
     sourceType: row.source_type,
     type: SEVERITY[row.source_type] ?? "info",
     titleKey: ALERT_SOURCE_TITLE_KEYS[row.source_type] ?? "alerts.source.notification",
