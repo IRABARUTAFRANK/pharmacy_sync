@@ -29,7 +29,20 @@
       "Bash(ping -n 1 github.com)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8443)",
       "Bash(git add *)",
-      "Bash(grep -oE '\"branchSettings\\\\.[A-Za-z0-9]+\"|t\\\\\\(`?branchSettings\\\\.[A-Za-z0-9]+`?' src/pages/BranchSettingsPage.tsx)"
+      "Bash(grep -oE '\"branchSettings\\\\.[A-Za-z0-9]+\"|t\\\\\\(`?branchSettings\\\\.[A-Za-z0-9]+`?' src/pages/BranchSettingsPage.tsx)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "WebFetch(domain:mans.io)",
+      "WebFetch(domain:www.manualslib.com)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" http://localhost:8443/)",
+      "Bash(powershell -NoProfile -Command 'Get-Process | Where-Object { $_.ProcessName -match '\\\\''node'\\\\'' } | Select-Object Id, ProcessName')",
+      "Bash(nohup npm run dev -- --port 8443 > /tmp/main-dev.log 2>&1 & *)",
+      "Bash(npx supabase *)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }

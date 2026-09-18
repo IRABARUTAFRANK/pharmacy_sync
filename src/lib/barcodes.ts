@@ -147,25 +147,26 @@ export async function loadDeliveryBarcodes(deliveryId: string): Promise<Delivery
   // Paginated, not a plain .select() -- a single delivery of a few hundred
   // cartons easily produces several thousand barcode rows (one per box plus
   // one per pack inside it), which silently truncates against PostgREST's
-  // row cap on an unbounded select. See fetchAllRows() for why this can't
-  // just be a bigger .limit() instead.
-  const [barcodes, variantsResult, productsResult] = await Promise.all([
-    fetchAllRows((from, to) =>
+  // row cap on an unbounded select. product_variants/products are paged too --
+  // not branch-scoped, so a plain select silently truncates past 1000 rows
+  // once a real price-list import lands, and a receipt for a product past the
+  // cutoff would print "Unknown product". See fetchAllRows() for why this
+  // can't just be a bigger .limit() instead.
+  const [barcodes, variants, products] = await Promise.all([
+    fetchAllRows<any>((from, to) =>
       supabase.from("barcodes")
         .select("id, code, barcode_type, pieces_per_pack, child_count, stock_batch_id")
         .in("stock_batch_id", batchIds).order("code").range(from, to),
     ),
-    supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
-    supabase.from("products").select("id, name"),
+    fetchAllRows<any>((from, to) => supabase.from("product_variants").select("id, product_id, dosage, form, unit").order("id").range(from, to)),
+    fetchAllRows<any>((from, to) => supabase.from("products").select("id, name").order("id").range(from, to)),
   ])
-  if (variantsResult.error) throw variantsResult.error
-  if (productsResult.error) throw productsResult.error
 
   const batchById = new Map((batches ?? []).map(batch => [batch.id, batch]))
-  const variantById = new Map((variantsResult.data ?? []).map(variant => [variant.id, variant]))
-  const productById = new Map((productsResult.data ?? []).map(product => [product.id, product]))
+  const variantById = new Map(variants.map(variant => [variant.id, variant]))
+  const productById = new Map(products.map(product => [product.id, product]))
 
-  return barcodes.map(barcode => {
+  return barcodes.map((barcode: any) => {
     const batch = batchById.get(barcode.stock_batch_id)
     const variant = batch ? variantById.get(batch.product_variant_id) : undefined
     const product = variant ? productById.get(variant.product_id) : undefined

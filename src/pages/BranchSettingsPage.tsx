@@ -236,7 +236,20 @@ function SettingRow({ label, description, dbRef, warning, last, children }: {
   )
 }
 
-type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "storage" | "alerts"
+function ComingSoonPanel({ label }: { label: string }) {
+  const { t } = useTranslation()
+  return (
+    <Card>
+      <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--ink-muted)" }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>🚧</div>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{label}</div>
+        <div style={{ fontSize: 12, marginTop: 4 }}>{t("branchSettings.comingSoon")}</div>
+      </div>
+    </Card>
+  )
+}
+
+export type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "storage" | "alerts" | "compliance" | "printing"
 
 const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }[] = [
   { id: "profile", icon: "🏥", labelKey: "branchSettings.tabProfile" },
@@ -247,6 +260,8 @@ const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }
   { id: "categories", icon: "📁", labelKey: "branchSettings.tabCategories" },
   { id: "storage", icon: "🗄️", labelKey: "branchSettings.tabStorage" },
   { id: "alerts", icon: "🔔", labelKey: "branchSettings.tabAlerts" },
+  { id: "compliance", icon: "📋", labelKey: "branchSettings.tabCompliance" },
+  { id: "printing", icon: "🖨️", labelKey: "branchSettings.tabPrinting" },
 ]
 
 const STATUS_COLORS: Record<string, { c: string; bg: string }> = {
@@ -487,12 +502,14 @@ function CategoryModal({ initial, onClose, onSaved }: {
 // that target branch (App.tsx elevates it to "owner" when viewingBranchId
 // differs from the caller's own branch, since effective_branch_id() only
 // ever allows that for an org_owner/org_manager, who has full authority
-// there) -- this page never needs to know the difference itself.
-export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { onLogoSaved?: (url: string | null) => void; role: Role; branchId?: string }) {
+// there) -- this page never needs to know the difference itself. `initialTab`
+// lets a deep link (a feature-discovery nudge, the Getting Started checklist)
+// land directly on a specific tab instead of always opening on Profile.
+export default function BranchSettingsPage({ onLogoSaved, role, branchId, initialTab }: { onLogoSaved?: (url: string | null) => void; role: Role; branchId?: string; initialTab?: SettingsTab }) {
   const { t } = useTranslation()
   const isOwner = role === "owner"
   const visibleTabs = isOwner ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id !== "finance")
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "profile")
   const [organizationId, setOrganizationId] = useState<string | null>(null)
   // A plain branch manager at a branch an organization set up: everything
   // except address/phone/location is owned by whoever configured the
@@ -1167,6 +1184,19 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
                   </div>
                 </SettingRow>
                 <SettingRow
+                  label={t("branchSettings.triggerExpiringSoonLabel")} description={t("branchSettings.triggerExpiringSoonHint")}
+                  dbRef="branches.expiry_alert_threshold_days"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                    <input
+                      type="number" min={1} max={365} value={expiryAlertThresholdDays}
+                      onChange={e => setExpiryAlertThresholdDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                      style={{ ...inputStyle, width: 70 }}
+                    />
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.daysUnit")}</span>
+                  </div>
+                </SettingRow>
+                <SettingRow
                   label={t("branchSettings.triggerStockAdjustmentLabel")} description={t("branchSettings.triggerStockAdjustmentHint")}
                   dbRef="notifications.source_type = 'stock_adjustment'"
                 >
@@ -1310,6 +1340,10 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
           )}
 
           {activeTab === "storage" && <StorageLocationsManager />}
+
+          {(activeTab === "compliance" || activeTab === "printing") && (
+            <ComingSoonPanel label={t(SETTINGS_TABS.find(tab => tab.id === activeTab)!.labelKey)} />
+          )}
 
           {activeTab === "inventory" && (
             <Card>

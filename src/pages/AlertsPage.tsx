@@ -16,6 +16,7 @@ const sourceColors: Record<string, { c: string; bg: string }> = {
   product_request_approved:  { c: '#16a34a', bg: '#d1fae5' },
   product_request_rejected:  { c: '#d97706', bg: '#fef3c7' },
   out_of_stock:              { c: '#dc2626', bg: '#fef2f2' },
+  low_stock:                 { c: '#d97706', bg: '#fef3c7' },
 }
 
 // NOTE: loadLiveAlerts() reads public.notifications directly under RLS
@@ -43,16 +44,12 @@ export default function AlertsPage({ branchId: _branchId, onSelectAlert }: { bra
     setLoading(true)
     setError(null)
     try {
-      const rows = await loadLiveAlerts()
-      setAlerts(rows)
-      // Opening this page IS reading its notifications -- no separate click
-      // required. Best-effort: a failed mark-read here just leaves the row
-      // unread until the next visit, same as any other transient failure.
-      const unreadIds = rows.filter(n => !n.isRead).map(n => n.id)
-      if (unreadIds.length > 0) {
-        void markAllAlertsRead(unreadIds).catch(() => { /* retried on next visit */ })
-        setAlerts(rows.map(n => ({ ...n, isRead: true })))
-      }
+      // Loading/opening this page no longer marks anything read on its own --
+      // a pharmacist who opens this list to see what's outstanding, acts on
+      // some of it, and leaves the rest for later needs "unread" to still
+      // mean that afterward. Read status only ever changes from the explicit
+      // per-row "Mark read" button or "Mark all read" below.
+      setAlerts(await loadLiveAlerts())
     } catch (reason) {
       setError(errorMessage(reason, t('alertsPage.loadError')))
     } finally {

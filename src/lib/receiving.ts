@@ -1,8 +1,9 @@
-import { supabase, branchArg } from "./supabase"
+import { fetchAll, supabase, branchArg } from "./supabase"
 
 // Reference/lookup data for the receiving wizard. Everything here is loaded once
 // when the page mounts and filtered client-side: branch catalogues are small and
-// re-querying per keystroke would be wasteful.
+// re-querying per keystroke would be wasteful. products/product_variants are the
+// exception -- see fetchAll() in ./supabase for why those two are paged.
 
 export type ProductType = "medicine" | "supply" | "other"
 
@@ -41,26 +42,31 @@ export interface ReceivingReference {
 }
 
 // branchId is the org_owner/org_manager "viewing another branch" case (see
-// StockReceivingPage's own header note) -- products/variants/tax rates are
-// global and unaffected either way, but plain RLS on product_categories/
-// suppliers only ever resolves to the CALLER's own branch, no matter which
-// branch is actually being viewed. list_branch_categories/list_branch_
-// suppliers are the same SECURITY DEFINER pattern used everywhere else in
-// this app for that (effective_branch_id(p_branch_id), which itself
-// enforces org membership) -- a raw table select has no way to honor an
-// explicit "act as this branch" override, only RLS's own fixed notion of
-// "your branch".
+// StockReceivingPage's own header note) -- tax rates are global and
+// unaffected either way, but plain RLS on product_categories/suppliers only
+// ever resolves to the CALLER's own branch, no matter which branch is
+// actually being viewed. list_branch_categories/list_branch_suppliers are
+// the same SECURITY DEFINER pattern used everywhere else in this app for
+// that (effective_branch_id(p_branch_id), which itself enforces org
+// membership) -- a raw table select has no way to honor an explicit "act as
+// this branch" override, only RLS's own fixed notion of "your branch".
+//
+// products/product_variants go through fetchAll() instead, a separate
+// concern: the shared catalogue now runs past PostgREST's 1000-row response
+// cap, so a plain .select() here would silently drop everything after the
+// 1000th row -- fetchAll() pages through with .range() until a short page
+// signals the end (see its own comment in ./supabase).
 export async function loadReceivingReference(branchId?: string): Promise<ReceivingReference> {
-  const results = await Promise.all([
-    supabase.from("products").select("id, name, generic_name, product_type, tax_rate_id").order("name"),
-    supabase.from("product_variants").select("id, product_id, dosage, form, unit"),
+  const [products, variants, ...rest] = await Promise.all([
+    fetchAll<any>("products", "id, name, generic_name, product_type, tax_rate_id", "name"),
+    fetchAll<any>("product_variants", "id, product_id, dosage, form, unit", "id"),
     supabase.rpc("list_branch_categories", branchArg(branchId)),
     supabase.rpc("list_branch_suppliers", branchArg(branchId)),
     supabase.from("tax_rates").select("id, name, rate_percentage"),
   ])
-  const failed = results.find(result => result.error)
+  const failed = rest.find((result: any) => result.error)
   if (failed?.error) throw failed.error
-  const [products, variants, categories, suppliers, taxRates] = results.map(result => result.data ?? []) as any[][]
+  const [categories, suppliers, taxRates] = rest.map((result: any) => result.data ?? []) as any[][]
   const taxById = new Map(taxRates.map(row => [row.id, row]))
   return {
     products: products.map(row => {

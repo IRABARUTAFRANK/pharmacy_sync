@@ -14,9 +14,10 @@ import {
 } from "../lib/payments"
 import { listTaxRates, type TaxRate } from "../lib/products"
 import { useScanner } from "../lib/scanner"
+import { useSessionDraft } from "../lib/sessionDraft"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, listSaleHistory, loadCoverageOverrides, loadInsuranceProviders,
-  loadPosDashboardSnapshot, scanBarcode, SaleFlowError, BARCODE_STATUS_WORD_KEY,
+  loadPosDashboardSnapshot, scanBarcode, setSaleReceiptNote, SaleFlowError, BARCODE_STATUS_WORD_KEY,
   type InsuranceProvider, type PosDashboardSnapshot, type ReceiptData, type SaleHistoryRow, type ScannedBarcode, type SellMode,
 } from "../lib/sales"
 import { buildVerificationQrPayload, mapTaxRateToVsdcCode } from "../lib/vsdc"
@@ -157,6 +158,21 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
 
   const [printSize, setPrintSize] = useState<ReceiptPrintSize>(loadStoredPrintSize)
   const sizeConfig = RECEIPT_SIZE_CONFIG[printSize]
+
+  // Picking a size now prints immediately -- no separate Print click needed
+  // afterward. Skips the very first render (the size restored from
+  // localStorage when this view first opens) so just landing on a receipt
+  // never fires a surprise print; only an actual click on a size button
+  // does, here or via the manual Print button below (unchanged).
+  const isFirstPrintSizeRender = useRef(true)
+  useEffect(() => {
+    if (isFirstPrintSizeRender.current) {
+      isFirstPrintSizeRender.current = false
+      return
+    }
+    window.print()
+  }, [printSize])
+
   const updatePrintSize = (size: ReceiptPrintSize) => {
     setPrintSize(size)
     try { localStorage.setItem(RECEIPT_PRINT_SIZE_KEY, size) } catch { /* ignore -- picker still works for this session */ }
@@ -319,10 +335,22 @@ export function ReceiptView({ data, onClose, closeLabel }: { data: ReceiptData; 
           {data.insuranceCoveredTotal > 0 && (
             <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}><span>{t("salesPage.receiptInsurancePaid")}</span><span>-{fmtRWFExact(data.insuranceCoveredTotal)}</span></div>
           )}
+          {data.discountAmount > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", color: "#b45309" }}><span>{t("salesPage.receiptDiscount")}</span><span>-{fmtRWFExact(data.discountAmount)}</span></div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 14, borderTop: "1px solid var(--border)", paddingTop: 6, marginTop: 3 }}>
             <span>{t("salesPage.receiptGrandTotal")}</span><span>{fmtRWFExact(data.patientOwedTotal)}</span>
           </div>
         </div>
+
+        {/* Pharmacist-added note, purely additive -- absent entirely when
+            there isn't one, changes nothing else on the receipt. */}
+        {data.receiptNote && (
+          <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 8, marginTop: 10, fontSize: 11, color: "var(--ink-mid)" }}>
+            <div style={{ fontWeight: 700, fontSize: 9, letterSpacing: "0.08em", color: "var(--ink-muted)", marginBottom: 3 }}>{t("salesPage.receiptNoteLabel")}</div>
+            <div style={{ whiteSpace: "pre-wrap" }}>{data.receiptNote}</div>
+          </div>
+        )}
 
         {/* RRA EBM/VSDC compliance block */}
         <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 10, marginTop: 14, textAlign: "center" }}>
@@ -372,16 +400,18 @@ interface PatientDraft {
   gender: PatientGender | ""
   age: string
   identifier: string
+  insuranceNumber: string
 }
 
-const BLANK_PATIENT: PatientDraft = { fullName: "", gender: "", age: "", identifier: "" }
+const BLANK_PATIENT: PatientDraft = { fullName: "", gender: "", age: "", identifier: "", insuranceNumber: "" }
 
-function PatientStep({ draft, onChange, onClear, resolvedId, branchId }: {
+function PatientStep({ draft, onChange, onClear, resolvedId, branchId, insuranceRequired }: {
   draft: PatientDraft
   onChange: (next: PatientDraft) => void
   onClear: () => void
   resolvedId: string | null
   branchId?: string
+  insuranceRequired: boolean
 }) {
   const { t } = useTranslation()
   // Explicit choice instead of an implicit "type something to reveal the
@@ -389,6 +419,14 @@ function PatientStep({ draft, onChange, onClear, resolvedId, branchId }: {
   // gender/age fields immediately, not after guessing they need to type in
   // the search box first.
   const [mode, setMode] = useState<"walkin" | "record">(draft.identifier || draft.fullName ? "record" : "walkin")
+
+  // An insurance sale can't go out with no patient behind it (unbillable,
+  // unauditable) -- complete_sale() enforces this server-side too, this just
+  // saves the cashier a rejected checkout by switching modes for them and
+  // taking "Walk-in" off the table for as long as insurance stays selected.
+  useEffect(() => {
+    if (insuranceRequired && mode === "walkin") setMode("record")
+  }, [insuranceRequired, mode])
 
   // The branch's patients, loaded once when this step is first opened, so
   // typing filters an in-memory list instead of firing a request per
@@ -436,6 +474,7 @@ function PatientStep({ draft, onChange, onClear, resolvedId, branchId }: {
       // Prefer the phone as the working identifier, but fall back to the TIN
       // for a patient who was only ever recorded under one.
       identifier: p.phone || p.tin || "",
+      insuranceNumber: p.insuranceNumber ?? "",
     })
     setQuery(p.fullName)
     setPicked(true)
@@ -456,11 +495,14 @@ function PatientStep({ draft, onChange, onClear, resolvedId, branchId }: {
   })
 
   return <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
-    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
-      {t("salesPage.patientSectionTitle")}
+    <div style={{ fontSize: 11, fontWeight: 700, color: insuranceRequired ? "#b45309" : "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+      {t(insuranceRequired ? "salesPage.patientSectionTitleRequired" : "salesPage.patientSectionTitle")}
     </div>
     <div style={{ display: "flex", gap: 8, marginBottom: mode === "record" ? 10 : 0 }}>
-      <button onClick={chooseWalkin} style={modeBtn(mode === "walkin")}>{t("salesPage.patientWalkinOption")}</button>
+      <button onClick={chooseWalkin} disabled={insuranceRequired} title={insuranceRequired ? t("salesPage.patientWalkinDisabledHint") : undefined}
+        style={{ ...modeBtn(mode === "walkin"), ...(insuranceRequired ? { opacity: 0.5, cursor: "not-allowed" } : {}) }}>
+        {t("salesPage.patientWalkinOption")}
+      </button>
       <button onClick={() => setMode("record")} style={modeBtn(mode === "record")}>{t("salesPage.patientRecordOption")}</button>
     </div>
     {mode === "record" && (
@@ -524,6 +566,14 @@ function PatientStep({ draft, onChange, onClear, resolvedId, branchId }: {
           placeholder={t("salesPage.patientIdentifier")}
           style={{ ...inputStyle, marginTop: 8 }}
         />
+        {/* Optional -- a cash walk-in has none. Never wiped by a visit that
+            leaves it blank (see upsert_patient()'s coalesce). */}
+        <input
+          value={draft.insuranceNumber}
+          onChange={e => onChange({ ...draft, insuranceNumber: e.target.value })}
+          placeholder={t("salesPage.patientInsuranceNumber")}
+          style={{ ...inputStyle, marginTop: 8 }}
+        />
         <p style={{ margin: "6px 0 0", fontSize: 10.5, color: "var(--ink-faint)", lineHeight: 1.5 }}>
           {t("salesPage.patientRequiredHint")}
         </p>
@@ -569,9 +619,59 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   const { t } = useTranslation()
   const [taxRates, setTaxRates] = useState<TaxRate[]>([])
   const [providers, setProviders] = useState<InsuranceProvider[]>([])
-  const [providerId, setProviderId] = useState<string>("") // "" = self-pay
+  // providerId through patientDraft below all survive navigating to another
+  // page and back (Analytics, Alerts, anywhere) via useSessionDraft -- see
+  // lib/sessionDraft.ts. A cart mid-sale is exactly the kind of in-progress
+  // work StockReceivingPage's delivery draft protects; a cashier glancing at
+  // Analytics mid-sale shouldn't come back to an empty cart. Deliberately
+  // NOT extended to scanInput/pending/error/notice/receipt below: those are
+  // either transient UI state that shouldn't resurrect stale (a leftover
+  // scan-box value caused a real bug once already) or in-flight flags that
+  // must never restore as `true`.
+  const [providerId, setProviderId] = useSessionDraft<string>("sales_providerId", "") // "" = self-pay
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map())
-  const [cart, setCart] = useState<CartItem[]>([])
+  // What the PATIENT pays out of pocket, as a percentage the pharmacist types
+  // in per sale -- real coverage depends on the patient's own plan, not the
+  // product, so this overrides the per-product/provider default below for
+  // every line at once, once accepted. Mirrors the bargain price pattern
+  // (typed draft -> preview -> explicit accept) rather than computing live on
+  // every keystroke, since this is just as consequential as a bargained
+  // price: it decides how much insurance is billed versus the patient.
+  const [patientPaysInput, setPatientPaysInput] = useSessionDraft("sales_patientPaysInput", "")
+  const [appliedPatientCoveragePercentage, setAppliedPatientCoveragePercentage] = useSessionDraft<number | null>("sales_appliedPatientCoveragePercentage", null)
+  const [cart, setCart] = useSessionDraft<CartItem[]>("sales_cart", [])
+  // Codes "claimed" by an in-flight or already-added cart line, checked
+  // synchronously -- a plain ref, not derived from `cart` state. The actual
+  // bug this fixes: handleScan() (the visible scan box) and the effect below
+  // that watches the global scanner listener can both be triggered for the
+  // same physical scan a few milliseconds apart. Each one's own closure over
+  // `cart` reflects whatever render created it; if both closures were
+  // created before either had committed its update, both see "not a
+  // duplicate" and both add it -- React's functional setCart(current => ...)
+  // guarantees the FINAL state is correct, but a plain `cart.some(...)`
+  // check taken beforehand can still be looking at a stale snapshot when it
+  // runs. A ref has no such staleness: it's mutated the instant a scan is
+  // accepted, before the async barcode lookup even starts, so a second
+  // near-simultaneous attempt for the same code sees the claim immediately,
+  // regardless of which path it came in through or whether either has
+  // finished re-rendering yet. Seeded from `cart` (not just new Set()) so a
+  // session-restored cart (see above) starts with its codes already
+  // claimed -- otherwise this ref would come back empty on remount while
+  // `cart` came back with items, and re-scanning something already in the
+  // restored cart would add it a second time instead of just flashing it.
+  const claimedCodesRef = useRef<Set<string>>(new Set(cart.map(item => item.code.toUpperCase())))
+  // Briefly highlights an already-in-cart line when its code gets scanned
+  // again, instead of an error banner -- quiet feedback ("that one's already
+  // here") rather than an alert. Cleared automatically after the flash.
+  const [flashedBarcodeId, setFlashedBarcodeId] = useState<string | null>(null)
+  // Walk-in-only "bargain" price: the customer's negotiated final total for
+  // the whole sale (e.g. "give me this for 500"), not a percentage/amount
+  // off. bargainInput is the live typed draft (still being weighed);
+  // appliedBargainPrice is locked in once the cashier accepts it, and is
+  // what actually gets charged. Cleared whenever an insurance provider is
+  // picked (see the provider <select> below) since this never applies there.
+  const [bargainInput, setBargainInput] = useSessionDraft("sales_bargainInput", "")
+  const [appliedBargainPrice, setAppliedBargainPrice] = useSessionDraft<number | null>("sales_appliedBargainPrice", null)
   const [pending, setPending] = useState<PendingScan | null>(null)
   const [scanInput, setScanInput] = useState("")
   const [scanning, setScanning] = useState(false)
@@ -586,32 +686,28 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   // regardless of what's picked here -- this only decides whether a physical
   // copy gets printed.
   const [pendingReceipt, setPendingReceipt] = useState<ReceiptData | null>(null)
-  const [patientDraft, setPatientDraft] = useState<PatientDraft>(BLANK_PATIENT)
+  // Session-draft-backed like bargainInput/appliedBargainPrice above --
+  // patient recording is mandatory per sale now, so losing a half-typed
+  // patient to an accidental reload/navigation would mean redoing it.
+  const [patientDraft, setPatientDraft] = useSessionDraft<PatientDraft>("sales_patientDraft", BLANK_PATIENT)
   const [posMethods, setPosMethods] = useState({ cash: true, mtnMomo: true, airtelMoney: true, card: false })
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
   const [gatewayPhone, setGatewayPhone] = useState("")
   const [gatewayBusy, setGatewayBusy] = useState(false)
   const [gatewayPayment, setGatewayPayment] = useState<GatewayPaymentState | null>(null)
   const [gatewayQr, setGatewayQr] = useState<string | null>(null)
+  // The sale and its receipt row are already saved server-side by
+  // complete_sale() the instant it returns -- setting `receipt` below just
+  // navigates straight to viewing/printing it; nothing about whether it
+  // prints affects whether it was recorded.
+  const [receiptNoteDraft, setReceiptNoteDraft] = useState("")
+  const [savingReceiptNote, setSavingReceiptNote] = useState(false)
   const [snapshot, setSnapshot] = useState<PosDashboardSnapshot | null>(null)
   const [recentSales, setRecentSales] = useState<SaleHistoryRow[]>([])
   const scanRef = useRef<HTMLInputElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const checkoutSectionRef = useRef<HTMLDivElement>(null)
   const scanner = useScanner()
-  // Synchronous guards against the exact same barcode landing in the cart
-  // twice from one physical scan -- a ref, not the `scanning` state, since
-  // state updates are batched: two near-simultaneous triggers for the same
-  // code (a scanner that fires its "Enter" terminator twice per pull, or
-  // the manual scan box and the global scanner listener both catching one
-  // physical scan) could otherwise both read `scanning === false` and
-  // `cart` as not-yet-containing the code before either one's state update
-  // actually lands, adding the same item twice. scanLockRef flips
-  // synchronously the instant a lookup starts; inFlightCodesRef tracks
-  // which codes are mid-lookup (not yet in `cart`), so the duplicate check
-  // covers scans-in-progress too, not just what's already committed.
-  const scanLockRef = useRef(false)
-  const inFlightCodesRef = useRef<Set<string>>(new Set())
 
   // A scan should always bring the cashier back to the checkout panel (scan
   // box, pending-confirmation card, cart) even if they'd scrolled down to the
@@ -679,7 +775,17 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
     }
   }
 
-  useEffect(() => { if (!receipt && !pending) scanRef.current?.focus() }, [receipt, cart.length, pending])
+  // Also re-runs on `scanning` flipping back to false (a completed lookup,
+  // success OR failure) -- not just on cart.length/pending/receipt changing.
+  // While scanBarcode() is in flight the scan input is `disabled` (see its
+  // JSX below), and a disabled input is force-blurred by the browser; if the
+  // lookup then fails (e.g. "already sold"), cart.length/pending never
+  // change, so without `scanning` here nothing ever calls .focus() again.
+  // The box silently loses focus after the very first error, and until
+  // something else refocuses it (a click, a re-render from an unrelated
+  // change), a scanner's next keystrokes land nowhere -- exactly the "first
+  // scan errors, second scan does nothing at all" report this fixes.
+  useEffect(() => { if (!receipt && !pending && !scanning) scanRef.current?.focus() }, [receipt, cart.length, pending, scanning])
   useEffect(() => { if (pending && pending.mode !== "whole") amountRef.current?.focus() }, [pending?.mode])
 
   useEffect(() => {
@@ -689,64 +795,84 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
 
   const selectedProvider = providers.find(p => p.id === providerId) ?? null
 
-  // Shared by the manual scan box and the global physical-scanner listener
-  // below -- see scanLockRef's own comment above for why the entry guard
-  // and duplicate check both need to look past the `cart`/`scanning` state
-  // to a synchronous ref. clearInput is only true for the manual box (a
-  // global scan never had anything typed into it to clear).
-  async function performScan(code: string, clearInput: boolean) {
-    if (!code || scanLockRef.current || pending) return
+  // Quiet feedback for re-scanning something already in the cart: flash the
+  // existing line instead of an error banner. If the first scan is still
+  // mid-flight (claimed but not landed in `cart` yet), there's nothing to
+  // flash yet -- that's fine, it just quietly does nothing in that instant.
+  function flashExistingLine(code: string) {
+    const upperCode = code.toUpperCase()
+    const existing = cart.find(item => item.code.toUpperCase() === upperCode)
+    if (!existing) return
+    setFlashedBarcodeId(existing.barcodeId)
+    setTimeout(() => setFlashedBarcodeId(current => (current === existing.barcodeId ? null : current)), 1200)
+  }
+
+  async function handleScan() {
+    const code = scanInput.trim()
+    if (!code || scanning || pending) return
     scrollToCheckout()
-    const upper = code.toUpperCase()
-    if (cart.some(item => item.code.toUpperCase() === upper) || inFlightCodesRef.current.has(upper)) {
-      setError(t("salesPage.cartDuplicateError", { code }))
-      if (clearInput) setScanInput("")
+    const upperCode = code.toUpperCase()
+    if (claimedCodesRef.current.has(upperCode)) {
+      flashExistingLine(code)
+      setScanInput("")
       return
     }
-    scanLockRef.current = true
-    inFlightCodesRef.current.add(upper)
+    claimedCodesRef.current.add(upperCode)
     setScanning(true)
     setError("")
     try {
       const item = await scanBarcode(code, taxRates)
       addScannedItem(item)
-      if (clearInput) setScanInput("")
     } catch (reason) {
-      setError(saleErrorMessage(reason, t))
+      claimedCodesRef.current.delete(upperCode)
+      setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
     } finally {
-      inFlightCodesRef.current.delete(upper)
-      scanLockRef.current = false
+      // Cleared on failure too, not just success -- a hardware scanner types
+      // into wherever the cursor sits, so leaving a failed code's text behind
+      // meant the next scan's digits landed appended to it (e.g.
+      // "SOLDCODENEXTCODE") once the box regained focus, which would then
+      // fail lookup as "not found" instead of being read correctly.
+      setScanInput("")
       setScanning(false)
     }
-  }
-
-  async function handleScan() {
-    await performScan(scanInput.trim(), true)
   }
 
   // Global-scanner hand-off (App.tsx / lib/scanner.tsx) -- lands in the
   // exact same `pending` confirmation step: a global scan never skips
   // quantity selection, it only skips having to type the code by hand.
   async function processGlobalScan(code: string) {
-    await performScan(code, false)
+    if (!code || scanning || pending) return
+    scrollToCheckout()
+    const upperCode = code.toUpperCase()
+    if (claimedCodesRef.current.has(upperCode)) {
+      flashExistingLine(code)
+      return
+    }
+    claimedCodesRef.current.add(upperCode)
+    setScanning(true)
+    setError("")
+    try {
+      const item = await scanBarcode(code, taxRates)
+      addScannedItem(item)
+    } catch (reason) {
+      claimedCodesRef.current.delete(upperCode)
+      setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
+    } finally {
+      setScanning(false)
+    }
   }
 
   // Consumes a code the global listener recognized (App.tsx has already
   // navigated here if needed). The barcode is cleared from context the
   // instant it's picked up -- before the async lookup even starts -- so a
   // re-render triggered by setScanning(true) can't re-trigger this effect
-  // against the same value. Gated on scanLockRef (a synchronous ref, not
-  // the `scanning` state -- see its own comment above) so a physical scan
-  // arriving in the exact instant a manual scan is already in flight
-  // doesn't slip past this check too; `scanning` stays in the dependency
-  // list purely to make this effect re-run once the lock clears. If a scan
-  // is already in flight when one arrives, this simply does nothing yet:
-  // scanner.barcode stays put in context (untouched), and this effect
-  // re-checks the moment scanning flips back, so nothing is silently
-  // dropped -- it just waits its turn, same as a second physical scan
-  // would today.
+  // against the same value. processGlobalScan() itself claims the code in
+  // claimedCodesRef synchronously before any await, which is what actually
+  // stops a physical scan landing in the exact instant a manual scan (or
+  // another physical one) is already claiming the same code -- see
+  // claimedCodesRef's own comment above.
   useEffect(() => {
-    if (!scanner.barcode || scanLockRef.current || pending) return
+    if (!scanner.barcode || pending) return
     const code = scanner.barcode
     scanner.clearBarcode()
     void processGlobalScan(code)
@@ -778,6 +904,10 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
       quantity = typed
     }
 
+    // No duplicate check needed here: claimedCodesRef already reserved this
+    // code the instant it was scanned (see handleScan()/processGlobalScan()),
+    // synchronously and before this confirmation card could even open, so
+    // nothing else could have raced in and taken it in the meantime.
     const piecesSold = piecesFromMode(item, mode, quantity)
     setCart(current => [...current, { ...item, sellMode: mode, quantity, piecesSold }])
     setPending(null)
@@ -785,6 +915,9 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   }
 
   function cancelPending() {
+    // Give the code back -- it was claimed on scan, but the cashier decided
+    // not to actually add it, so it must become scannable again.
+    if (pending) claimedCodesRef.current.delete(pending.item.code.toUpperCase())
     setPending(null)
     setError("")
   }
@@ -796,6 +929,7 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   // the card, since "whole carton vs. packs vs. pieces" is always a real
   // choice there.
   function addScannedItem(item: ScannedBarcode) {
+    // No duplicate check needed here either -- see confirmPending()'s comment.
     if (item.barcodeType === "pack" && (item.piecesPerPack ?? 1) <= 1) {
       setCart(current => [...current, { ...item, sellMode: "whole", quantity: 1, piecesSold: 1 }])
       return
@@ -804,15 +938,37 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   }
 
   function removeLine(barcodeId: string) {
-    setCart(current => current.filter(item => item.barcodeId !== barcodeId))
+    setCart(current => {
+      const removed = current.find(item => item.barcodeId === barcodeId)
+      if (removed) claimedCodesRef.current.delete(removed.code.toUpperCase())
+      return current.filter(item => item.barcodeId !== barcodeId)
+    })
   }
 
-  const lines = cart.map(item => priceLine(item, selectedProvider ? effectiveCoveragePercentage(selectedProvider, overrides, item.productId) : 0))
+  const lines = cart.map(item => priceLine(item, selectedProvider
+    ? (appliedPatientCoveragePercentage != null ? 100 - appliedPatientCoveragePercentage : effectiveCoveragePercentage(selectedProvider, overrides, item.productId))
+    : 0))
+  const patientPaysPreviewValue = patientPaysInput.trim() !== "" && Number.isFinite(Number(patientPaysInput)) && Number(patientPaysInput) >= 0 && Number(patientPaysInput) <= 100
+    ? Number(patientPaysInput) : null
   const grandTotal = lines.reduce((sum, l) => sum + l.lineTotal, 0)
   const taxTotal = lines.reduce((sum, l) => sum + l.taxAmount, 0)
   const subtotal = grandTotal - taxTotal
   const insuranceCoveredTotal = lines.reduce((sum, l) => sum + l.insuranceCovered, 0)
   const patientOwedTotal = grandTotal - insuranceCoveredTotal
+
+  // Bargain preview -- see the state comment above. totalCostBasis is what
+  // this branch actually paid (per its own stock_batches.cost_price) for
+  // everything currently in the cart, at the quantities being sold.
+  const totalCostBasis = lines.reduce((sum, l) => sum + l.costPrice * l.piecesSold, 0)
+  const bargainPreviewValue = bargainInput.trim() !== "" && Number.isFinite(Number(bargainInput)) ? Number(bargainInput) : null
+  const bargainDiscountGiven = bargainPreviewValue != null ? Math.max(patientOwedTotal - bargainPreviewValue, 0) : 0
+  const bargainProfitOrLoss = bargainPreviewValue != null ? bargainPreviewValue - totalCostBasis : 0
+  // Expressed as a multiplier of cost, same language as the profit
+  // multiplier on the receiving page (×1.3/×1.4/×1.5) -- so a cashier who's
+  // used to thinking "medicines sell at ×1.5 of cost" can place the bargain
+  // in that same terms, not just as a raw RWF number.
+  const bargainCostMultiplier = bargainPreviewValue != null && totalCostBasis > 0 ? bargainPreviewValue / totalCostBasis : null
+  const effectivePatientOwed = appliedBargainPrice ?? patientOwedTotal
 
   function describeSale(item: CartItem): string {
     const pcs = t("salesPage.piecesUnit", { count: item.piecesSold })
@@ -830,28 +986,41 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   // moment the cashier starts recording someone, name, gender and the
   // phone/TIN identifier are all required -- a half-filled patient record
   // is worse than none, since it can never be matched again on a later visit.
+  // An insurance sale forces this path regardless of what's typed --
+  // complete_sale() rejects a null patient_id whenever a provider is set,
+  // so this mirrors that instead of letting the cashier hit a server error.
   // Shared by both the cash path and the gateway path below -- a patient
   // recorded for a mobile money sale is exactly the same operation as for
   // a cash one.
   async function resolvePatientId(): Promise<string | null> {
-    const recordingPatient = !!(patientDraft.fullName.trim() || patientDraft.identifier.trim())
+    const recordingPatient = !!(patientDraft.fullName.trim() || patientDraft.identifier.trim() || providerId)
     if (!recordingPatient) return null
     if (!patientDraft.fullName.trim() || !patientDraft.gender || !patientDraft.identifier.trim()) {
-      throw new SaleFlowError("salesPage.patientIncomplete", undefined, "Patient record is incomplete.")
+      throw new SaleFlowError(
+        providerId ? "salesPage.patientRequiredForInsurance" : "salesPage.patientIncomplete",
+        undefined,
+        providerId ? "This is an insurance sale -- a patient must be recorded." : "Patient record is incomplete.",
+      )
     }
     return upsertPatient(
       patientDraft.fullName.trim(), patientDraft.gender,
       patientDraft.age.trim() ? Number.parseInt(patientDraft.age, 10) : null,
       patientDraft.identifier.trim(), null, branchId,
+      patientDraft.insuranceNumber.trim() || null,
     )
   }
 
   function resetCheckout() {
     setCart([])
+    claimedCodesRef.current.clear()
     setProviderId("")
     setPatientDraft(BLANK_PATIENT)
     setGatewayPayment(null)
     setGatewayPhone("")
+    setBargainInput("")
+    setAppliedBargainPrice(null)
+    setPatientPaysInput("")
+    setAppliedPatientCoveragePercentage(null)
   }
 
   async function handleCompleteSale() {
@@ -870,9 +1039,12 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
         patientId,
         paymentMethod: "cash",
         branchId,
+        bargainFinalPrice: appliedBargainPrice,
+        patientCoveragePercentage: appliedPatientCoveragePercentage,
       })
       const fullReceipt = await getSaleReceipt(result.saleId)
       setPendingReceipt(fullReceipt)
+      setReceiptNoteDraft("")
       resetCheckout()
       setNotice(t("salesPage.saleCompletedNotice"))
       void loadDashboard()
@@ -955,6 +1127,7 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
           const fullReceipt = await getSaleReceipt(result.saleId)
           if (cancelled) return
           setPendingReceipt(fullReceipt)
+          setReceiptNoteDraft("")
           resetCheckout()
           setNotice(t("salesPage.saleCompletedNotice"))
           void loadDashboard()
@@ -990,10 +1163,47 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   }
 
   if (receipt) {
+    // Saves whatever note is currently typed, then updates the local receipt
+    // so it shows in the printable area immediately (no reload needed).
+    const saveNote = async () => {
+      if (savingReceiptNote) return
+      setSavingReceiptNote(true)
+      try {
+        const note = receiptNoteDraft.trim()
+        await setSaleReceiptNote(receipt.saleId, note)
+        setReceipt({ ...receipt, receiptNote: note || null })
+        setNotice(t("salesPage.receiptNoteSaved"))
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : t("salesPage.receiptNoteSaveError"))
+      } finally {
+        setSavingReceiptNote(false)
+      }
+    }
+
+    const finishWithoutPrinting = () => { setReceipt(null); setReceiptNoteDraft(""); setNotice("") }
+
     return (
       <div>
         {notice && <CenterAlert key={notice} tone="success" message={notice} />}
-        <ReceiptView data={receipt} onClose={() => { setReceipt(null); setNotice("") }} />
+        <div className="no-print" style={{ maxWidth: 480, margin: "0 auto 14px", padding: 14, borderRadius: 10, background: "var(--bg-alt)", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: "var(--ink-mid)" }}>{t("salesPage.printPromptBody")}</div>
+            <Btn variant="ghost" small onClick={finishWithoutPrinting}>{t("salesPage.printPromptSkip")}</Btn>
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink-muted)", marginBottom: 6 }}>{t("salesPage.receiptNoteInputLabel")}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <textarea
+              value={receiptNoteDraft}
+              onChange={e => setReceiptNoteDraft(e.target.value)}
+              placeholder={t("salesPage.receiptNoteInputPlaceholder")}
+              rows={2}
+              maxLength={500}
+              style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit", resize: "vertical" }}
+            />
+            <Btn variant="secondary" small onClick={() => void saveNote()}>{t("salesPage.receiptNoteSaveAction")}</Btn>
+          </div>
+        </div>
+        <ReceiptView data={receipt} onClose={finishWithoutPrinting} />
       </div>
     )
   }
@@ -1032,7 +1242,7 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
       <div ref={checkoutSectionRef} style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
         {/* Left: patient + scan + cart */}
         <div style={{ flex: "2 1 460px", minWidth: 340 }}>
-          <PatientStep draft={patientDraft} onChange={setPatientDraft} onClear={() => setPatientDraft(BLANK_PATIENT)} resolvedId={null} branchId={branchId} />
+          <PatientStep draft={patientDraft} onChange={setPatientDraft} onClear={() => setPatientDraft(BLANK_PATIENT)} resolvedId={null} branchId={branchId} insuranceRequired={!!providerId} />
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginBottom: 14 }}>
             <div style={{ display: "flex", gap: 8 }}>
@@ -1163,7 +1373,17 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
             ) : (
               <div>
                 {lines.map(line => (
-                  <div key={line.barcodeId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--bg-alt)", gap: 10 }}>
+                  <div
+                    key={line.barcodeId}
+                    style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px",
+                      borderBottom: "1px solid var(--bg-alt)", gap: 10, transition: "background 0.2s ease",
+                      // A transparent tint of --warning rather than a flat
+                      // light-mode color, so it reads correctly in dark mode
+                      // too instead of showing as a jarring pale-yellow block.
+                      background: line.barcodeId === flashedBarcodeId ? "rgba(217, 119, 6, 0.18)" : "transparent",
+                    }}
+                  >
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {line.productName}{line.dosage ? ` · ${line.dosage}` : ""}{line.form ? ` · ${line.form}` : ""}
@@ -1192,12 +1412,129 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>{t("salesPage.paymentLabel")}</div>
           <select
             value={providerId}
-            onChange={e => setProviderId(e.target.value)}
+            onChange={e => {
+              setProviderId(e.target.value)
+              // Bargaining is walk-in only -- switching to insurance drops
+              // whatever was being negotiated rather than leaving it stale.
+              if (e.target.value) { setBargainInput(""); setAppliedBargainPrice(null) }
+              // A patient-coverage override belongs to one specific insurer's
+              // sale -- clear it on any change (including switching insurers)
+              // so a stale split from a different patient/provider can't
+              // silently carry over.
+              setPatientPaysInput("")
+              setAppliedPatientCoveragePercentage(null)
+            }}
             style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit", marginBottom: 16, background: "var(--surface)" }}
           >
             <option value="">{t("salesPage.selfPayOption")}</option>
             {providers.map(p => <option key={p.id} value={p.id}>{t("salesPage.providerOption", { name: p.name, pct: p.defaultCoveragePercentage })}</option>)}
           </select>
+
+          {providerId && (
+            <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, background: "var(--bg-alt)", border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                {t("salesPage.patientCoverageTitle")}
+              </div>
+              {appliedPatientCoveragePercentage == null ? (
+                <>
+                  <p style={{ margin: "0 0 8px", fontSize: 11, color: "var(--ink-muted)", lineHeight: 1.5 }}>
+                    {t("salesPage.patientCoverageHint", { pct: selectedProvider?.defaultCoveragePercentage != null ? 100 - selectedProvider.defaultCoveragePercentage : 0 })}
+                  </p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="number" min="0" max="100" step="1"
+                      placeholder={t("salesPage.patientCoverageInputPlaceholder")}
+                      value={patientPaysInput}
+                      onChange={e => setPatientPaysInput(e.target.value)}
+                      style={{ flex: 1, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit" }}
+                    />
+                    <span style={{ fontSize: 13, color: "var(--ink-muted)" }}>%</span>
+                  </div>
+                  {patientPaysInput.trim() !== "" && patientPaysPreviewValue == null && (
+                    <p style={{ margin: "6px 0 0", fontSize: 11, color: "#b91c1c" }}>{t("salesPage.patientCoverageInvalid")}</p>
+                  )}
+                  {patientPaysPreviewValue != null && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--ink-mid)" }}>
+                        <span>{t("salesPage.patientCoveragePreviewPatient")}</span>
+                        <span>{patientPaysPreviewValue}%</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#16a34a" }}>
+                        <span>{t("salesPage.patientCoveragePreviewInsurance")}</span>
+                        <span>{100 - patientPaysPreviewValue}%</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <Btn small variant="ghost" onClick={() => setPatientPaysInput("")}>{t("salesPage.bargainClear")}</Btn>
+                        <Btn small variant="primary" onClick={() => setAppliedPatientCoveragePercentage(patientPaysPreviewValue)}>{t("salesPage.bargainAccept")}</Btn>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, color: "var(--ink)" }}>
+                    {t("salesPage.patientCoverageApplied", { patientPct: appliedPatientCoveragePercentage, insurancePct: 100 - appliedPatientCoveragePercentage })}
+                  </span>
+                  <button
+                    onClick={() => { setAppliedPatientCoveragePercentage(null); setPatientPaysInput("") }}
+                    style={{ background: "none", border: "none", color: "var(--primary)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                  >{t("salesPage.bargainRemove")}</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!providerId && cart.length > 0 && (
+            <div style={{ marginBottom: 16, padding: 12, borderRadius: 10, background: "var(--bg-alt)", border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
+                {t("salesPage.bargainTitle")}
+              </div>
+              {appliedBargainPrice == null ? (
+                <>
+                  <input
+                    type="number" min="0" step="1"
+                    placeholder={t("salesPage.bargainInputPlaceholder")}
+                    value={bargainInput}
+                    onChange={e => setBargainInput(e.target.value)}
+                    style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit" }}
+                  />
+                  {bargainPreviewValue != null && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--ink-mid)" }}>
+                        <span>{t("salesPage.bargainDiscountGiven")}</span>
+                        <span>{fmtRWFExact(bargainDiscountGiven)}</span>
+                      </div>
+                      <div style={{
+                        marginTop: 6, padding: "8px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        background: bargainProfitOrLoss >= 0 ? "#dcfce7" : "#fee2e2",
+                        color: bargainProfitOrLoss >= 0 ? "#15803d" : "#b91c1c",
+                      }}>
+                        {bargainCostMultiplier != null
+                          ? (bargainProfitOrLoss >= 0
+                              ? t("salesPage.bargainStillProfitMultiplier", { multiplier: bargainCostMultiplier.toFixed(2), amount: fmtRWFExact(bargainProfitOrLoss) })
+                              : t("salesPage.bargainWouldLoseMultiplier", { multiplier: bargainCostMultiplier.toFixed(2), amount: fmtRWFExact(Math.abs(bargainProfitOrLoss)) }))
+                          : (bargainProfitOrLoss >= 0
+                              ? t("salesPage.bargainStillProfit", { amount: fmtRWFExact(bargainProfitOrLoss) })
+                              : t("salesPage.bargainWouldLose", { amount: fmtRWFExact(Math.abs(bargainProfitOrLoss)) }))}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <Btn small variant="ghost" onClick={() => setBargainInput("")}>{t("salesPage.bargainClear")}</Btn>
+                        <Btn small variant="primary" onClick={() => setAppliedBargainPrice(bargainPreviewValue)}>{t("salesPage.bargainAccept")}</Btn>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{fmtRWFExact(appliedBargainPrice)}</span>
+                  <button
+                    onClick={() => { setAppliedBargainPrice(null); setBargainInput("") }}
+                    style={{ background: "none", border: "none", color: "var(--primary)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}
+                  >{t("salesPage.bargainRemove")}</button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 13, paddingBottom: 12, borderBottom: "1px solid var(--bg-alt)", marginBottom: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", color: "var(--ink-mid)" }}><span>{t("salesPage.subtotal")}</span><span>{fmtRWFExact(subtotal)}</span></div>
@@ -1205,9 +1542,12 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
             {selectedProvider && (
               <div style={{ display: "flex", justifyContent: "space-between", color: "#16a34a" }}><span>{t("salesPage.insuranceCovers")}</span><span>-{fmtRWFExact(insuranceCoveredTotal)}</span></div>
             )}
+            {appliedBargainPrice != null && (
+              <div style={{ display: "flex", justifyContent: "space-between", color: "#b45309" }}><span>{t("salesPage.bargainDiscountGiven")}</span><span>-{fmtRWFExact(patientOwedTotal - appliedBargainPrice)}</span></div>
+            )}
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 17, color: "var(--ink)", marginBottom: 16 }}>
-            <span>{t("salesPage.patientOwes")}</span><span>{fmtRWFExact(patientOwedTotal)}</span>
+            <span>{t("salesPage.patientOwes")}</span><span>{fmtRWFExact(effectivePatientOwed)}</span>
           </div>
 
           <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>{t("salesPage.methodLabel")}</div>

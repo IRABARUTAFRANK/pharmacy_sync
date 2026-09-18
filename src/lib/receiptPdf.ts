@@ -107,6 +107,7 @@ async function buildReceiptPdfDoc(data: ReceiptData, opts: {
     [t("salesPage.receiptVatSummary"), fmtRWFExact(data.taxTotal)],
   ]
   if (data.insuranceCoveredTotal > 0) totals.push([t("salesPage.receiptInsurancePaid"), `-${fmtRWFExact(data.insuranceCoveredTotal)}`])
+  if (data.discountAmount > 0) totals.push([t("salesPage.receiptDiscount"), `-${fmtRWFExact(data.discountAmount)}`])
   doc.setFontSize(isThermal ? 8 : 10)
   doc.setFont("helvetica", "normal")
   for (const [label, value] of totals) {
