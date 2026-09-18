@@ -2,9 +2,54 @@ import { supabase, branchArg } from "./supabase"
 import { supabaseAdmin } from "./supabaseAdmin"
 import { listTaxRates, type TaxRate } from "./products"
 import type { PaymentMethod } from "./branch"
+import type { TranslationKey } from "./i18n/en"
 
 function raise(error: { message: string } | null, fallback: string): never {
   throw new Error(error?.message ?? fallback)
+}
+
+// Thrown by this file's own pre-checks (scanBarcode/completeSale) instead of
+// a plain Error carrying hardcoded English text. lib/sales.ts is a plain
+// module with no access to the active UI language -- useTranslation() is a
+// React hook, and this file is called from SalesPage.tsx, which DOES have
+// one -- so this carries a translation KEY (+ any values it needs to
+// interpolate, like a barcode code or an expiry date) and lets the catching
+// page call its own t() on it. `message` still gets a real English fallback
+// so anything that doesn't know about this class (a stray console.log, an
+// error-tracking tool) still shows something readable.
+export class SaleFlowError extends Error {
+  i18nKey: TranslationKey
+  i18nVars?: Record<string, string>
+  constructor(i18nKey: TranslationKey, i18nVars: Record<string, string> | undefined, fallback: string) {
+    super(fallback)
+    this.name = "SaleFlowError"
+    this.i18nKey = i18nKey
+    this.i18nVars = i18nVars
+  }
+}
+
+// complete_sale() re-validates every barcode itself and raises a plain-text
+// Postgres exception if something changed between the scan and the click
+// (another till sold the last pack first, a batch expired in between,
+// etc.) -- that text is always English, generated server-side, with no way
+// to make plpgsql call this app's t(). This pattern-matches the handful of
+// exact phrasings that function raises for exactly this race (see
+// complete_sale() in pharmacy_schema_consolidated.sql) and maps them back
+// to a translation key + the values Postgres had already substituted in --
+// anything that doesn't match (a genuinely unexpected error) still falls
+// back to the raw message untouched, so this only ever improves the common
+// case, never hides a real error.
+export function matchSaleBackendErrorKey(message: string): { key: TranslationKey; vars?: Record<string, string> } | null {
+  let m = /^Barcode (\S+) has already been sold$/.exec(message)
+  if (m) return { key: "salesPage.backendAlreadySold", vars: { code: m[1] } }
+
+  m = /^Barcode (\S+): this batch expired on (\S+) and cannot be sold$/.exec(message)
+  if (m) return { key: "salesPage.backendExpired", vars: { code: m[1], date: m[2] } }
+
+  m = /^Barcode (\S+) is (\w+) and cannot be sold$/.exec(message)
+  if (m) return { key: "salesPage.backendStatusCannotSell", vars: { code: m[1], status: m[2] } }
+
+  return null
 }
 
 // ── Insurance providers (read side — used by the Sales POS and the admin console) ─
@@ -21,6 +66,23 @@ export interface InsuranceProvider {
 
 export async function loadInsuranceProviders(): Promise<InsuranceProvider[]> {
   const { data, error } = await supabase.from("insurance_providers").select("id, name, default_coverage_percentage, contact_info, tin").order("name")
+  if (error) raise(error, "Could not load insurance providers.")
+  return (data ?? []).map(row => ({
+    id: row.id, name: row.name, defaultCoveragePercentage: Number(row.default_coverage_percentage),
+    contactInfo: row.contact_info, tin: row.tin ?? null,
+  }))
+}
+
+// Same read, on supabaseAdmin -- see products.ts's adminListTaxRates() for
+// why: the super admin's session lives on that separate client only (see
+// supabaseAdmin.ts's own header), so this function's sibling above silently
+// sees an anonymous session when called from the admin console, and RLS
+// ("insurance providers readable" ... to authenticated) filters every row
+// out with no error. The admin console's write side already avoided this
+// (adminCreateInsuranceProvider etc. below already use supabaseAdmin) --
+// this is the same fix applied to the matching read.
+export async function adminLoadInsuranceProviders(): Promise<InsuranceProvider[]> {
+  const { data, error } = await supabaseAdmin.from("insurance_providers").select("id, name, default_coverage_percentage, contact_info, tin").order("name")
   if (error) raise(error, "Could not load insurance providers.")
   return (data ?? []).map(row => ({
     id: row.id, name: row.name, defaultCoveragePercentage: Number(row.default_coverage_percentage),
@@ -125,6 +187,17 @@ export async function loadCoverageOverridesWithNames(providerId: string): Promis
   }))
 }
 
+// Admin-console counterpart of the above -- see adminLoadInsuranceProviders()
+// just above for why this needs its own supabaseAdmin-backed copy rather
+// than sharing the branch-facing one.
+export async function adminLoadCoverageOverridesWithNames(providerId: string): Promise<CoverageOverrideRow[]> {
+  const { data, error } = await supabaseAdmin.from("insurance_product_coverage").select("product_id, coverage_percentage, products(name)").eq("insurance_provider_id", providerId).order("product_id")
+  if (error) raise(error, "Could not load this provider's coverage overrides.")
+  return (data ?? []).map((row: any) => ({
+    productId: row.product_id, productName: row.products?.name ?? "Unknown product", coveragePercentage: Number(row.coverage_percentage),
+  }))
+}
+
 // ── Admin: manage providers and per-product overrides ──────────────────────
 
 export async function adminCreateInsuranceProvider(name: string, defaultCoveragePercentage: number, contactInfo?: string, tin?: string): Promise<string> {
@@ -178,6 +251,11 @@ export interface ScannedBarcode {
   taxRatePercentage: number
   batchNumber: string
   expiryDate: string
+  // Where this product is physically kept, if the branch has bothered to
+  // set one up (see src/lib/storageLocations.ts) -- null for the vast
+  // majority of branches that never opted into that, in which case nothing
+  // about the scan/sale flow changes.
+  storageLocationName: string | null
 }
 
 const STATUS_MESSAGE: Record<string, string> = {
@@ -185,6 +263,24 @@ const STATUS_MESSAGE: Record<string, string> = {
   expired: "This pack has expired and cannot be sold.",
   recalled: "This pack has been recalled and cannot be sold.",
   damaged: "This pack is marked damaged and cannot be sold.",
+}
+const STATUS_KEY: Record<string, TranslationKey> = {
+  sold_out: "salesPage.errorStatusSoldOut",
+  expired: "salesPage.errorStatusExpired",
+  recalled: "salesPage.errorStatusRecalled",
+  damaged: "salesPage.errorStatusDamaged",
+}
+
+// Just the status WORD, translated -- used to fill in the "{status}" slot of
+// salesPage.backendStatusCannotSell, whose raw value comes straight from a
+// Postgres enum column (e.g. "sold_out") and would otherwise show up
+// untranslated inside an otherwise-translated sentence.
+export const BARCODE_STATUS_WORD_KEY: Record<string, TranslationKey> = {
+  active: "barcode.statusActive",
+  sold_out: "barcode.statusSoldOut",
+  expired: "barcode.statusExpired",
+  recalled: "barcode.statusRecalled",
+  damaged: "barcode.statusDamaged",
 }
 
 // Verifies that a barcode's unique code retrieves the product's full info from
@@ -194,18 +290,23 @@ const STATUS_MESSAGE: Record<string, string> = {
 // caller (SalesPage) picks the sell mode based on barcode_type.
 export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<ScannedBarcode> {
   const trimmed = code.trim()
-  if (!trimmed) throw new Error("Scan or type a barcode.")
+  if (!trimmed) throw new SaleFlowError("salesPage.errorScanEmpty", undefined, "Scan or type a barcode.")
   const [lookup, rates] = await Promise.all([
     supabase.rpc("lookup_barcode", { p_code: trimmed }),
     taxRates ? Promise.resolve(taxRates) : listTaxRates(),
   ])
   if (lookup.error) raise(lookup.error, "Could not look up this barcode.")
   const row = Array.isArray(lookup.data) ? lookup.data[0] : lookup.data
-  if (!row) throw new Error(`No product is linked to barcode "${trimmed}".`)
+  if (!row) throw new SaleFlowError("salesPage.errorBarcodeNotFound", { code: trimmed }, `No product is linked to barcode "${trimmed}".`)
   if (row.barcode_type !== "pack" && row.barcode_type !== "box") {
-    throw new Error(`Barcode "${trimmed}" is not sellable.`)
+    throw new SaleFlowError("salesPage.errorNotSellable", { code: trimmed }, `Barcode "${trimmed}" is not sellable.`)
   }
-  if (row.status !== "active") throw new Error(STATUS_MESSAGE[row.status as string] ?? `This barcode is ${row.status} and cannot be sold.`)
+  if (row.status !== "active") {
+    const key = STATUS_KEY[row.status as string]
+    throw key
+      ? new SaleFlowError(key, undefined, STATUS_MESSAGE[row.status as string])
+      : new SaleFlowError("salesPage.errorStatusGeneric", { status: row.status }, `This barcode is ${row.status} and cannot be sold.`)
+  }
   // A friendlier, earlier version of the same check complete_sale() makes
   // authoritatively against the real expiry_date at sale time -- this just
   // saves a round trip to the "Complete Sale" click by rejecting it the
@@ -213,13 +314,13 @@ export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<S
   // stock() sweep may still show status "active" here; the date comparison
   // catches that regardless of status.
   if (row.expiry_date && row.expiry_date < new Date().toISOString().slice(0, 10)) {
-    throw new Error(`This item expired on ${row.expiry_date} and cannot be sold.`)
+    throw new SaleFlowError("salesPage.errorExpiredDate", { date: row.expiry_date }, `This item expired on ${row.expiry_date} and cannot be sold.`)
   }
   if (row.barcode_type === "pack" && (!row.quantity_available || row.quantity_available < 1)) {
-    throw new Error("This pack has already been sold.")
+    throw new SaleFlowError("salesPage.errorStatusSoldOut", undefined, "This pack has already been sold.")
   }
   if (row.barcode_type === "box" && (!row.active_child_count || row.active_child_count < 1)) {
-    throw new Error("This carton has no packs left to sell.")
+    throw new SaleFlowError("salesPage.errorCartonEmpty", undefined, "This carton has no packs left to sell.")
   }
 
   const taxRate = rates.find(r => r.id === row.tax_rate_id)
@@ -232,6 +333,7 @@ export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<S
     manufacturerName: row.manufacturer_name, sellingPrice: Number(row.selling_price),
     taxRateId: row.tax_rate_id, taxRatePercentage: Number(taxRate?.rate_percentage ?? 0),
     batchNumber: row.batch_number, expiryDate: row.expiry_date,
+    storageLocationName: row.storage_location_name ?? null,
   }
 }
 
@@ -284,7 +386,7 @@ export interface CompleteSaleInput {
 // so this is the sole source of truth for what actually got sold and for how
 // much — the cart on screen is only ever a preview of this.
 export async function completeSale(input: CompleteSaleInput): Promise<CompleteSaleResult> {
-  if (input.lines.length === 0) throw new Error("Scan at least one item before completing the sale.")
+  if (input.lines.length === 0) throw new SaleFlowError("salesPage.errorNoItems", undefined, "Scan at least one item before completing the sale.")
   const { data, error } = await supabase.rpc("complete_sale", {
     p_lines: input.lines.map(line => ({
       code: line.code,
@@ -297,7 +399,11 @@ export async function completeSale(input: CompleteSaleInput): Promise<CompleteSa
     p_discount_id: input.discountId ?? null,
     ...branchArg(input.branchId),
   })
-  if (error) raise(error, "Could not complete this sale.")
+  if (error) {
+    const matched = error.message ? matchSaleBackendErrorKey(error.message) : null
+    if (matched) throw new SaleFlowError(matched.key, matched.vars, error.message)
+    raise(error, "Could not complete this sale.")
+  }
   const row = Array.isArray(data) ? data[0] : data
   return {
     saleId: row.sale_id, receiptNumber: row.receipt_number, totalAmount: Number(row.total_amount),
