@@ -8,10 +8,19 @@ import { fetchAllRows, supabase } from "./supabase"
 // selects joined in memory, so the page can filter/search client-side without a
 // network round-trip per keystroke.
 
-export type BarcodeStatus = "active" | "sold_out" | "expired" | "recalled" | "damaged"
+// 'in_transit' = dispatched from its origin branch but not yet confirmed
+// received at the destination (see 2026-09-14_stock_transfer_workflow_from_
+// proposal.sql's barcodes_status_check) -- not sellable at either branch
+// while in that state. This type/array/map trio is the single source of
+// truth for every valid status: BARCODE_STATUS_TITLE_KEYS below and
+// BarcodeManagerPage's statusColor are both typed as Record<BarcodeStatus,
+// ...>, so TypeScript itself refuses to compile if a status is ever added
+// to the database without a matching entry here -- exactly the gap that
+// let 'in_transit' reach the UI with no color/label and crash the page.
+export type BarcodeStatus = "active" | "sold_out" | "expired" | "recalled" | "damaged" | "in_transit"
 export type BarcodeType = "box" | "pack"
 
-export const BARCODE_STATUSES: BarcodeStatus[] = ["active", "sold_out", "expired", "recalled", "damaged"]
+export const BARCODE_STATUSES: BarcodeStatus[] = ["active", "sold_out", "expired", "recalled", "damaged", "in_transit"]
 
 // Shared with BarcodeManagerPage and StockAdjustmentPage so the same status
 // value always renders with the same translated label everywhere it appears.
@@ -21,6 +30,7 @@ export const BARCODE_STATUS_TITLE_KEYS: Record<BarcodeStatus, TranslationKey> = 
   expired: "barcode.statusExpired",
   recalled: "barcode.statusRecalled",
   damaged: "barcode.statusDamaged",
+  in_transit: "barcode.statusInTransit",
 }
 
 export const BARCODE_TYPE_TITLE_KEYS: Record<BarcodeType, TranslationKey> = {
@@ -102,7 +112,7 @@ const asNumber = (value: string | number | null | undefined) => Number(value ?? 
 export const emptyBarcodeDataset = (): BarcodeDataset => ({
   rows: [],
   groups: [],
-  statusCounts: { active: 0, sold_out: 0, expired: 0, recalled: 0, damaged: 0 },
+  statusCounts: { active: 0, sold_out: 0, expired: 0, recalled: 0, damaged: 0, in_transit: 0 },
   boxCount: 0,
   packCount: 0,
   totalPieces: 0,
@@ -282,7 +292,11 @@ export async function loadBarcodeDataset(): Promise<BarcodeDataset> {
 
   groups.sort((a, b) => (b.receivedAt ?? "").localeCompare(a.receivedAt ?? "") || a.key.localeCompare(b.key))
 
-  const statusCounts = { active: 0, sold_out: 0, expired: 0, recalled: 0, damaged: 0 } as Record<BarcodeStatus, number>
+  // A plain object literal (not `as Record<...>`) so the compiler itself
+  // enforces every BarcodeStatus has a starting count -- an `as` cast here
+  // is exactly what let 'in_transit' slip through with no entry anywhere
+  // and crash BarcodeManagerPage's statusColor lookup at render time.
+  const statusCounts: Record<BarcodeStatus, number> = { active: 0, sold_out: 0, expired: 0, recalled: 0, damaged: 0, in_transit: 0 }
   for (const row of rows) if (row.status in statusCounts) statusCounts[row.status] += 1
 
   return {

@@ -3,6 +3,7 @@ import { Btn, Card, CenterAlert, Modal, SearchSelect, StatusBadge, BarcodeLabelS
 import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import {
+  ensureDefaultProductVariant,
   loadProductDefaults,
   loadReceivingReference,
   receiveStockDelivery,
@@ -11,6 +12,9 @@ import {
   type ReceivingReference,
 } from "../lib/receiving"
 import { loadDeliveryBarcodes, type DeliveryBarcodeLabel } from "../lib/barcodes"
+import {
+  createStorageLocation, listStorageLocations, setProductStorageLocation, type StorageLocation,
+} from "../lib/storageLocations"
 import { errorMessage } from "../lib/supabase"
 import {
   listMyProductRequests,
@@ -36,6 +40,11 @@ interface LineForm {
   cartons: string
   packs: string
   piecesPerPack: string
+  // Optional -- where this medicine is physically kept (see
+  // src/lib/storageLocations.ts). Blank means "don't set/change one", never
+  // "clear the existing location" -- this is the one moment a manager can
+  // set it immediately while receiving, not a requirement.
+  storageLocationName: string
 }
 
 let lineSequence = 0
@@ -43,6 +52,7 @@ const blankLine = (): LineForm => ({
   key: `line-${(lineSequence += 1)}`,
   productId: "", variantId: "", categoryName: "", manufacturer: "", batchNumber: "", expiryDate: "",
   costPrice: "", sellingPrice: "", packaging: "simple", cartons: "1", packs: "1", piecesPerPack: "1",
+  storageLocationName: "",
 })
 
 const toInt = (value: string, fallback = 0) => {
@@ -209,12 +219,12 @@ function MyRequestsPanel({ requests, loading }: { requests: ProductRequestRow[];
   </Card>
 }
 
-// NOTE: loadReceivingReference()'s categories/suppliers come from a direct
-// RLS-scoped table read (products/variants/tax rates are global and unaffected)
-// -- still the CALLER's own branch while "viewing" another one; see the
-// read-path migration's scope notes. receiveStockDelivery() itself IS
-// branch-aware (this file's own migration), so submitting a delivery while
-// viewing another branch correctly receives stock into that branch.
+// NOTE: loadReceivingReference() is passed branchId so its categories/
+// suppliers (products/variants/tax rates are global either way) resolve to
+// the branch actually being viewed, not the caller's own -- see that
+// function's own comment. receiveStockDelivery() is likewise branch-aware,
+// so submitting a delivery while viewing another branch correctly receives
+// stock into that branch.
 export default function StockReceivingPage({ branchId }: { branchId?: string } = {}) {
   const { t } = useTranslation()
   const variantLabel = (variant: { dosage: string | null; form: string | null; unit: string | null }) =>
@@ -242,6 +252,23 @@ export default function StockReceivingPage({ branchId }: { branchId?: string } =
   const timer = useRef<number | null>(null)
   const [addingCategory, setAddingCategory] = useState(false)
   const [newCategoryDraft, setNewCategoryDraft] = useState("")
+  const [creatingDefaultVariant, setCreatingDefaultVariant] = useState(false)
+  const [defaultVariantError, setDefaultVariantError] = useState<string | null>(null)
+
+  // Storage locations are always the CALLER's own current branch (see
+  // src/lib/storageLocations.ts's header) -- there's no "view as another
+  // branch" support for them yet, so this field is simply not offered while
+  // receiving into a DIFFERENT branch (branchId set, an org_owner/org_manager
+  // path) rather than silently mis-tagging the wrong branch's shelves.
+  const [storageLocations, setStorageLocations] = useState<StorageLocation[]>([])
+  useEffect(() => {
+    if (branchId) return
+    listStorageLocations().then(setStorageLocations).catch(() => undefined)
+  }, [branchId])
+  const storageLocationOptions = useMemo<ComboOption[]>(
+    () => storageLocations.map(loc => ({ value: loc.name, label: loc.name })),
+    [storageLocations],
+  )
 
   // Closing this mini-form when the visible line changes avoids it lingering
   // open (mid-draft, for a different product) after switching slides.
@@ -251,13 +278,13 @@ export default function StockReceivingPage({ branchId }: { branchId?: string } =
     setLoading(true)
     setLoadError(null)
     try {
-      setReference(await loadReceivingReference())
+      setReference(await loadReceivingReference(branchId))
     } catch (reason) {
       setLoadError(errorMessage(reason, t("receiving.loadError")))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [t, branchId])
 
   const refreshRequests = useCallback(async () => {
     setRequestsLoading(true)
@@ -364,6 +391,29 @@ export default function StockReceivingPage({ branchId }: { branchId?: string } =
     }
   }
 
+  // For a product that is genuinely in the catalogue but currently has zero
+  // variants (its only one was removed at some point -- see
+  // 2026-09-17_ensure_default_product_variant.sql for the full story).
+  // Get-or-create server-side, so this is safe even if clicked twice.
+  async function useDefaultVariant() {
+    const productId = line.productId
+    if (!productId) return
+    setCreatingDefaultVariant(true)
+    setDefaultVariantError(null)
+    try {
+      const variantId = await ensureDefaultProductVariant(productId)
+      setReference(current => current.variants.some(variant => variant.id === variantId)
+        ? current
+        : { ...current, variants: [...current.variants, { id: variantId, product_id: productId, dosage: null, form: null, unit: null }] })
+      updateLine({ variantId })
+      void applyProductDefaults(productId, variantId)
+    } catch (reason) {
+      setDefaultVariantError(errorMessage(reason, t("receiving.defaultVariantError")))
+    } finally {
+      setCreatingDefaultVariant(false)
+    }
+  }
+
   function transition(direction: "next" | "prev", apply: () => void) {
     if (timer.current) window.clearTimeout(timer.current)
     setMotion(direction === "next" ? "slide-out-left" : "slide-out-right")
@@ -452,7 +502,27 @@ export default function StockReceivingPage({ branchId }: { branchId?: string } =
       setReceipt(saved)
       // Newly-received quantities and the supplier should show up in the
       // selectors straight away for the next delivery.
-      void loadReceivingReference().then(setReference).catch(() => undefined)
+      void loadReceivingReference(branchId).then(setReference).catch(() => undefined)
+
+      // Storage location is set right here, immediately, for any line that
+      // filled it in -- not deferred to a separate trip to Branch Settings
+      // later (that stays available too, for organizing at leisure). Each
+      // product_id was already known client-side before submission (it's an
+      // existing product being received, not one this call creates), so no
+      // data from the receiving response itself is needed to do this.
+      // Best-effort: the delivery itself already succeeded above, so a
+      // failure here is logged, not surfaced as if receiving failed.
+      const withLocation = lines.filter(line => line.storageLocationName.trim())
+      if (withLocation.length > 0) {
+        void Promise.all(withLocation.map(async line => {
+          try {
+            const locationId = await createStorageLocation(line.storageLocationName.trim())
+            await setProductStorageLocation(line.productId, locationId)
+          } catch (reason) {
+            console.error("Could not set storage location for", line.productId, reason)
+          }
+        })).then(() => listStorageLocations().then(setStorageLocations).catch(() => undefined))
+      }
       setLabelsLoading(true)
       setLabelsError(null)
       loadDeliveryBarcodes(saved.delivery_id)
@@ -608,6 +678,22 @@ export default function StockReceivingPage({ branchId }: { branchId?: string } =
                 invalid={!!line.productId && lineVariants.length > 0 && !line.variantId}
                 emptyMessage={t("receiving.noVariantMatch")}
               />
+              {!!line.productId && lineVariants.length === 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <button
+                    type="button"
+                    onClick={() => void useDefaultVariant()}
+                    disabled={creatingDefaultVariant}
+                    style={{
+                      background: "none", border: "none", padding: 0, color: "var(--primary)", fontSize: 11, fontWeight: 600,
+                      cursor: creatingDefaultVariant ? "default" : "pointer", fontFamily: "inherit", opacity: creatingDefaultVariant ? 0.6 : 1,
+                    }}
+                  >
+                    {creatingDefaultVariant ? t("receiving.defaultVariantCreating") : t("receiving.defaultVariantLink")}
+                  </button>
+                  {defaultVariantError && <p style={{ margin: "4px 0 0", fontSize: 11, color: "#dc2626" }}>{defaultVariantError}</p>}
+                </div>
+              )}
             </Field>
             {selectedProductTax && (
               <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--ink-muted)", display: "flex", alignItems: "center", gap: 6 }}>
@@ -660,6 +746,19 @@ export default function StockReceivingPage({ branchId }: { branchId?: string } =
                 >{t("receiving.addNewCategoryLink")}</button>
               )}
             </Field>
+            {!branchId && (
+              <Field label={t("receiving.storageLocationLabel")} hint={t("receiving.storageLocationHint")}>
+                <SearchSelect
+                  options={storageLocationOptions}
+                  value={line.storageLocationName}
+                  onSelect={storageLocationName => updateLine({ storageLocationName })}
+                  allowFreeText
+                  createLabel={t("receiving.storageLocationCreateLabel")}
+                  placeholder={t("receiving.storageLocationPlaceholder")}
+                  emptyMessage={t("receiving.storageLocationEmpty")}
+                />
+              </Field>
+            )}
             <Field label={t("receiving.manufacturerLabel")} hint={t("receiving.manufacturerHint")}>
               <input value={line.manufacturer} onChange={event => updateLine({ manufacturer: event.target.value })} style={inputStyle} />
             </Field>

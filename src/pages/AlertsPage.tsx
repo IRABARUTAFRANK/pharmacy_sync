@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, type LiveAlert } from '../lib/alerts'
+import { alertActionTarget, ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, resolveAlertMessage, type LiveAlert } from '../lib/alerts'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
 import { errorMessage } from '../lib/supabase'
@@ -24,7 +24,7 @@ const sourceColors: Record<string, { c: string; bg: string }> = {
 // `branchId` is accepted (App.tsx always passes it) so this page still shows
 // the CALLER's own branch's alerts while "viewing" another branch, rather
 // than erroring -- widening notifications' RLS policy is a follow-up.
-export default function AlertsPage({ branchId: _branchId }: { branchId?: string } = {}) {
+export default function AlertsPage({ branchId: _branchId, onSelectAlert }: { branchId?: string; onSelectAlert?: (alert: LiveAlert) => void } = {}) {
   const { t } = useTranslation()
   const COLUMN_DEFS: { key: ColKey; label: string }[] = [
     { key: 'source_type', label: t('alertsPage.colSourceType') },
@@ -94,7 +94,7 @@ export default function AlertsPage({ branchId: _branchId }: { branchId?: string 
     if (readFilter === 'unread') ns = ns.filter(n => !n.isRead)
     if (readFilter === 'read')   ns = ns.filter(n => n.isRead)
     const needle = searchTerm.trim().toLowerCase()
-    if (needle) ns = ns.filter(n => `${t(n.titleKey)} ${n.msg}`.toLowerCase().includes(needle))
+    if (needle) ns = ns.filter(n => `${t(n.titleKey)} ${resolveAlertMessage(n, t)}`.toLowerCase().includes(needle))
     return ns
   }, [alerts, sourceFilter, readFilter, searchTerm, t])
 
@@ -163,12 +163,18 @@ export default function AlertsPage({ branchId: _branchId }: { branchId?: string 
                   <tr key={n.id} style={{ borderBottom: '1px solid var(--bg-alt)', background: n.isRead ? 'transparent' : '#fffbf0', transition: 'background 0.12s' }}>
                     <td style={{ padding: '10px 10px', maxWidth: 380 }}>
                       <div style={{ fontWeight: n.isRead ? 400 : 600, color: 'var(--ink)', fontSize: 12 }}>{t(n.titleKey)}</div>
-                      <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 3, lineHeight: 1.4 }}>{n.msg}</div>
+                      <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 3, lineHeight: 1.4 }}>{resolveAlertMessage(n, t)}</div>
                     </td>
                     {visibleCols.has('source_type') && <td style={{ padding: '10px 10px' }}><StatusBadge label={label} color={sc.c} bg={sc.bg} /></td>}
                     {visibleCols.has('is_read')     && <td style={{ padding: '10px 10px' }}><StatusBadge label={n.isRead ? t('alertsPage.read') : t('alertsPage.unread')} color={n.isRead ? '#16a34a' : '#dc2626'} bg={n.isRead ? '#d1fae5' : '#fef2f2'} /></td>}
                     {visibleCols.has('created_at')  && <td style={{ padding: '10px 10px', fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString()}</td>}
-                    <td style={{ padding: '10px 10px' }}>
+                    <td style={{ padding: '10px 10px', whiteSpace: 'nowrap' }}>
+                      {onSelectAlert && alertActionTarget(n) && (
+                        <button onClick={() => onSelectAlert(n)}
+                          style={{ fontSize: 10, color: '#fff', background: 'var(--primary)', border: 'none', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600, marginRight: 6 }}>
+                          {t('alertsPage.fixThis')}
+                        </button>
+                      )}
                       {!n.isRead && (
                         <button onClick={() => void markRead(n.id)}
                           style={{ fontSize: 10, color: 'var(--primary)', background: 'none', border: '1px solid var(--border)', borderRadius: 5, padding: '3px 8px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>

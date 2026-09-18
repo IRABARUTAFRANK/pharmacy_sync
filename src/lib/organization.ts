@@ -315,3 +315,41 @@ export async function staffOrganizationBranch(
   if (data?.error) throw new Error(data.error)
   return data.userId as string
 }
+
+export interface BranchDistanceMeasurement {
+  id: string
+  branchAId: string
+  branchAName: string
+  branchBId: string
+  branchBName: string
+  distanceKm: number
+  measuredByName: string | null
+  createdAt: string
+}
+
+// Persists a distance the org_owner/org_manager measured on the Branches
+// map's click-to-measure tool -- otherwise it vanished the moment they
+// navigated away or measured a different pair.
+export async function saveBranchDistanceMeasurement(
+  organizationId: string, branchAId: string, branchBId: string, distanceKm: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("save_branch_distance_measurement", {
+    p_organization_id: organizationId, p_branch_a_id: branchAId, p_branch_b_id: branchBId, p_distance_km: distanceKm,
+  })
+  if (error) throw error
+}
+
+export async function listBranchDistanceMeasurements(organizationId: string): Promise<BranchDistanceMeasurement[]> {
+  const { data, error } = await supabase.rpc("list_branch_distance_measurements", { p_organization_id: organizationId })
+  if (error) throw error
+  return ((data ?? []) as any[]).map(row => ({
+    id: row.id, branchAId: row.branch_a_id, branchAName: row.branch_a_name,
+    branchBId: row.branch_b_id, branchBName: row.branch_b_name,
+    distanceKm: row.distance_km, measuredByName: row.measured_by_name ?? null, createdAt: row.created_at,
+  }))
+}
+
+export async function deleteBranchDistanceMeasurement(id: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_branch_distance_measurement", { p_id: id })
+  if (error) throw error
+}

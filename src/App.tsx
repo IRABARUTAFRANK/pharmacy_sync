@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense, type ComponentType } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense, Component, type ComponentType, type ReactNode, type ErrorInfo } from 'react'
 import { NAV_ITEMS, fmtRWFExact, type Role } from './data'
 import { useTranslation, LanguageSwitcher, hasExplicitLangPreference } from './lib/i18n'
 import { useGlobalSearch } from './lib/search'
@@ -16,7 +16,7 @@ import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { getMyBranchOrganizationId, getMyOrganization, listOrganizationBranches, type OrganizationSummary, type OrganizationBranch } from './lib/organization'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
-import { checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, markAllAlertsRead, type LiveAlert } from './lib/alerts'
+import { alertActionTarget, checkExpiredStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, markAlertRead, markAllAlertsRead, resolveAlertMessage, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 import { GuidedTour, hasCompletedTour, markTourComplete } from './lib/tour'
@@ -41,6 +41,7 @@ const PAGE_LOADERS = {
   receiving: () => import('./pages/StockReceivingPage'),
   barcode: () => import('./pages/BarcodeManagerPage'),
   sales: () => import('./pages/SalesPage'),
+  locate: () => import('./pages/LocateProductPage'),
   transactions: () => import('./pages/TransactionsPage'),
   insurance: () => import('./pages/InsurancePage'),
   alerts: () => import('./pages/AlertsPage'),
@@ -59,6 +60,7 @@ const LiveInventoryPage   = lazy(PAGE_LOADERS.inventory)
 const StockReceivingPage  = lazy(PAGE_LOADERS.receiving)
 const BarcodeManagerPage  = lazy(PAGE_LOADERS.barcode)
 const SalesPage           = lazy(PAGE_LOADERS.sales)
+const LocateProductPage   = lazy(PAGE_LOADERS.locate)
 const TransactionsPage    = lazy(PAGE_LOADERS.transactions)
 const InsurancePage       = lazy(PAGE_LOADERS.insurance)
 const AlertsPage          = lazy(PAGE_LOADERS.alerts)
@@ -184,7 +186,7 @@ function prefetchPage(id: string) {
 // both used to live in a separately deployed app; they're now plain in-app
 // views reached by URL fragment, with no page reload and no second server.
 
-type HashRoute = 'home' | 'admin' | 'branch' | 'reset' | 'receipt'
+type HashRoute = 'home' | 'admin' | 'branch' | 'reset' | 'receipt' | 'payment-return'
 
 function hashToRoute(hash: string): HashRoute {
   // A "forgot password" email link lands back here with Supabase's own
@@ -203,6 +205,13 @@ function hashToRoute(hash: string): HashRoute {
   // Scanned from the "share this receipt" QR printed on a receipt --
   // #receipt?id=<sale uuid> -- see PublicReceiptPage.tsx for the parser.
   if (hash === '#receipt' || hash.startsWith('#receipt?')) return 'receipt'
+  // Where a CUSTOMER's own browser lands after finishing a mobile money/
+  // card payment on the gateway's hosted page (see initiatePayment() in
+  // lib/payments.ts) -- purely a friendly "you can close this" message.
+  // The till itself never depends on this page; it polls check-status
+  // independently, so this redirect landing (or not) changes nothing about
+  // whether the sale actually completes.
+  if (hash === '#payment-return' || hash.startsWith('#payment-return?')) return 'payment-return'
   return 'home'
 }
 
@@ -243,6 +252,46 @@ function roleLabelKey(id: Role): TranslationKey {
   return id === 'owner' ? 'shell.roleOwner' : id === 'manager' ? 'shell.roleManager' : 'shell.roleSeller'
 }
 
+// ─── Page Error Boundary ──────────────────────────────────────────────────────
+// Nothing in this app ever caught a render-time exception before -- an error
+// thrown while rendering any page (a bad data shape from a real database
+// row the code didn't expect, a library choking on unusual input, etc.)
+// unmounted the ENTIRE app with no message at all, leaving a plain white
+// screen with no way back short of a manual refresh. This scopes that
+// failure to just the page content area: the sidebar/topbar stay usable,
+// there's a visible error instead of blank white, and a "Back to Overview"
+// escape hatch. Keyed by `page` in the render call below, so switching to a
+// different nav item remounts this fresh and clears a stuck error state
+// automatically, without needing a full page reload.
+class PageErrorBoundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Page failed to render:', error, info.componentStack) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '48px 24px', textAlign: 'center', maxWidth: 480, margin: '0 auto' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+          <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', margin: '0 0 6px' }}>This page ran into a problem.</p>
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', margin: '0 0 18px', fontFamily: 'var(--font-mono, monospace)' }}>
+            {this.state.error.message || String(this.state.error)}
+          </p>
+          <button
+            onClick={this.props.onReset}
+            style={{
+              padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)',
+              color: 'var(--ink)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            ← Back to Overview
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ─── Notifications Dropdown ───────────────────────────────────────────────────
 
 // Shared by the dropdown and the toast stack below, so the same alert
@@ -258,7 +307,11 @@ function alertTimeAgo(iso: string): string {
   return `${Math.floor(minutes / 1440)}d ago`
 }
 
-function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () => void }) {
+function NotifDropdown({ alerts, onSelectAlert, onViewAll }: {
+  alerts: LiveAlert[]
+  onSelectAlert: (alert: LiveAlert) => void
+  onViewAll: () => void
+}) {
   const { t } = useTranslation()
   const active = alerts.filter(a => !a.isRead)
   return (
@@ -272,22 +325,34 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
         <span style={{ fontSize: 11, fontWeight: 600, background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '1px 7px' }}>{t('shell.activeAlerts', { count: active.length })}</span>
       </div>
       <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-        {active.map(a => (
-          <div key={a.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10, background: SEVERITY_BG[a.type] + '60' }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: SEVERITY_DOT[a.type], marginTop: 4, flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: SEVERITY_DOT[a.type] }}>{t(a.titleKey)}</div>
-              <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.msg}</div>
-              <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
+        {active.map(a => {
+          const actionable = !!alertActionTarget(a)
+          return (
+            <div
+              key={a.id}
+              onClick={() => onSelectAlert(a)}
+              title={actionable ? t('shell.notifGoToFix') : undefined}
+              style={{
+                padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10,
+                background: SEVERITY_BG[a.type] + '60', cursor: actionable ? 'pointer' : 'default',
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: SEVERITY_DOT[a.type], marginTop: 4, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: SEVERITY_DOT[a.type] }}>{t(a.titleKey)}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveAlertMessage(a, t)}</div>
+                <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
+              </div>
+              {actionable && <span style={{ alignSelf: 'center', color: 'var(--primary)', fontSize: 14, flexShrink: 0 }}>›</span>}
             </div>
-          </div>
-        ))}
+          )
+        })}
         {active.length === 0 && (
           <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--ink-faint)' }}>{t('shell.noNewAlerts')}</div>
         )}
       </div>
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-        <button onClick={onClose} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
+        <button onClick={onViewAll} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
       </div>
     </div>
   )
@@ -301,10 +366,10 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
 // only actually opening the dropdown (clicking a card, or the bell) does
 // that, via the same openNotifDropdown() the bell button uses.
 
-const TOAST_AUTO_DISMISS_MS = 6000
+const TOAST_AUTO_DISMISS_MS = 10000
 const TOAST_EXIT_ANIMATION_MS = 220
 
-function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: () => void; onOpen: () => void }) {
+function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: () => void; onOpen: (alert: LiveAlert) => void }) {
   const { t } = useTranslation()
   const [closing, setClosing] = useState(false)
 
@@ -329,7 +394,7 @@ function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: 
         background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 10px 30px rgba(0,0,0,0.16)',
         cursor: 'pointer',
       }}
-      onClick={() => { setClosing(true); onOpen() }}
+      onClick={() => { setClosing(true); onOpen(alert) }}
     >
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: SEVERITY_DOT[alert.type], marginTop: 4, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -337,7 +402,7 @@ function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: 
         <div style={{
           fontSize: 11, color: 'var(--ink-mid)', marginTop: 2, overflow: 'hidden',
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-        }}>{alert.msg}</div>
+        }}>{resolveAlertMessage(alert, t)}</div>
       </div>
       <button
         onClick={e => { e.stopPropagation(); setClosing(true) }}
@@ -348,7 +413,7 @@ function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: 
   )
 }
 
-function ToastStack({ toasts, onDismiss, onOpen }: { toasts: LiveAlert[]; onDismiss: (id: string) => void; onOpen: () => void }) {
+function ToastStack({ toasts, onDismiss, onOpen }: { toasts: LiveAlert[]; onDismiss: (id: string) => void; onOpen: (alert: LiveAlert) => void }) {
   if (toasts.length === 0) return null
   return (
     <div style={{
@@ -646,6 +711,11 @@ export default function App() {
   // dismissed or auto-expired -- populated by refreshAlerts' new-vs-seen
   // diff below, not a straight mirror of `alerts` itself.
   const [toasts, setToasts] = useState<LiveAlert[]>([])
+  // Set right before navigating to 'reports' from a "reorder point missing"
+  // notification (see goToAlertTarget below) so ReportsPage can open that
+  // exact product's reorder modal on arrival instead of just landing on the
+  // page. Cleared via ReportsPage's onFocusHandled once consumed.
+  const [reportsFocusProductId, setReportsFocusProductId] = useState<string | null>(null)
 
   useEffect(() => {
     const up   = () => { setIsOnline(true);  setPendingSync(0) }
@@ -843,6 +913,17 @@ export default function App() {
   if (hashRoute === 'branch') return <Suspense fallback={loadingFallback}><BranchPortal /></Suspense>
   if (hashRoute === 'reset') return <Suspense fallback={loadingFallback}><ResetPassword /></Suspense>
   if (hashRoute === 'receipt') return <Suspense fallback={loadingFallback}><PublicReceiptPage /></Suspense>
+  if (hashRoute === 'payment-return') {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', padding: 24, textAlign: 'center' }}>
+        <div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>👍</div>
+          <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)', margin: '0 0 6px' }}>{t('shell.paymentReturnTitle')}</p>
+          <p style={{ fontSize: 13, color: 'var(--ink-muted)', margin: 0 }}>{t('shell.paymentReturnBody')}</p>
+        </div>
+      </main>
+    )
+  }
 
   if (introPhase !== 'done') return <IntroSplash exiting={introPhase === 'exiting'} />
 
@@ -943,6 +1024,24 @@ export default function App() {
   // marks the real row read the same way clicking the bell does.
   function dismissToast(id: string) {
     setToasts(current => current.filter(t => t.id !== id))
+  }
+
+  // Shared by a dropdown row click and a toast click: an actionable "this
+  // isn't configured yet" alert (see alertActionTarget()) navigates
+  // straight to where it gets fixed instead of just opening the dropdown,
+  // and marks that one alert read on the way. Returns whether it actually
+  // navigated, so a toast click that isn't actionable can fall back to
+  // opening the dropdown instead (its previous behavior).
+  function goToAlertTarget(alert: LiveAlert): boolean {
+    const target = alertActionTarget(alert)
+    if (!target) return false
+    void markAlertRead(alert.id).catch(() => { /* best-effort; next poll reconciles */ })
+    setAlerts(current => current.map(a => a.id === alert.id ? { ...a, isRead: true } : a))
+    setNotifSnapshot(current => current.map(a => a.id === alert.id ? { ...a, isRead: true } : a))
+    if (target.page === 'reports') setReportsFocusProductId(target.productId ?? null)
+    setPage(target.page)
+    setShowNotif(false)
+    return true
   }
 
   const closeMenus = () => { setShowNotif(false); setShowUser(false); setShowSearchNav(false) }
@@ -1110,8 +1209,9 @@ export default function App() {
       case 'receiving':     return <StockReceivingPage branchId={viewingBranchId} />
       case 'barcode':       return <BarcodeManagerPage branchId={viewingBranchId} />
       case 'sales':         return <SalesPage onViewAllTransactions={() => setPage('transactions')} branchId={viewingBranchId} role={role} />
-      case 'reports':       return <ReportsPage />
-      case 'alerts':        return <AlertsPage branchId={viewingBranchId} />
+      case 'locate':        return <LocateProductPage role={role} />
+      case 'reports':       return <ReportsPage focusProductId={reportsFocusProductId} onFocusHandled={() => setReportsFocusProductId(null)} />
+      case 'alerts':        return <AlertsPage branchId={viewingBranchId} onSelectAlert={goToAlertTarget} />
       case 'transactions':  return <TransactionsPage period={dateRange} branchId={viewingBranchId} />
       case 'insurance':     return <InsurancePage branchId={viewingBranchId} />
       case 'analyst':       return <AnalystPage />
@@ -1389,10 +1489,16 @@ export default function App() {
                 </span>
               )}
             </button>
-            {showNotif && <NotifDropdown alerts={notifSnapshot} onClose={() => setShowNotif(false)} />}
+            {showNotif && (
+              <NotifDropdown
+                alerts={notifSnapshot}
+                onSelectAlert={alert => goToAlertTarget(alert)}
+                onViewAll={() => { setPage('alerts'); setShowNotif(false) }}
+              />
+            )}
           </div>
 
-          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={openNotifDropdown} />
+          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={alert => { if (!goToAlertTarget(alert)) openNotifDropdown() }} />
 
           {/* User avatar -- the pharmacy's own uploaded logo once one exists,
               same as the sidebar footer's copy of this same button. */}
@@ -1417,7 +1523,9 @@ export default function App() {
           onClick={closeMenus}
         >
           <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>{t('shell.loadingWorkspace')}</div>}>
-            {renderPage()}
+            <PageErrorBoundary key={page} onReset={() => setPage('overview')}>
+              {renderPage()}
+            </PageErrorBoundary>
           </Suspense>
         </main>
       </div>

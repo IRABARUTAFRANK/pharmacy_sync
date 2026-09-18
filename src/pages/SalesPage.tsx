@@ -2,17 +2,77 @@ import { useEffect, useRef, useState } from "react"
 import QRCode from "qrcode"
 import { AreaChart, Area, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Btn, CenterAlert, ChartTooltip, Logo, Modal, SectionHeader } from "../components"
+import mtnMomoIcon from "../assets/mtn-icon.png"
+import airtelMoneyIcon from "../assets/airtel-money.png"
 import { fmtRWFExact, type Role } from "../data"
 import { useTranslation } from "../lib/i18n"
+import { getMyBranchDetails, type PaymentMethod } from "../lib/branch"
 import { listBranchPatients, upsertPatient, type PatientGender, type PatientListRow } from "../lib/patients"
+import {
+  checkPaymentStatus, createPendingPayment, GATEWAY_PROVIDER, initiatePayment, listOpenPendingPayments, SUPPORTS_CARD,
+  type GatewayPaymentMethod, type OpenPendingPayment, type PendingPaymentStatus,
+} from "../lib/payments"
 import { listTaxRates, type TaxRate } from "../lib/products"
 import { useScanner } from "../lib/scanner"
 import {
   completeSale, effectiveCoveragePercentage, getSaleReceipt, listSaleHistory, loadCoverageOverrides, loadInsuranceProviders,
-  loadPosDashboardSnapshot, scanBarcode,
+  loadPosDashboardSnapshot, scanBarcode, SaleFlowError, BARCODE_STATUS_WORD_KEY,
   type InsuranceProvider, type PosDashboardSnapshot, type ReceiptData, type SaleHistoryRow, type ScannedBarcode, type SellMode,
 } from "../lib/sales"
 import { buildVerificationQrPayload, mapTaxRateToVsdcCode } from "../lib/vsdc"
+import type { TranslationKey } from "../lib/i18n/en"
+
+// MTN MoMo and Airtel Money use the real provider logos (src/assets/) --
+// standard "we accept this payment method" merchant display, same as
+// showing a Visa/Mastercard mark at any checkout. Cash/Card have no
+// supplied artwork, so they stay emoji-in-a-colored-badge. `image` is
+// naturally square (MTN's MoMo mark); `imageWide` is a landscape wordmark
+// lockup (Airtel's) and gets rendered taller-but-not-square so it isn't
+// squashed into a circle.
+const PAYMENT_METHOD_OPTIONS: { id: PaymentMethod; icon?: string; image?: string; imageWide?: string; color: string; bg: string; labelKey: TranslationKey }[] = [
+  { id: "cash", icon: "💵", color: "#16a34a", bg: "#dcfce7", labelKey: "salesPage.methodCash" },
+  { id: "mtn_momo", image: mtnMomoIcon, color: "#a16207", bg: "#fef9c3", labelKey: "salesPage.methodMtnMomo" },
+  { id: "airtel_money", imageWide: airtelMoneyIcon, color: "#dc2626", bg: "#fee2e2", labelKey: "salesPage.methodAirtelMoney" },
+  { id: "card", icon: "💳", color: "#2563eb", bg: "#dbeafe", labelKey: "salesPage.methodCard" },
+]
+
+// How often the till re-checks a mobile money/card payment while waiting --
+// short enough to feel responsive, long enough not to hammer Pesapal (or
+// whichever provider is behind pesapal-payment) with a real network call
+// every tick. check-status itself re-verifies with the provider, it never
+// just re-reads a stale local row, so this interval directly controls how
+// fast a genuinely completed payment is noticed.
+const PAYMENT_POLL_MS = 4000
+
+interface GatewayPaymentState {
+  id: string
+  amount: number
+  method: GatewayPaymentMethod
+  status: PendingPaymentStatus
+  redirectUrl?: string
+  failureReason?: string
+}
+
+// scanBarcode()/completeSale() throw a SaleFlowError (a translation key +
+// its values) instead of a hardcoded English Error whenever the failure is
+// one this app recognizes -- "already sold," "expired," etc. -- so it reads
+// in whatever language the till is set to. A plain Error (a genuine
+// network/unexpected failure) still falls back to its own .message, and
+// anything else falls back to a generic translated string.
+function saleErrorMessage(reason: unknown, t: (key: TranslationKey, vars?: Record<string, string | number>) => string): string {
+  if (reason instanceof SaleFlowError) {
+    const vars = { ...reason.i18nVars }
+    // The one key whose {status} slot is itself a raw DB enum value (e.g.
+    // "sold_out") that needs its own translation pass before it can be
+    // dropped into the outer sentence.
+    if (reason.i18nKey === "salesPage.backendStatusCannotSell" && vars.status) {
+      const wordKey = BARCODE_STATUS_WORD_KEY[vars.status]
+      vars.status = wordKey ? t(wordKey) : vars.status
+    }
+    return t(reason.i18nKey, vars)
+  }
+  return reason instanceof Error ? reason.message : t("salesPage.scanError")
+}
 
 // One physical scan (pack or carton) becomes one cart line. Its own barcode
 // code is the cart identity — scanning the same code twice within one sale is
@@ -527,12 +587,31 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
   // copy gets printed.
   const [pendingReceipt, setPendingReceipt] = useState<ReceiptData | null>(null)
   const [patientDraft, setPatientDraft] = useState<PatientDraft>(BLANK_PATIENT)
+  const [posMethods, setPosMethods] = useState({ cash: true, mtnMomo: true, airtelMoney: true, card: false })
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
+  const [gatewayPhone, setGatewayPhone] = useState("")
+  const [gatewayBusy, setGatewayBusy] = useState(false)
+  const [gatewayPayment, setGatewayPayment] = useState<GatewayPaymentState | null>(null)
+  const [gatewayQr, setGatewayQr] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<PosDashboardSnapshot | null>(null)
   const [recentSales, setRecentSales] = useState<SaleHistoryRow[]>([])
   const scanRef = useRef<HTMLInputElement>(null)
   const amountRef = useRef<HTMLInputElement>(null)
   const checkoutSectionRef = useRef<HTMLDivElement>(null)
   const scanner = useScanner()
+  // Synchronous guards against the exact same barcode landing in the cart
+  // twice from one physical scan -- a ref, not the `scanning` state, since
+  // state updates are batched: two near-simultaneous triggers for the same
+  // code (a scanner that fires its "Enter" terminator twice per pull, or
+  // the manual scan box and the global scanner listener both catching one
+  // physical scan) could otherwise both read `scanning === false` and
+  // `cart` as not-yet-containing the code before either one's state update
+  // actually lands, adding the same item twice. scanLockRef flips
+  // synchronously the instant a lookup starts; inFlightCodesRef tracks
+  // which codes are mid-lookup (not yet in `cart`), so the duplicate check
+  // covers scans-in-progress too, not just what's already committed.
+  const scanLockRef = useRef(false)
+  const inFlightCodesRef = useRef<Set<string>>(new Set())
 
   // A scan should always bring the cashier back to the checkout panel (scan
   // box, pending-confirmation card, cart) even if they'd scrolled down to the
@@ -545,6 +624,28 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
 
   useEffect(() => {
     void Promise.all([listTaxRates(), loadInsuranceProviders()]).then(([rates, provs]) => { setTaxRates(rates); setProviders(provs) })
+  }, [])
+
+  // Branch Settings' POS toggles decide which methods this branch even
+  // offers -- a branch that never enabled card, for instance, should never
+  // see it as an option here. Best-effort: if this fails to load, cash-only
+  // is always a safe fallback (every branch takes cash).
+  useEffect(() => {
+    void getMyBranchDetails(branchId).then(details => {
+      setPosMethods({ cash: details.posCashEnabled, mtnMomo: details.posMtnMomoEnabled, airtelMoney: details.posAirtelMoneyEnabled, card: details.posCardEnabled })
+      setPaymentMethod(details.posDefaultPaymentMethod)
+    }).catch(() => undefined)
+  }, [branchId])
+
+  // A payment left "pending" by a browser refresh/crash while waiting on
+  // Pesapal isn't lost -- it's a real row (see pending_payments) -- this
+  // picks the most recent one back up so the till resumes waiting on it
+  // instead of silently abandoning a charge that might still succeed.
+  useEffect(() => {
+    void listOpenPendingPayments().then((rows: OpenPendingPayment[]) => {
+      const [latest] = rows
+      if (latest) setGatewayPayment({ id: latest.id, amount: latest.amount, method: latest.paymentMethod, status: "pending" })
+    }).catch(() => undefined)
   }, [])
 
   // Non-critical: the checkout flow works with or without this panel, so a
@@ -588,65 +689,64 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
 
   const selectedProvider = providers.find(p => p.id === providerId) ?? null
 
-  async function handleScan() {
-    const code = scanInput.trim()
-    if (!code || scanning || pending) return
+  // Shared by the manual scan box and the global physical-scanner listener
+  // below -- see scanLockRef's own comment above for why the entry guard
+  // and duplicate check both need to look past the `cart`/`scanning` state
+  // to a synchronous ref. clearInput is only true for the manual box (a
+  // global scan never had anything typed into it to clear).
+  async function performScan(code: string, clearInput: boolean) {
+    if (!code || scanLockRef.current || pending) return
     scrollToCheckout()
-    if (cart.some(item => item.code.toUpperCase() === code.toUpperCase())) {
+    const upper = code.toUpperCase()
+    if (cart.some(item => item.code.toUpperCase() === upper) || inFlightCodesRef.current.has(upper)) {
       setError(t("salesPage.cartDuplicateError", { code }))
-      setScanInput("")
+      if (clearInput) setScanInput("")
       return
     }
+    scanLockRef.current = true
+    inFlightCodesRef.current.add(upper)
     setScanning(true)
     setError("")
     try {
       const item = await scanBarcode(code, taxRates)
       addScannedItem(item)
-      setScanInput("")
+      if (clearInput) setScanInput("")
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
+      setError(saleErrorMessage(reason, t))
     } finally {
+      inFlightCodesRef.current.delete(upper)
+      scanLockRef.current = false
       setScanning(false)
     }
   }
 
-  // Global-scanner hand-off (App.tsx / lib/scanner.tsx). Deliberately a
-  // separate function from handleScan() -- not a modification of it -- so
-  // the local scan box and its Add button keep working exactly as before.
-  // Reuses the same scanBarcode() call and the same guards handleScan()
-  // already enforces (scanning/pending/duplicate-in-cart), and lands in the
+  async function handleScan() {
+    await performScan(scanInput.trim(), true)
+  }
+
+  // Global-scanner hand-off (App.tsx / lib/scanner.tsx) -- lands in the
   // exact same `pending` confirmation step: a global scan never skips
   // quantity selection, it only skips having to type the code by hand.
   async function processGlobalScan(code: string) {
-    if (!code || scanning || pending) return
-    scrollToCheckout()
-    if (cart.some(item => item.code.toUpperCase() === code.toUpperCase())) {
-      setError(t("salesPage.cartDuplicateError", { code }))
-      return
-    }
-    setScanning(true)
-    setError("")
-    try {
-      const item = await scanBarcode(code, taxRates)
-      addScannedItem(item)
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("salesPage.scanError"))
-    } finally {
-      setScanning(false)
-    }
+    await performScan(code, false)
   }
 
   // Consumes a code the global listener recognized (App.tsx has already
   // navigated here if needed). The barcode is cleared from context the
   // instant it's picked up -- before the async lookup even starts -- so a
   // re-render triggered by setScanning(true) can't re-trigger this effect
-  // against the same value. If scanning/pending is already true when a scan
-  // arrives, this simply does nothing yet: scanner.barcode stays put in
-  // context (untouched), and this effect re-checks the moment either of
-  // those clears, so nothing is silently dropped -- it just waits its turn,
-  // same as a second physical scan would today.
+  // against the same value. Gated on scanLockRef (a synchronous ref, not
+  // the `scanning` state -- see its own comment above) so a physical scan
+  // arriving in the exact instant a manual scan is already in flight
+  // doesn't slip past this check too; `scanning` stays in the dependency
+  // list purely to make this effect re-run once the lock clears. If a scan
+  // is already in flight when one arrives, this simply does nothing yet:
+  // scanner.barcode stays put in context (untouched), and this effect
+  // re-checks the moment scanning flips back, so nothing is silently
+  // dropped -- it just waits its turn, same as a second physical scan
+  // would today.
   useEffect(() => {
-    if (!scanner.barcode || scanning || pending) return
+    if (!scanner.barcode || scanLockRef.current || pending) return
     const code = scanner.barcode
     scanner.clearBarcode()
     void processGlobalScan(code)
@@ -726,32 +826,40 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
     return t("salesPage.describePiecesFromCarton", { pieces: pcs })
   }
 
+  // A walk-in with nothing filled in stays a one-click checkout. But the
+  // moment the cashier starts recording someone, name, gender and the
+  // phone/TIN identifier are all required -- a half-filled patient record
+  // is worse than none, since it can never be matched again on a later visit.
+  // Shared by both the cash path and the gateway path below -- a patient
+  // recorded for a mobile money sale is exactly the same operation as for
+  // a cash one.
+  async function resolvePatientId(): Promise<string | null> {
+    const recordingPatient = !!(patientDraft.fullName.trim() || patientDraft.identifier.trim())
+    if (!recordingPatient) return null
+    if (!patientDraft.fullName.trim() || !patientDraft.gender || !patientDraft.identifier.trim()) {
+      throw new SaleFlowError("salesPage.patientIncomplete", undefined, "Patient record is incomplete.")
+    }
+    return upsertPatient(
+      patientDraft.fullName.trim(), patientDraft.gender,
+      patientDraft.age.trim() ? Number.parseInt(patientDraft.age, 10) : null,
+      patientDraft.identifier.trim(), null, branchId,
+    )
+  }
+
+  function resetCheckout() {
+    setCart([])
+    setProviderId("")
+    setPatientDraft(BLANK_PATIENT)
+    setGatewayPayment(null)
+    setGatewayPhone("")
+  }
+
   async function handleCompleteSale() {
     if (cart.length === 0 || completing) return
     setCompleting(true)
     setError("")
     try {
-      // A walk-in with nothing filled in stays a one-click checkout. But the
-      // moment the cashier starts recording someone, name, gender and the
-      // phone/TIN identifier are all required -- a half-filled patient record
-      // is worse than none, since it can never be matched again on a later visit.
-      let patientId: string | null = null
-      const recordingPatient = !!(patientDraft.fullName.trim() || patientDraft.identifier.trim())
-      if (recordingPatient) {
-        if (!patientDraft.fullName.trim() || !patientDraft.gender || !patientDraft.identifier.trim()) {
-          setError(t("salesPage.patientIncomplete"))
-          setCompleting(false)
-          return
-        }
-        patientId = await upsertPatient(
-          patientDraft.fullName.trim(),
-          patientDraft.gender,
-          patientDraft.age.trim() ? Number.parseInt(patientDraft.age, 10) : null,
-          patientDraft.identifier.trim(),
-          null,
-          branchId,
-        )
-      }
+      const patientId = await resolvePatientId()
       const result = await completeSale({
         lines: cart.map(item => ({
           code: item.code,
@@ -760,21 +868,107 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
         })),
         insuranceProviderId: providerId || null,
         patientId,
+        paymentMethod: "cash",
         branchId,
       })
       const fullReceipt = await getSaleReceipt(result.saleId)
       setPendingReceipt(fullReceipt)
-      setCart([])
-      setProviderId("")
-      setPatientDraft(BLANK_PATIENT)
+      resetCheckout()
       setNotice(t("salesPage.saleCompletedNotice"))
       void loadDashboard()
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("salesPage.completeSaleError"))
+      setError(reason instanceof SaleFlowError ? saleErrorMessage(reason, t) : reason instanceof Error ? reason.message : t("salesPage.completeSaleError"))
     } finally {
       setCompleting(false)
     }
   }
+
+  // Mobile money / card: unlike cash, this can't finish in one round-trip --
+  // Pesapal (or whichever gateway is behind pesapal-payment) confirms
+  // asynchronously. create_pending_payment() prices the cart itself,
+  // server-side, so `amount` here is authoritative, never something this
+  // function invents. Stock/receipt are only ever touched once the poll
+  // loop below sees a confirmed success.
+  async function startGatewayPayment() {
+    if (cart.length === 0 || completing || gatewayBusy) return
+    const method = paymentMethod as GatewayPaymentMethod
+    if ((method === "mtn_momo" || method === "airtel_money") && !gatewayPhone.trim()) {
+      setError(t("salesPage.gatewayPhoneRequired"))
+      return
+    }
+    setGatewayBusy(true)
+    setError("")
+    try {
+      const patientId = await resolvePatientId()
+      const created = await createPendingPayment({
+        lines: cart.map(item => ({ code: item.code, sellMode: item.sellMode, quantity: item.sellMode === "whole" ? null : item.quantity })),
+        paymentMethod: method,
+        insuranceProviderId: providerId || null,
+        patientId,
+        patientPhone: gatewayPhone.trim() || null,
+        branchId,
+      })
+      setGatewayPayment({ id: created.pendingPaymentId, amount: created.amount, method, status: "pending" })
+      const initiated = await initiatePayment(created.pendingPaymentId)
+      setGatewayPayment(current => current && current.id === created.pendingPaymentId
+        ? { ...current, redirectUrl: initiated.redirectUrl, status: initiated.status }
+        : current)
+    } catch (reason) {
+      setError(reason instanceof SaleFlowError ? saleErrorMessage(reason, t) : reason instanceof Error ? reason.message : t("salesPage.gatewayStartError"))
+      setGatewayPayment(null)
+    } finally {
+      setGatewayBusy(false)
+    }
+  }
+
+  function retryGatewayPayment() {
+    setGatewayPayment(null)
+    setError("")
+  }
+
+  // Renders the redirect_url as a QR code -- the customer scans it on their
+  // own phone to reach the gateway's hosted page (card details, or the MoMo/
+  // Airtel approval prompt, are entered there, never on this till). Sized
+  // for scanning at arm's length, unlike the small 96px QRs this page
+  // already uses for receipt sharing.
+  useEffect(() => {
+    if (!gatewayPayment?.redirectUrl) { setGatewayQr(null); return }
+    let cancelled = false
+    QRCode.toDataURL(gatewayPayment.redirectUrl, { width: 220, margin: 1 }).then(url => { if (!cancelled) setGatewayQr(url) }).catch(() => { if (!cancelled) setGatewayQr(null) })
+    return () => { cancelled = true }
+  }, [gatewayPayment?.redirectUrl])
+
+  // Polls check-status, which itself re-verifies with the gateway (never
+  // just re-reads a stale local flag) -- see pesapal-payment's check-status
+  // action. Stops the moment the row leaves "pending"; success fetches the
+  // exact same receipt shape the cash path does, from the sale _execute_
+  // sale() actually created server-side once payment was confirmed.
+  useEffect(() => {
+    if (!gatewayPayment || gatewayPayment.status !== "pending") return
+    let cancelled = false
+    const timer = window.setInterval(async () => {
+      try {
+        const result = await checkPaymentStatus(gatewayPayment.id)
+        if (cancelled) return
+        if (result.status === "success" && result.saleId) {
+          window.clearInterval(timer)
+          const fullReceipt = await getSaleReceipt(result.saleId)
+          if (cancelled) return
+          setPendingReceipt(fullReceipt)
+          resetCheckout()
+          setNotice(t("salesPage.saleCompletedNotice"))
+          void loadDashboard()
+        } else if (result.status !== "pending") {
+          window.clearInterval(timer)
+          setGatewayPayment(current => current ? { ...current, status: result.status, failureReason: result.failureReason } : current)
+        }
+      } catch {
+        // Transient — the next tick tries again; the till never surfaces a
+        // hard error just because one poll round-trip failed.
+      }
+    }, PAYMENT_POLL_MS)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [gatewayPayment?.id, gatewayPayment?.status])
 
   if (pendingReceipt) {
     return (
@@ -882,6 +1076,11 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
                 <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)", marginBottom: 2 }}>
                   {pending.item.productName}{pending.item.dosage ? ` · ${pending.item.dosage}` : ""}{pending.item.form ? ` · ${pending.item.form}` : ""}
                 </div>
+                {pending.item.storageLocationName && (
+                  <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600, marginBottom: 4 }}>
+                    📍 {t("salesPage.storedAt", { location: pending.item.storageLocationName })}
+                  </div>
+                )}
                 <div style={{ fontSize: 12, color: "var(--ink-muted)", fontFamily: 'var(--font-mono)', marginBottom: 12 }}>{summaryLine}</div>
 
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
@@ -972,6 +1171,9 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
                       <div style={{ fontSize: 11, color: "var(--ink-muted)", fontFamily: 'var(--font-mono)' }}>
                         {line.code} · {describeSale(line)} · {t("salesPage.lineTaxPrefix")} {line.taxRatePercentage}%
                       </div>
+                      {line.storageLocationName && (
+                        <div style={{ fontSize: 11, color: "var(--accent)", fontWeight: 600 }}>📍 {line.storageLocationName}</div>
+                      )}
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
                       <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{fmtRWFExact(line.lineTotal)}</div>
@@ -1008,15 +1210,121 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
             <span>{t("salesPage.patientOwes")}</span><span>{fmtRWFExact(patientOwedTotal)}</span>
           </div>
 
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>{t("salesPage.methodLabel")}</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+            {PAYMENT_METHOD_OPTIONS
+              .filter(opt => opt.id === "card" ? SUPPORTS_CARD && posMethods.card
+                : opt.id === "mtn_momo" ? posMethods.mtnMomo
+                : opt.id === "airtel_money" ? posMethods.airtelMoney
+                : posMethods.cash)
+              .map(opt => {
+                const active = paymentMethod === opt.id
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(opt.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 7, padding: "6px 12px 6px 6px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                      border: `1.5px solid ${active ? opt.color : "var(--border)"}`,
+                      background: active ? opt.bg : "var(--surface)",
+                      color: active ? opt.color : "var(--ink-mid)",
+                    }}
+                  >
+                    {opt.image ? (
+                      <img src={opt.image} alt="" style={{ width: 22, height: 22, borderRadius: "50%", flexShrink: 0, objectFit: "cover" }} />
+                    ) : opt.imageWide ? (
+                      <img src={opt.imageWide} alt="" style={{ height: 18, width: "auto", flexShrink: 0 }} />
+                    ) : (
+                      <span style={{
+                        width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 12, flexShrink: 0, background: opt.bg, border: `1px solid ${opt.color}40`,
+                      }}>{opt.icon}</span>
+                    )}
+                    {t(opt.labelKey)}
+                  </button>
+                )
+              })}
+          </div>
+
+          {(paymentMethod === "mtn_momo" || paymentMethod === "airtel_money") && (
+            <input
+              value={gatewayPhone}
+              onChange={e => setGatewayPhone(e.target.value)}
+              placeholder={t("salesPage.gatewayPhonePlaceholder")}
+              style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13, fontFamily: "inherit", marginBottom: 12, boxSizing: "border-box" }}
+            />
+          )}
+
           <Btn
             variant="primary"
-            style={{ width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14, opacity: cart.length === 0 || completing ? 0.55 : 1, cursor: cart.length === 0 || completing ? "not-allowed" : "pointer" }}
-            onClick={() => void handleCompleteSale()}
+            style={{ width: "100%", justifyContent: "center", padding: "12px 16px", fontSize: 14, opacity: cart.length === 0 || completing || gatewayBusy ? 0.55 : 1, cursor: cart.length === 0 || completing || gatewayBusy ? "not-allowed" : "pointer" }}
+            onClick={() => void (paymentMethod === "cash" ? handleCompleteSale() : startGatewayPayment())}
           >
-            {completing ? t("salesPage.completingButton") : t("salesPage.completeSaleButton", { count: cart.length })}
+            {paymentMethod === "cash"
+              ? (completing ? t("salesPage.completingButton") : t("salesPage.completeSaleButton", { count: cart.length }))
+              : (gatewayBusy ? t("salesPage.gatewayStarting") : t("salesPage.gatewayChargeButton", { amount: fmtRWFExact(patientOwedTotal) }))}
           </Btn>
         </div>
       </div>
+
+      {gatewayPayment && (
+        <Modal title={t("salesPage.gatewayModalTitle")} onClose={gatewayPayment.status === "pending" ? () => undefined : () => setGatewayPayment(null)} width={420}>
+          <div style={{ padding: "8px 4px 4px", display: "flex", flexDirection: "column", gap: 16, alignItems: "center", textAlign: "center" }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "var(--ink)" }}>{fmtRWFExact(gatewayPayment.amount)}</div>
+
+            {gatewayPayment.status === "pending" && (
+              <>
+                {GATEWAY_PROVIDER === "pesapal" ? (
+                  <>
+                    {gatewayQr ? (
+                      <img src={gatewayQr} alt="" width={220} height={220} style={{ borderRadius: 12, border: "1px solid var(--border)" }} />
+                    ) : (
+                      <div style={{ width: 220, height: 220, borderRadius: 12, background: "var(--bg-alt)" }} />
+                    )}
+                    <div style={{ fontSize: 13, color: "var(--ink-mid)" }}>{t("salesPage.gatewayWaitingBody")}</div>
+                    {gatewayPayment.redirectUrl && (
+                      <a href={gatewayPayment.redirectUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}>
+                        {t("salesPage.gatewayOpenLink")}
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  // pawaPay: a direct push to the customer's own phone, no
+                  // hosted page and therefore nothing to scan/open here.
+                  <>
+                    {gatewayPayment.method === "mtn_momo" ? (
+                      <img src={mtnMomoIcon} alt="" style={{ width: 56, height: 56, borderRadius: "50%" }} />
+                    ) : gatewayPayment.method === "airtel_money" ? (
+                      <img src={airtelMoneyIcon} alt="" style={{ height: 40, width: "auto" }} />
+                    ) : (
+                      <div style={{ fontSize: 40 }}>📲</div>
+                    )}
+                    <div style={{ fontSize: 13, color: "var(--ink-mid)" }}>{t("salesPage.gatewayWaitingBodyPush", { phone: gatewayPhone })}</div>
+                  </>
+                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-faint)" }}>
+                  <span style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid var(--border)", borderTopColor: "var(--primary)", animation: "psync-spin 0.8s linear infinite" }} />
+                  {t("salesPage.gatewayCheckingStatus")}
+                </div>
+              </>
+            )}
+
+            {gatewayPayment.status !== "pending" && (
+              <>
+                <div style={{ fontSize: 32 }}>{gatewayPayment.status === "expired" ? "⏱" : "⚠️"}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-mid)" }}>
+                  {gatewayPayment.status === "expired" ? t("salesPage.gatewayExpiredBody") : (gatewayPayment.failureReason ?? t("salesPage.gatewayFailedBody"))}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn variant="ghost" onClick={() => setGatewayPayment(null)}>{t("salesPage.gatewayCancel")}</Btn>
+                  <Btn variant="primary" onClick={() => { retryGatewayPayment(); void startGatewayPayment() }}>{t("salesPage.gatewayTryAgain")}</Btn>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
 
       {snapshot && (
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 16, marginTop: 16 }}>

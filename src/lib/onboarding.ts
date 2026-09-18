@@ -209,9 +209,24 @@ export function applicationDaysLeft(submittedAt: string): number {
   return APPLICATION_EXPIRY_DAYS - Math.floor(elapsedMs / 86_400_000)
 }
 
-export interface PlatformStats { activeBranches: number; trackedSkus: number; cities: number }
+export interface PlatformStats {
+  activeBranches: number
+  trackedSkus: number
+  cities: number
+  // Everything below is null until public_platform_stats() actually has a
+  // real number to report (e.g. avgTransferHours stays null until at least
+  // one inter-branch transfer has ever completed) -- the home page shows a
+  // plain placeholder rather than inventing a number when that happens.
+  revenueToday: number | null
+  expiringSoon: number | null
+  salesProcessed: number | null
+  forecastsGenerated: number | null
+  avgTransferHours: number | null
+  branchesMappedPct: number | null
+}
 
-// Real counts for the marketing home page's trust-stat strip — see
+// Real counts for the marketing home page's trust-stat strip, hero stat
+// bubbles, and each feature's "Key metric" badge — see
 // public_platform_stats() in the schema. Aggregate numbers only, readable
 // before sign-in.
 export async function getPlatformStats(): Promise<PlatformStats> {
@@ -222,6 +237,12 @@ export async function getPlatformStats(): Promise<PlatformStats> {
     activeBranches: row?.active_branches ?? 0,
     trackedSkus: row?.tracked_skus ?? 0,
     cities: row?.cities ?? 0,
+    revenueToday: row?.revenue_today != null ? Number(row.revenue_today) : null,
+    expiringSoon: row?.expiring_soon != null ? Number(row.expiring_soon) : null,
+    salesProcessed: row?.sales_processed != null ? Number(row.sales_processed) : null,
+    forecastsGenerated: row?.forecasts_generated != null ? Number(row.forecasts_generated) : null,
+    avgTransferHours: row?.avg_transfer_hours != null ? Number(row.avg_transfer_hours) : null,
+    branchesMappedPct: row?.branches_mapped_pct != null ? Number(row.branches_mapped_pct) : null,
   }
 }
 
@@ -540,4 +561,56 @@ export async function adminListOrganizations(): Promise<AdminOrganizationRecord[
 export async function adminSetOrganizationStatus(organizationId: string, status: "active" | "suspended"): Promise<void> {
   const { error } = await supabaseAdmin.rpc("admin_set_organization_status", { p_organization_id: organizationId, p_status: status })
   if (error) raise(error)
+}
+
+// Corrects an organization's legal name / trade name / TIN after
+// registration -- mirrors adminUpdateBranchDetails()'s existing pattern.
+// Suspend/reactivate stays on adminSetOrganizationStatus(), its own action.
+export async function adminUpdateOrganizationDetails(
+  organizationId: string, edit: { legalName: string; tradeName: string; tin: string },
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc("admin_update_organization_details", {
+    p_organization_id: organizationId, p_legal_name: edit.legalName, p_trade_name: edit.tradeName, p_tin: edit.tin,
+  })
+  if (error) raise(error)
+}
+
+export interface AdminPlatformStats {
+  totalOrganizations: number
+  totalBranches: number
+  activeBranches: number
+  totalMembers: number
+  activeMembers: number
+  totalPatients: number
+}
+
+// One row of platform-wide counts for the super-admin Dashboard overview.
+export async function adminPlatformStats(): Promise<AdminPlatformStats> {
+  const { data, error } = await supabaseAdmin.rpc("admin_platform_stats")
+  if (error) raise(error)
+  const row = (data ?? [])[0] as any ?? {}
+  return {
+    totalOrganizations: row.total_organizations ?? 0,
+    totalBranches: row.total_branches ?? 0,
+    activeBranches: row.active_branches ?? 0,
+    totalMembers: row.total_members ?? 0,
+    activeMembers: row.active_members ?? 0,
+    totalPatients: row.total_patients ?? 0,
+  }
+}
+
+export type AdminStatsInterval = "day" | "week" | "month"
+
+export interface AdminPatientsTimeSeriesPoint {
+  periodStart: string
+  patientCount: number
+}
+
+// Patients registered per day/week/month, platform-wide, over the last
+// `periods` buckets -- feeds the Dashboard's "patients received over time"
+// chart.
+export async function adminPatientsTimeSeries(interval: AdminStatsInterval, periods: number): Promise<AdminPatientsTimeSeriesPoint[]> {
+  const { data, error } = await supabaseAdmin.rpc("admin_patients_time_series", { p_interval: interval, p_periods: periods })
+  if (error) raise(error)
+  return ((data ?? []) as any[]).map(row => ({ periodStart: row.period_start, patientCount: row.patient_count ?? 0 }))
 }

@@ -9,7 +9,23 @@ if (!supabaseUrl || !supabaseKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// sessionStorage, not the supabase-js default of localStorage -- localStorage
+// is shared by every tab of the same origin, so opening a second tab and
+// signing in as a different branch's login there silently replaced the
+// session in the FIRST tab too (both read the same stored token). A branch
+// manager already signed in couldn't open a second tab to sign into a
+// different branch without being signed out of the first one. sessionStorage
+// is scoped per tab -- a new tab starts with no session (shows the sign-in
+// gate) and can hold its own independent login, exactly like opening a
+// second, unrelated browser tab should. The tradeoff: closing a tab now
+// forgets that tab's session (reloading the SAME tab still keeps it, since
+// sessionStorage survives a reload, just not a close) -- previously, closing
+// and reopening a tab kept you signed in indefinitely. This mirrors
+// supabaseAdmin.ts's own storageKey isolation for the same class of problem,
+// just solved per-tab instead of per-persona.
+export const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: { storage: window.sessionStorage },
+})
 
 // Supabase's query/RPC errors (PostgrestError, AuthError, etc.) are plain
 // objects with a `message` field -- they are NOT `instanceof Error`. Checking

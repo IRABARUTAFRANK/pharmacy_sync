@@ -268,7 +268,7 @@ function InventoryDrillDownModal({ data, onClose, onViewFullReport }: { data: Ov
       ['Total Inventory Value (RWF)', Math.round(data.inventoryValue)],
       ['Expiring ≤ 90 Days (RWF)', Math.round(expiringValue)],
       ['Healthy Stock Value (RWF)', Math.round(healthyValue)],
-      ['Below Reorder Point (products)', data.belowReorder],
+      ['Below Recorder Point (products)', data.belowReorder],
     ],
   }
 
