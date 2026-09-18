@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Btn, Card, CenterAlert, Modal, SectionHeader, StatusBadge } from "../components"
+import { Btn, Card, CardHeader, CATEGORY_DOT_COLORS, CenterAlert, inputStyle, Modal, SectionHeader, StatusBadge } from "../components"
 import { useTranslation } from "../lib/i18n"
 import type { TranslationKey } from "../lib/i18n/en"
 import { branchLogoUrl, getMyBranchDetails, updateBranchDetails, uploadBranchLogo, type BranchLanguage, type PaymentMethod } from "../lib/branch"
 import L from "leaflet"
-import { geocodeAddress, getCurrentDeviceLocation, googleMapsLinkFor, OSM_ATTRIBUTION, OSM_TILE_URL, PHARMACY_ICON, reverseGeocode, type GeocodeResult } from "../lib/maps"
+import {
+  ACCURACY_CIRCLE_CLASS, addBaseLayerToggle, geocodeAddress, getCurrentDeviceLocation, googleMapsLinkFor,
+  OSM_ATTRIBUTION, OSM_TILE_URL, PHARMACY_ICON, reverseGeocode, toggleFullscreen, type GeocodeResult,
+} from "../lib/maps"
 import { updatePassword } from "../lib/auth"
 import { createBranchDiscount, listBranchDiscounts, type BranchDiscount, type DiscountType } from "../lib/sales"
 import { createBranchCategory, listBranchCategories, updateBranchCategory, type BranchCategory } from "../lib/categories"
@@ -12,17 +15,19 @@ import { inviteStaff, listBranchStaff, setStaffActive, updateStaffRole, type Bra
 import { errorMessage } from "../lib/supabase"
 import type { Role } from "../data"
 import { PasswordInput } from "./AuthShell"
+import StorageLocationsManager from "./StorageLocationsManager"
 
 // Same shape as Overview's own widget-visibility switch, kept page-local like
 // that one rather than promoted to components.tsx -- neither page needs the
 // other's copy.
-function Switch({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+function Switch({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
     <button
-      type="button" role="switch" aria-checked={checked} onClick={onChange}
+      type="button" role="switch" aria-checked={checked} onClick={disabled ? undefined : onChange} disabled={disabled}
       style={{
-        width: 38, height: 21, borderRadius: 11, border: "none", cursor: "pointer", padding: 0, flexShrink: 0,
+        width: 38, height: 21, borderRadius: 11, border: "none", cursor: disabled ? "not-allowed" : "pointer", padding: 0, flexShrink: 0,
         background: checked ? "var(--positive)" : "var(--border-strong)", position: "relative", transition: "background 0.15s",
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       <span style={{
@@ -49,69 +54,165 @@ function AlwaysOnIndicator() {
   )
 }
 
-const inputStyle = { width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" as const }
-
-function CardHeader({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-      <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--primary-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{icon}</div>
-      <div>
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{title}</h2>
-        {subtitle && <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{subtitle}</p>}
-      </div>
-    </div>
-  )
-}
-
 // Falls back to Kigali when no pin has ever been set -- just a sensible
 // starting view for the very first placement, not a meaningful default
 // location (nothing is saved until the admin actually clicks/drags/uses
 // their device location).
 const DEFAULT_MAP_CENTER: L.LatLngTuple = [-1.9441, 30.0619]
 
-// A draggable-pin picker built on Leaflet + OpenStreetMap tiles -- free,
-// no API key, no account, no billing (see src/lib/maps.ts's own header for
-// why this replaced an earlier Google Maps version). The map/marker are
-// created once on mount and kept in sync with external latitude/longitude
-// changes (e.g. "Use my current location") by the second effect, rather
-// than being torn down and rebuilt on every coordinate change.
-function BranchLocationMap({ latitude, longitude, onChange }: {
-  latitude: number | null; longitude: number | null; onChange: (lat: number, lng: number) => void
+// A draggable-pin picker on a Leaflet + OpenStreetMap map (free, no API key,
+// no account, no billing -- see src/lib/maps.ts's own header). Kept in sync
+// with external latitude/longitude changes (e.g. "Use my current location",
+// an address search result) by its own effect below, so any of the four
+// ways to move the pin -- device location, search, click, drag -- all flow
+// through the same onChange back to the parent, which is the single source
+// of truth for what's actually saved.
+function BranchLocationMap({ latitude, longitude, accuracyMeters, onChange }: {
+  latitude: number | null; longitude: number | null; accuracyMeters: number | null; onChange: (lat: number, lng: number) => void
 }) {
-  const mapDivRef = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<L.Map | null>(null)
-  const markerRef = useRef<L.Marker | null>(null)
+  const { t } = useTranslation()
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null)
+  const [tilesLoading, setTilesLoading] = useState(true)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const leafletDivRef = useRef<HTMLDivElement | null>(null)
+  const leafletMapRef = useRef<L.Map | null>(null)
+  const leafletMarkerRef = useRef<L.Marker | null>(null)
+  const accuracyCircleRef = useRef<L.Circle | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
+  // The whole wrapper (toolbar included, not just the tile canvas) goes
+  // fullscreen together via the native browser API -- see
+  // toggleFullscreen()'s own comment. Leaflet caches its container's pixel
+  // size, so it needs an explicit nudge once the fullscreen transition
+  // actually finishes; `fullscreenchange` (not the click handler itself) is
+  // the right moment for that, on a short delay so the browser's own layout
+  // settles first.
   useEffect(() => {
-    if (!mapDivRef.current) return
+    function handleChange() {
+      setIsFullscreen(document.fullscreenElement === wrapperRef.current)
+      window.setTimeout(() => { leafletMapRef.current?.invalidateSize() }, 60)
+    }
+    document.addEventListener("fullscreenchange", handleChange)
+    return () => document.removeEventListener("fullscreenchange", handleChange)
+  }, [])
+
+  // A quick pulse ring around the pin whenever it's placed/moved (drag,
+  // click, "use my location", search, recenter) -- the same house style as
+  // this app's other placement/success confirmations, just enough motion to
+  // read as "placed here" without being distracting.
+  function pulseAt(el: HTMLElement | null | undefined) {
+    if (!el) return
+    el.classList.remove("pin-drop-pulse")
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    void el.offsetWidth // restart the animation even if it's already mid-pulse
+    el.classList.add("pin-drop-pulse")
+  }
+
+  useEffect(() => {
+    if (!leafletDivRef.current) return
     const center: L.LatLngTuple = latitude != null && longitude != null ? [latitude, longitude] : DEFAULT_MAP_CENTER
-    const map = L.map(mapDivRef.current, { attributionControl: true }).setView(center, latitude != null ? 15 : 7)
-    L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    setTilesLoading(true)
+    const map = L.map(leafletDivRef.current, {
+      attributionControl: true, zoomAnimation: true, easeLinearity: 0.25,
+      zoomSnap: 0.5, wheelPxPerZoomLevel: 90, // finer-grained, smoother scroll-zoom than Leaflet's default whole-integer steps
+    }).setView(center, latitude != null ? 15 : 7)
+    const streetLayer = L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    streetLayer.once("load", () => setTilesLoading(false)) // fires once every currently-visible tile has actually loaded in
+    // Satellite view lets whoever is placing the pin cross-check it against
+    // real imagery -- e.g. confirming the pin actually sits on the
+    // pharmacy's rooftop rather than a neighboring building, which is
+    // exactly the kind of check the GPS-accuracy warning above this map
+    // asks for when the device's own reading is low-confidence.
+    addBaseLayerToggle(map, streetLayer, t("branchSettings.mapLayerMap"), t("branchSettings.mapLayerSatellite"))
+    L.control.scale({ imperial: false }).addTo(map)
     const marker = L.marker(center, { draggable: true, icon: PHARMACY_ICON }).addTo(map)
     marker.on("dragend", () => {
       const pos = marker.getLatLng()
+      pulseAt(marker.getElement())
       onChangeRef.current(pos.lat, pos.lng)
     })
     map.on("click", (e: L.LeafletMouseEvent) => {
       marker.setLatLng(e.latlng)
+      pulseAt(marker.getElement())
       onChangeRef.current(e.latlng.lat, e.latlng.lng)
     })
-    mapRef.current = map
-    markerRef.current = marker
-    return () => { map.remove(); mapRef.current = null; markerRef.current = null }
+    leafletMapRef.current = map
+    leafletMarkerRef.current = marker
+    return () => { map.remove(); leafletMapRef.current = null; leafletMarkerRef.current = null; accuracyCircleRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    if (!mapRef.current || !markerRef.current || latitude == null || longitude == null) return
+    const map = leafletMapRef.current
+    const marker = leafletMarkerRef.current
+    if (latitude == null || longitude == null || !map || !marker) return
     const pos: L.LatLngTuple = [latitude, longitude]
-    mapRef.current.setView(pos, 15)
-    markerRef.current.setLatLng(pos)
+    map.flyTo(pos, Math.max(map.getZoom(), 15), { duration: 1.1, easeLinearity: 0.25 })
+    marker.setLatLng(pos)
   }, [latitude, longitude])
 
-  return <div ref={mapDivRef} style={{ width: "100%", height: 220, borderRadius: 10, overflow: "hidden", background: "var(--bg)" }} />
+  // The device's own GPS confidence radius, drawn as a soft pulsing circle
+  // around the pin -- only for an actual device reading (a search result or
+  // a manual drag/click clears accuracyMeters back to null, see
+  // useCurrentLocation/pickSearchResult/BranchLocationMap's own onChange
+  // above), so it never implies false precision for a pin placed
+  // deliberately rather than read off a GPS sensor.
+  useEffect(() => {
+    const map = leafletMapRef.current
+    if (!map) return
+    if (accuracyCircleRef.current) { map.removeLayer(accuracyCircleRef.current); accuracyCircleRef.current = null }
+    if (latitude == null || longitude == null || accuracyMeters == null) return
+    const circle = L.circle([latitude, longitude], {
+      radius: accuracyMeters, color: "var(--primary, #1e5fa8)", weight: 1, fillOpacity: 0.1, className: ACCURACY_CIRCLE_CLASS,
+    }).addTo(map)
+    circle.bindTooltip(t("branchSettings.locationAccuracyRadiusLabel", { meters: String(Math.round(accuracyMeters)) }))
+    accuracyCircleRef.current = circle
+  }, [latitude, longitude, accuracyMeters, t])
+
+  function recenter() {
+    if (latitude == null || longitude == null || !leafletMapRef.current) return
+    leafletMapRef.current.flyTo([latitude, longitude], 15, { duration: 0.8, easeLinearity: 0.25 })
+    pulseAt(leafletMarkerRef.current?.getElement())
+  }
+
+  return (
+    <div ref={wrapperRef} style={isFullscreen ? { background: "var(--surface)", padding: 16, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box" } : undefined}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginBottom: 8 }}>
+        <button
+          type="button"
+          title={t("branchSettings.mapRecenter")}
+          onClick={recenter}
+          disabled={latitude == null || longitude == null}
+          style={{
+            width: 26, height: 26, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+            border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-mid)",
+            cursor: latitude == null ? "default" : "pointer", fontSize: 13, opacity: latitude == null ? 0.4 : 1,
+          }}
+        >⌖</button>
+        <button
+          type="button"
+          title={isFullscreen ? t("branchSettings.mapExitFullscreen") : t("branchSettings.mapFullscreen")}
+          onClick={() => { setFullscreenError(null); if (wrapperRef.current) toggleFullscreen(wrapperRef.current, setFullscreenError) }}
+          style={{
+            width: 26, height: 26, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+            border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-mid)", cursor: "pointer", fontSize: 12,
+          }}
+        >{isFullscreen ? "⤡" : "⤢"}</button>
+      </div>
+      {fullscreenError && <p style={{ margin: "0 0 8px", fontSize: 11, color: "#b45309" }}>{fullscreenError}</p>}
+      <div className="animate-fade-in" style={{ position: "relative", width: "100%", height: isFullscreen ? "100%" : 260, flex: isFullscreen ? 1 : undefined, borderRadius: 10, overflow: "hidden", background: "var(--bg)" }}>
+        <div ref={leafletDivRef} style={{ width: "100%", height: "100%" }} />
+        {tilesLoading && (
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--bg)", fontSize: 12, color: "var(--ink-muted)", pointerEvents: "none" }}>
+            <span style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid var(--border)", borderTopColor: "var(--primary)", animation: "psync-spin 0.8s linear infinite" }} />
+            {t("branchSettings.mapLoadingTiles")}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // One row per setting, matching the reference layout: label + description +
@@ -135,20 +236,7 @@ function SettingRow({ label, description, dbRef, warning, last, children }: {
   )
 }
 
-function ComingSoonPanel({ label }: { label: string }) {
-  const { t } = useTranslation()
-  return (
-    <Card>
-      <div style={{ textAlign: "center", padding: "48px 20px", color: "var(--ink-muted)" }}>
-        <div style={{ fontSize: 28, marginBottom: 8 }}>🚧</div>
-        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--ink)" }}>{label}</div>
-        <div style={{ fontSize: 12, marginTop: 4 }}>{t("branchSettings.comingSoon")}</div>
-      </div>
-    </Card>
-  )
-}
-
-type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "alerts" | "compliance" | "printing"
+type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "storage" | "alerts"
 
 const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }[] = [
   { id: "profile", icon: "🏥", labelKey: "branchSettings.tabProfile" },
@@ -157,9 +245,8 @@ const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }
   { id: "finance", icon: "💰", labelKey: "branchSettings.tabFinance" },
   { id: "users", icon: "👥", labelKey: "branchSettings.tabUsers" },
   { id: "categories", icon: "📁", labelKey: "branchSettings.tabCategories" },
+  { id: "storage", icon: "🗄️", labelKey: "branchSettings.tabStorage" },
   { id: "alerts", icon: "🔔", labelKey: "branchSettings.tabAlerts" },
-  { id: "compliance", icon: "📋", labelKey: "branchSettings.tabCompliance" },
-  { id: "printing", icon: "🖨️", labelKey: "branchSettings.tabPrinting" },
 ]
 
 const STATUS_COLORS: Record<string, { c: string; bg: string }> = {
@@ -194,7 +281,6 @@ const ROLE_DESC_KEY: Record<BranchUserRole, TranslationKey> = {
   owner: "branchSettings.roleDescOwner", manager: "branchSettings.roleDescManager", seller: "branchSettings.roleDescStaff",
 }
 
-const CATEGORY_DOT_COLORS = ["#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626", "#0d9488"]
 
 function initials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean)
@@ -220,11 +306,18 @@ function Avatar({ fullName, role }: { fullName: string; role: BranchUserRole }) 
   )
 }
 
-function InviteStaffModal({ onClose, onCreated, branchId }: { onClose: () => void; onCreated: () => void; branchId?: string }) {
+function InviteStaffModal({ onClose, onCreated, branchId, isOwner }: { onClose: () => void; onCreated: () => void; branchId?: string; isOwner: boolean }) {
   const { t } = useTranslation()
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  // A manager can only ever create a seller -- create-branch-seller (the
+  // Edge Function this submits to) already rejects a manager-created
+  // "manager" login server-side ("Only the branch owner may create a
+  // manager login"), so a manager was previously shown the choice anyway
+  // and only found out it was rejected after submitting. Defaulting to,
+  // and here fixing the choice at, "seller" for a non-owner caller matches
+  // the real server-side rule instead of surfacing it as a late error.
   const [role, setRole] = useState<StaffRole>("seller")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -265,16 +358,28 @@ function InviteStaffModal({ onClose, onCreated, branchId }: { onClose: () => voi
       </div>
       <div>
         <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.usersRoleLabel")}</label>
-        <div style={{ display: "flex", gap: 8 }}>
-          {(["manager", "seller"] as StaffRole[]).map(r => (
-            <button key={r} type="button" onClick={() => setRole(r)} style={{
-              flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
-              border: `1.5px solid ${role === r ? "var(--primary)" : "var(--border)"}`,
-              background: role === r ? "var(--primary-light)" : "var(--surface)",
-              color: role === r ? "var(--primary)" : "var(--ink-mid)", fontWeight: role === r ? 700 : 500, fontSize: 12,
-            }}>{t(ROLE_LABEL_KEY[r])}</button>
-          ))}
-        </div>
+        {isOwner ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            {(["manager", "seller"] as StaffRole[]).map(r => (
+              <button key={r} type="button" onClick={() => setRole(r)} style={{
+                flex: 1, padding: "10px", borderRadius: 8, fontFamily: "inherit", cursor: "pointer",
+                border: `1.5px solid ${role === r ? "var(--primary)" : "var(--border)"}`,
+                background: role === r ? "var(--primary-light)" : "var(--surface)",
+                color: role === r ? "var(--primary)" : "var(--ink-mid)", fontWeight: role === r ? 700 : 500, fontSize: 12,
+              }}>{t(ROLE_LABEL_KEY[r])}</button>
+            ))}
+          </div>
+        ) : (
+          <div style={{
+            padding: "10px", borderRadius: 8, border: "1.5px solid var(--primary)",
+            background: "var(--primary-light)", color: "var(--primary)", fontWeight: 700, fontSize: 12,
+          }}>
+            {t(ROLE_LABEL_KEY.seller)}
+            <span style={{ display: "block", marginTop: 2, fontSize: 10, fontWeight: 500, color: "var(--ink-muted)" }}>
+              {t("branchSettings.inviteManagerRestrictionNote")}
+            </span>
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
         <Btn variant="ghost" onClick={onClose}>{t("branchSettings.usersCancel")}</Btn>
@@ -388,6 +493,15 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
   const isOwner = role === "owner"
   const visibleTabs = isOwner ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id !== "finance")
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
+  const [organizationId, setOrganizationId] = useState<string | null>(null)
+  // A plain branch manager at a branch an organization set up: everything
+  // except address/phone/location is owned by whoever configured the
+  // branch (org_owner/org_manager), mirroring update_branch_details()'s own
+  // v_org_restricted -- this is the convenience/UI side of that, the RPC
+  // itself is the real boundary regardless of what this page renders.
+  const orgRestricted = !isOwner && organizationId != null
+  const lockedInputStyle = { ...inputStyle, opacity: 0.6, cursor: "not-allowed", background: "var(--bg-alt)" }
+  const orgManagedNote = orgRestricted ? t("branchSettings.orgManagedFieldNote") : undefined
 
   const [branchName, setBranchName] = useState("")
   const [address, setAddress] = useState("")
@@ -459,7 +573,6 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
   const [categoriesError, setCategoriesError] = useState<string | null>(null)
   const [showAddCategory, setShowAddCategory] = useState(false)
   const [editCategoryTarget, setEditCategoryTarget] = useState<BranchCategory | null>(null)
-
   const refresh = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -470,6 +583,7 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
       setPhone(details.phone ?? "")
       setLatitude(details.latitude)
       setLongitude(details.longitude)
+      setOrganizationId(details.organizationId)
       setEmail(details.email ?? "")
       setWebsite(details.website ?? "")
       setTin(details.tin ?? "")
@@ -768,8 +882,8 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
                     <input type="file" accept="image/*" onChange={e => void pickLogo(e.target.files?.[0] ?? null)} style={{ fontSize: 11 }} disabled={uploadingLogo} />
                   </div>
                 </SettingRow>
-                <SettingRow label={t("branchSettings.nameLabel")} description={t("branchSettings.nameHint")} dbRef="branches.name">
-                  <input value={branchName} onChange={e => setBranchName(e.target.value)} style={inputStyle} />
+                <SettingRow label={t("branchSettings.nameLabel")} description={t("branchSettings.nameHint")} dbRef="branches.name" warning={orgManagedNote}>
+                  <input value={branchName} onChange={e => setBranchName(e.target.value)} style={orgRestricted ? lockedInputStyle : inputStyle} disabled={orgRestricted} />
                 </SettingRow>
                 <SettingRow label={t("branchSettings.addressLabel")} description={t("branchSettings.addressHint")} dbRef="branches.address">
                   <input value={address} onChange={e => setAddress(e.target.value)} style={inputStyle} />
@@ -777,11 +891,11 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
                 <SettingRow label={t("branchSettings.phoneLabel")} description={t("branchSettings.phoneHint")} dbRef="branches.phone">
                   <input value={phone} onChange={e => setPhone(e.target.value)} style={inputStyle} />
                 </SettingRow>
-                <SettingRow label={t("branchSettings.emailLabel")} description={t("branchSettings.emailHint")} dbRef="branches.email">
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={inputStyle} />
+                <SettingRow label={t("branchSettings.emailLabel")} description={t("branchSettings.emailHint")} dbRef="branches.email" warning={orgManagedNote}>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} style={orgRestricted ? lockedInputStyle : inputStyle} disabled={orgRestricted} />
                 </SettingRow>
-                <SettingRow label={t("branchSettings.websiteLabel")} description={t("branchSettings.websiteHint")} dbRef="branches.website" last>
-                  <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="www.mypharmacy.rw" style={inputStyle} />
+                <SettingRow label={t("branchSettings.websiteLabel")} description={t("branchSettings.websiteHint")} dbRef="branches.website" last warning={orgManagedNote}>
+                  <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="www.mypharmacy.rw" style={orgRestricted ? lockedInputStyle : inputStyle} disabled={orgRestricted} />
                 </SettingRow>
               </Card>
 
@@ -853,7 +967,7 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
                     </p>
                   )}
                   <BranchLocationMap
-                    latitude={latitude} longitude={longitude}
+                    latitude={latitude} longitude={longitude} accuracyMeters={locateAccuracy}
                     onChange={(lat, lng) => { setLatitude(lat); setLongitude(lng); setLocateAccuracy(null) }}
                   />
                   {/* The "does this actually look right" confirmation --
@@ -897,7 +1011,7 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
               <Card>
                 <CardHeader icon="🌐" title={t("branchSettings.localeTitle")} subtitle={t("branchSettings.localeSubtitle")} />
                 <SettingRow label={t("branchSettings.defaultLanguageLabel")} description={t("branchSettings.defaultLanguageHint")} dbRef="branches.default_language" last>
-                  <select value={defaultLanguage} onChange={e => setDefaultLanguage(e.target.value as BranchLanguage)} style={{ ...inputStyle, background: "var(--surface)" }}>
+                  <select value={defaultLanguage} onChange={e => setDefaultLanguage(e.target.value as BranchLanguage)} style={inputStyle}>
                     <option value="en">English</option>
                     <option value="fr">Français</option>
                     <option value="rw">Ikinyarwanda</option>
@@ -959,7 +1073,7 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
                   <Switch checked={posCardEnabled} onChange={() => setPosCardEnabled(v => !v)} />
                 </SettingRow>
                 <SettingRow label={t("branchSettings.defaultMethodLabel")} description={t("branchSettings.defaultMethodHint")} last>
-                  <select value={posDefaultPaymentMethod} onChange={e => setPosDefaultPaymentMethod(e.target.value as PaymentMethod)} style={{ ...inputStyle, background: "var(--surface)" }}>
+                  <select value={posDefaultPaymentMethod} onChange={e => setPosDefaultPaymentMethod(e.target.value as PaymentMethod)} style={inputStyle}>
                     {posCashEnabled && <option value="cash">{t("branchSettings.methodCashLabel")}</option>}
                     {posMtnMomoEnabled && <option value="mtn_momo">{t("branchSettings.methodMtnLabel")}</option>}
                     {posAirtelMoneyEnabled && <option value="airtel_money">{t("branchSettings.methodAirtelLabel")}</option>}
@@ -1195,6 +1309,8 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
             </Card>
           )}
 
+          {activeTab === "storage" && <StorageLocationsManager />}
+
           {activeTab === "inventory" && (
             <Card>
               <CardHeader icon="📦" title={t("branchSettings.stockLevelsTitle")} subtitle={t("branchSettings.stockLevelsSubtitle")} />
@@ -1229,10 +1345,6 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
               </SettingRow>
             </Card>
           )}
-
-          {(activeTab === "compliance" || activeTab === "printing") && (
-            <ComingSoonPanel label={t(SETTINGS_TABS.find(tb => tb.id === activeTab)!.labelKey)} />
-          )}
         </div>
       </div>
     )}
@@ -1242,6 +1354,7 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
         onClose={() => setShowInvite(false)}
         onCreated={() => { setShowInvite(false); setSuccessMsg(t("branchSettings.usersInviteSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
         branchId={branchId}
+        isOwner={isOwner}
       />
     )}
     {changeRoleTarget && (

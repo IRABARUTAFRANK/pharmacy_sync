@@ -10,7 +10,8 @@ import {
   addBranchToOrganization, assignBranchRole, createPharmacyOrganization, inviteOrganizationMember,
   listOrganizationBranches, listOrganizationPeople, listRoleChangeLog, orgBranchSummary, removeOrganizationMember,
   setPersonActive, staffOrganizationBranch, updateOrganizationDetails, changeOrganizationMemberRole,
-  type OrgAssignableRole,
+  saveBranchDistanceMeasurement, listBranchDistanceMeasurements, deleteBranchDistanceMeasurement,
+  type OrgAssignableRole, type BranchDistanceMeasurement,
   type BranchRole, type OrgBranchSummary, type OrgRole, type OrganizationBranch, type OrganizationPerson,
   type OrganizationSummary, type RoleChangeLogEntry,
 } from "../lib/organization"
@@ -28,7 +29,7 @@ import {
 import { loadOrgOverview, type OverviewPeriod } from "../lib/overview"
 import type { LiveAlert } from "../lib/alerts"
 import L from "leaflet"
-import { haversineKm, OSM_ATTRIBUTION, OSM_TILE_URL, PHARMACY_ICON } from "../lib/maps"
+import { addBaseLayerToggle, haversineKm, OSM_ATTRIBUTION, OSM_TILE_URL, PHARMACY_ICON, toggleFullscreen } from "../lib/maps"
 import { PasswordInput } from "./AuthShell"
 import OverviewPage from "./OverviewPage"
 
@@ -48,10 +49,35 @@ function formatDistance(km: number | null, t: (key: TranslationKey) => string): 
 // a bonus overview (the real payoff of setting a branch's location is the
 // distance sort in destinationBranches above). Built on Leaflet +
 // OpenStreetMap tiles -- free, no API key -- see src/lib/maps.ts's header.
-function BranchesMiniMap({ branches }: { branches: OrganizationBranch[] }) {
+//
+// Also carries the two things org_owner/org_manager asked for beyond just
+// "see the pins": a Map/Satellite layer switcher (addBaseLayerToggle, the
+// same control every mainstream map product has), and a click-to-measure
+// distance tool -- click one branch pin, then another, and the straight-line
+// distance is drawn between them and labeled right on the map. Distance
+// measurement only makes sense with 2+ pins, so it's gated on that; the
+// layer switcher is useful even with a single branch. The map frames every
+// located branch automatically (fitBounds), not a fixed zoom level, so it
+// looks right whether the branches are a block apart or across the country.
+function BranchesMiniMap({ branches, organizationId }: { branches: OrganizationBranch[]; organizationId: string }) {
   const { t } = useTranslation()
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null)
+  const [tilesLoading, setTilesLoading] = useState(true)
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
   const mapDivRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const boundsRef = useRef<L.LatLngBounds | null>(null)
+  const measuringRef = useRef(false)
+  const measureStartRef = useRef<{ latlng: L.LatLng; name: string; branchId: string } | null>(null)
+  const measureLineRef = useRef<L.Polyline | null>(null)
+  const [measuring, setMeasuring] = useState(false)
+  const [measureStep, setMeasureStep] = useState<"first" | "second">("first")
+  const [measureResult, setMeasureResult] = useState<{ fromId: string; from: string; toId: string; to: string; km: number } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saved, setSaved] = useState<BranchDistanceMeasurement[]>([])
+  const [savedLoading, setSavedLoading] = useState(true)
   const located = branches.filter(
     (b): b is OrganizationBranch & { latitude: number; longitude: number } => b.latitude != null && b.longitude != null,
   )
@@ -60,20 +86,117 @@ function BranchesMiniMap({ branches }: { branches: OrganizationBranch[] }) {
   // page (branches is a fresh array reference most renders).
   const locatedKey = located.map(b => `${b.branchId}:${b.latitude}:${b.longitude}`).join("|")
 
+  // The whole wrapper (toolbar included) goes fullscreen together -- see
+  // toggleFullscreen()'s own comment in lib/maps.ts. Leaflet caches its
+  // container's pixel size, so it needs an explicit resize nudge once the
+  // fullscreen transition actually finishes.
+  useEffect(() => {
+    function handleChange() {
+      setIsFullscreen(document.fullscreenElement === wrapperRef.current)
+      window.setTimeout(() => { mapRef.current?.invalidateSize() }, 60)
+    }
+    document.addEventListener("fullscreenchange", handleChange)
+    return () => document.removeEventListener("fullscreenchange", handleChange)
+  }, [])
+
+  const loadSaved = useCallback(async () => {
+    setSavedLoading(true)
+    try {
+      setSaved(await listBranchDistanceMeasurements(organizationId))
+    } catch {
+      // Non-critical -- the map and live measuring still work without this.
+    } finally {
+      setSavedLoading(false)
+    }
+  }, [organizationId])
+
+  useEffect(() => { void loadSaved() }, [loadSaved])
+
+  useEffect(() => { measuringRef.current = measuring }, [measuring])
+
   useEffect(() => {
     if (!mapDivRef.current || located.length === 0) return
-    const centerLat = located.reduce((sum, b) => sum + b.latitude, 0) / located.length
-    const centerLng = located.reduce((sum, b) => sum + b.longitude, 0) / located.length
-    const map = L.map(mapDivRef.current, { attributionControl: true })
-      .setView([centerLat, centerLng], located.length > 1 ? 10 : 14)
-    L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    setTilesLoading(true)
+    const bounds = L.latLngBounds(located.map((b): L.LatLngTuple => [b.latitude, b.longitude]))
+    const map = L.map(mapDivRef.current, { attributionControl: true, zoomSnap: 0.5, wheelPxPerZoomLevel: 90 })
+    if (located.length > 1) { map.fitBounds(bounds.pad(0.25)) } else { map.setView(bounds.getCenter(), 14) }
+    const streetLayer = L.tileLayer(OSM_TILE_URL, { attribution: OSM_ATTRIBUTION, maxZoom: 19 }).addTo(map)
+    streetLayer.once("load", () => setTilesLoading(false)) // fires once every currently-visible tile has actually loaded in
+    addBaseLayerToggle(map, streetLayer, t("organization.mapLayerMap"), t("organization.mapLayerSatellite"))
+    L.control.scale({ imperial: false }).addTo(map)
     for (const b of located) {
-      L.marker([b.latitude, b.longitude], { icon: PHARMACY_ICON }).addTo(map).bindTooltip(b.name)
+      const marker = L.marker([b.latitude, b.longitude], { icon: PHARMACY_ICON }).addTo(map).bindTooltip(b.name)
+      marker.on("click", () => {
+        if (!measuringRef.current) return
+        const latlng = marker.getLatLng()
+        const start = measureStartRef.current
+        if (!start) {
+          measureStartRef.current = { latlng, name: b.name, branchId: b.branchId }
+          setMeasureStep("second")
+          return
+        }
+        if (start.branchId === b.branchId) return
+        const km = haversineKm(start.latlng.lat, start.latlng.lng, latlng.lat, latlng.lng)
+        if (measureLineRef.current) map.removeLayer(measureLineRef.current)
+        const line = L.polyline([start.latlng, latlng], { color: "#1e5fa8", weight: 3, dashArray: "6 6" }).addTo(map)
+        line.bindTooltip(formatDistance(km, t), { permanent: true, direction: "center", className: "measure-distance-label" }).openTooltip()
+        measureLineRef.current = line
+        setMeasureResult({ fromId: start.branchId, from: start.name, toId: b.branchId, to: b.name, km })
+        setSaveError(null)
+        measureStartRef.current = null
+        setMeasureStep("first")
+      })
     }
     mapRef.current = map
-    return () => { map.remove(); mapRef.current = null }
+    boundsRef.current = bounds
+    return () => { map.remove(); mapRef.current = null; measureLineRef.current = null; boundsRef.current = null }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locatedKey])
+
+  function fitAll() {
+    if (!mapRef.current || !boundsRef.current) return
+    if (located.length > 1) mapRef.current.flyToBounds(boundsRef.current.pad(0.25), { duration: 0.8 })
+    else mapRef.current.flyTo(boundsRef.current.getCenter(), 14, { duration: 0.8 })
+  }
+
+  function toggleMeasure() {
+    if (!measuring) {
+      if (measureLineRef.current && mapRef.current) { mapRef.current.removeLayer(measureLineRef.current); measureLineRef.current = null }
+      setMeasureResult(null)
+      setSaveError(null)
+      measureStartRef.current = null
+      setMeasureStep("first")
+      setMeasuring(true)
+    } else {
+      measureStartRef.current = null
+      setMeasureStep("first")
+      setMeasuring(false)
+    }
+  }
+
+  async function saveMeasurement() {
+    if (!measureResult) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await saveBranchDistanceMeasurement(organizationId, measureResult.fromId, measureResult.toId, measureResult.km)
+      setMeasureResult(null)
+      await loadSaved()
+    } catch (reason) {
+      setSaveError(errorMessage(reason, t("organization.mapMeasureSaveError")))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function removeSaved(id: string) {
+    setSaved(prev => prev.filter(m => m.id !== id))
+    try {
+      await deleteBranchDistanceMeasurement(id)
+    } catch {
+      void loadSaved()
+    }
+  }
 
   if (located.length === 0) {
     return (
@@ -86,8 +209,90 @@ function BranchesMiniMap({ branches }: { branches: OrganizationBranch[] }) {
 
   return (
     <Card>
-      <CardHeader icon="🗺️" title={t("organization.branchesMapTitle")} subtitle={t("organization.branchesMapSubtitle")} />
-      <div ref={mapDivRef} style={{ width: "100%", height: 240, borderRadius: 10, overflow: "hidden", background: "var(--bg)" }} />
+      <div ref={wrapperRef} style={isFullscreen ? { background: "var(--surface)", padding: 16, display: "flex", flexDirection: "column", height: "100vh", boxSizing: "border-box" } : undefined}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+          <CardHeader icon="🗺️" title={t("organization.branchesMapTitle")} subtitle={t("organization.branchesMapSubtitle")} />
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button
+              type="button"
+              title={t("organization.mapRecenter")}
+              onClick={fitAll}
+              style={{
+                width: 26, height: 26, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-mid)", cursor: "pointer", fontSize: 13,
+              }}
+            >⌖</button>
+            <button
+              type="button"
+              title={isFullscreen ? t("organization.mapExitFullscreen") : t("organization.mapFullscreen")}
+              onClick={() => { setFullscreenError(null); if (wrapperRef.current) toggleFullscreen(wrapperRef.current, setFullscreenError) }}
+              style={{
+                width: 26, height: 26, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink-mid)", cursor: "pointer", fontSize: 12,
+              }}
+            >{isFullscreen ? "⤡" : "⤢"}</button>
+          </div>
+        </div>
+        {fullscreenError && <p style={{ margin: "8px 0 0", fontSize: 11, color: "#b45309" }}>{fullscreenError}</p>}
+        <div className="animate-fade-in" style={{ position: "relative", width: "100%", height: isFullscreen ? "100%" : 240, flex: isFullscreen ? 1 : undefined, borderRadius: 10, overflow: "hidden", background: "var(--bg)", marginTop: 10 }}>
+          <div ref={mapDivRef} style={{ width: "100%", height: "100%" }} />
+          {tilesLoading && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: "var(--bg)", fontSize: 12, color: "var(--ink-muted)", pointerEvents: "none" }}>
+              <span style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid var(--border)", borderTopColor: "var(--primary)", animation: "psync-spin 0.8s linear infinite" }} />
+              {t("organization.mapLoadingTiles")}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Below the map, not floating on top of it -- an overlay button here
+          used to sit in the same corner as Leaflet's own zoom control and
+          fought with it for space. */}
+      {located.length > 1 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+          <button type="button" onClick={toggleMeasure} className={`map-measure-btn-inline${measuring ? " is-active" : ""}`}>
+            📏 {t("organization.mapMeasureButton")}
+          </button>
+          {measuring && (
+            <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>
+              {t(measureStep === "first" ? "organization.mapMeasureHintFirst" : "organization.mapMeasureHintSecond")}
+            </span>
+          )}
+        </div>
+      )}
+
+      {measureResult && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+          <p style={{ margin: 0, fontSize: 12, color: "var(--ink-muted)" }}>
+            📏 {t("organization.mapMeasureResult", { from: measureResult.from, to: measureResult.to, km: formatDistance(measureResult.km, t) })}
+          </p>
+          <Btn variant="secondary" small onClick={() => { if (!saving) void saveMeasurement() }}>
+            💾 {saving ? t("organization.mapMeasureSaving") : t("organization.mapMeasureSave")}
+          </Btn>
+        </div>
+      )}
+      {saveError && <p style={{ margin: "6px 0 0", fontSize: 11, color: "#dc2626" }}>{saveError}</p>}
+
+      {!savedLoading && saved.length > 0 && (
+        <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+          <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            {t("organization.mapSavedMeasurementsTitle")}
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {saved.map(m => (
+              <div key={m.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
+                <span style={{ color: "var(--ink)" }}>
+                  {m.branchAName} ↔ {m.branchBName}: <strong>{formatDistance(m.distanceKm, t)}</strong>
+                </span>
+                <button type="button" onClick={() => void removeSaved(m.id)} title={t("organization.mapMeasureDelete")}
+                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--ink-faint)", fontSize: 14, lineHeight: 1, padding: 2 }}>
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   )
 }
@@ -1829,7 +2034,7 @@ export default function OrganizationPage({
                 </div>
                 {isOrgOwner && <Btn variant="primary" small onClick={() => setShowAddBranch(true)}>+ {t("organization.addBranch")}</Btn>}
               </div>
-              {!branchesLoading && <BranchesMiniMap branches={branches} />}
+              {!branchesLoading && <BranchesMiniMap branches={branches} organizationId={organization.organizationId} />}
               {branchesError && <p style={{ fontSize: 12, color: "#b91c1c" }}>{branchesError}</p>}
               {branchesLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 }}>
