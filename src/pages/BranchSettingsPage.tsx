@@ -148,7 +148,7 @@ function ComingSoonPanel({ label }: { label: string }) {
   )
 }
 
-type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "alerts" | "compliance" | "printing"
+export type SettingsTab = "profile" | "pos" | "inventory" | "finance" | "users" | "categories" | "alerts" | "compliance" | "printing"
 
 const SETTINGS_TABS: { id: SettingsTab; icon: string; labelKey: TranslationKey }[] = [
   { id: "profile", icon: "🏥", labelKey: "branchSettings.tabProfile" },
@@ -426,12 +426,14 @@ function CategoryModal({ initial, onClose, onSaved }: {
 // that target branch (App.tsx elevates it to "owner" when viewingBranchId
 // differs from the caller's own branch, since effective_branch_id() only
 // ever allows that for an org_owner/org_manager, who has full authority
-// there) -- this page never needs to know the difference itself.
-export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { onLogoSaved?: (url: string | null) => void; role: Role; branchId?: string }) {
+// there) -- this page never needs to know the difference itself. `initialTab`
+// lets a deep link (a feature-discovery nudge, the Getting Started checklist)
+// land directly on a specific tab instead of always opening on Profile.
+export default function BranchSettingsPage({ onLogoSaved, role, branchId, initialTab }: { onLogoSaved?: (url: string | null) => void; role: Role; branchId?: string; initialTab?: SettingsTab }) {
   const { t, lang, setLang } = useTranslation()
   const isOwner = role === "owner"
   const visibleTabs = isOwner ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id !== "finance")
-  const [activeTab, setActiveTab] = useState<SettingsTab>("profile")
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "profile")
 
   const [branchName, setBranchName] = useState("")
   const [address, setAddress] = useState("")
@@ -1105,6 +1107,19 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId }: { on
                       style={{ ...inputStyle, width: 70 }}
                     />
                     <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.reminderHoursUnit")}</span>
+                  </div>
+                </SettingRow>
+                <SettingRow
+                  label={t("branchSettings.triggerExpiringSoonLabel")} description={t("branchSettings.triggerExpiringSoonHint")}
+                  dbRef="branches.expiry_alert_threshold_days"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                    <input
+                      type="number" min={1} max={365} value={expiryAlertThresholdDays}
+                      onChange={e => setExpiryAlertThresholdDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                      style={{ ...inputStyle, width: 70 }}
+                    />
+                    <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("branchSettings.daysUnit")}</span>
                   </div>
                 </SettingRow>
                 <SettingRow

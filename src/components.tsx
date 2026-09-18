@@ -756,8 +756,13 @@ function resolveThermalSize(pref: BarcodePrintDefault): { widthMm: number; heigh
 // alone can collapse right at that boundary in some engines.
 const SHEET_MARGIN_PCT = 1
 
+// Deliberately just name, code, and price -- a pharmacist printing onto a
+// narrow physical label sheet doesn't have room for dosage/form/unit or the
+// pack-size line too, and the barcode scanner + selling price are the two
+// things that actually matter to read off a shelf sticker. Removed here
+// rather than only shrunk, since even a truncated dosage line still eats a
+// full row of vertical space these labels can't spare.
 function SheetBarcodeLabel({ label, columns }: { label: PrintableBarcode; columns: 2 | 4 }) {
-  const isBox = label.barcode_type === 'box'
   const widthPct = 100 / columns - SHEET_MARGIN_PCT * 2
   const big = columns === 2
   return <div style={{
@@ -766,12 +771,8 @@ function SheetBarcodeLabel({ label, columns }: { label: PrintableBarcode; column
     breakInside: 'avoid', pageBreakInside: 'avoid',
   }}>
     <div style={{ fontSize: big ? 12 : 9, fontWeight: 700, color: 'var(--ink)', textAlign: 'center', lineHeight: 1.25, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
-    {label.variant_label && <div style={{ fontSize: big ? 10 : 8, color: 'var(--ink-muted)' }}>{label.variant_label}</div>}
-    <Barcode value={label.code} width={big ? 1.8 : 1.2} height={big ? 52 : 36} fontSize={big ? 11 : 9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
+    <Barcode className="barcode-fit" value={label.code} width={big ? 1.8 : 1.2} height={big ? 52 : 36} fontSize={big ? 11 : 9} margin={2} background="transparent" lineColor="#0c1e12" displayValue />
     {label.price != null && <div style={{ fontSize: big ? 13 : 10, fontWeight: 800, color: 'var(--primary, #1e5fa8)' }}>Sell: {fmtRWFExact(label.price)}</div>}
-    <div style={{ fontSize: big ? 9 : 7, color: isBox ? 'var(--primary)' : 'var(--ink-muted)', textAlign: 'center', fontWeight: isBox ? 700 : 400 }}>
-      {isBox ? `Carton · ${label.child_count ?? 0} packs` : `Pack · ${label.pieces_per_pack ?? 0} pcs`}
-    </div>
   </div>
 }
 
@@ -784,8 +785,9 @@ function SheetBarcodeLabel({ label, columns }: { label: PrintableBarcode; column
 // @page size rule BarcodeLabelSheet injects alongside this, "page" defaults
 // to a full A4/Letter sheet, stranding one tiny barcode per giant page
 // instead of the roll's own small label size. The two only work together.
+// Same name/code/price-only simplification as SheetBarcodeLabel above -- a
+// narrow roll has even less room to spare than a sheet label does.
 function ThermalBarcodeLabel({ label, widthMm, heightMm }: { label: PrintableBarcode; widthMm: number; heightMm: number | null }) {
-  const isBox = label.barcode_type === 'box'
   // A fixed heightMm means physically separate die-cut labels -- each one
   // IS its own page, so the printer advances/cuts between them (paired with
   // the @page size rule above). A continuous roll (heightMm null) has no
@@ -802,12 +804,8 @@ function ThermalBarcodeLabel({ label, widthMm, heightMm }: { label: PrintableBar
     breakInside: 'avoid', pageBreakInside: 'avoid',
   }}>
     <div style={{ fontSize: 10, fontWeight: 700, color: '#000', textAlign: 'center', lineHeight: 1.2, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label.product_name}</div>
-    {label.variant_label && <div style={{ fontSize: 8, color: '#000' }}>{label.variant_label}</div>}
-    <Barcode value={label.code} width={1.6} height={40} fontSize={10} margin={1} background="transparent" lineColor="#000" displayValue />
-    <div style={{ fontSize: 9, fontWeight: 700, color: '#000', display: 'flex', gap: 6 }}>
-      {label.price != null && <span>Sell: {fmtRWFExact(label.price)}</span>}
-      <span>{isBox ? `Carton · ${label.child_count ?? 0}pk` : `${label.pieces_per_pack ?? 0}pcs`}</span>
-    </div>
+    <Barcode className="barcode-fit" value={label.code} width={1.6} height={40} fontSize={10} margin={1} background="transparent" lineColor="#000" displayValue />
+    {label.price != null && <div style={{ fontSize: 9, fontWeight: 700, color: '#000' }}>Sell: {fmtRWFExact(label.price)}</div>}
   </div>
 }
 

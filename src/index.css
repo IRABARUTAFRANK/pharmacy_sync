@@ -300,6 +300,16 @@ button:focus:not(:focus-visible) { outline: none; }
    click elsewhere on the page) with no on-screen section of its own. */
 .print-only { display: none; }
 
+/* react-barcode renders its SVG at a fixed pixel width (the `width` prop is
+   per-bar, so the total scales with the code's length/format, not with
+   whatever container it's placed in) -- with no cap, a longer-than-usual
+   code can render wider than the label itself (SheetBarcodeLabel's percent
+   width, ThermalBarcodeLabel's fixed mm width), spilling past the label's
+   own edge once printed. JsBarcode always gives its SVG a matching viewBox,
+   so capping width like this scales the whole barcode down proportionally
+   (never clips it) when it would otherwise overflow. */
+.barcode-fit { max-width: 100%; height: auto; }
+
 /* Printing a page (e.g. a barcode sheet) should show only that page's own
    content, not the app shell around it, and must not be clipped to one
    viewport-height screen the way the on-screen layout is. */

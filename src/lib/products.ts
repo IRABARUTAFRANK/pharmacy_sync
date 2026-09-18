@@ -65,10 +65,25 @@ export interface AdminProduct {
 // happen once admin_create_product enforces at least one -- still surfaces
 // with a single null-variant row). Grouped here by product_id for the
 // Products & Tax console.
+//
+// PostgREST caps a single response at 1000 rows, including a set-returning
+// RPC like this one -- with a real price-list import in the catalogue this
+// easily passes that, so it's paged via .range() (the function's own ORDER BY
+// on p.name, pv.dosage gives a stable order to page against) rather than a
+// single unbounded call that would silently drop products past the cutoff.
+const ADMIN_LIST_PRODUCTS_PAGE = 1000
+
 export async function adminListProducts(): Promise<AdminProduct[]> {
-  const { data, error } = await supabaseAdmin.rpc("admin_list_products")
-  if (error) raise(error)
-  const rows = (data ?? []) as AdminProductRow[]
+  const rows: AdminProductRow[] = []
+  for (let page = 0; ; page++) {
+    const { data, error } = await supabaseAdmin
+      .rpc("admin_list_products")
+      .range(page * ADMIN_LIST_PRODUCTS_PAGE, page * ADMIN_LIST_PRODUCTS_PAGE + ADMIN_LIST_PRODUCTS_PAGE - 1)
+    if (error) raise(error)
+    const batch = (data ?? []) as AdminProductRow[]
+    rows.push(...batch)
+    if (batch.length < ADMIN_LIST_PRODUCTS_PAGE) break
+  }
   const byProduct = new Map<string, AdminProduct>()
   for (const row of rows) {
     let product = byProduct.get(row.product_id)

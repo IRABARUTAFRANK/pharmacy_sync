@@ -77,7 +77,7 @@ export default function PatientsPage({ branchId }: { branchId?: string } = {}) {
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase()
     if (!needle) return patients
-    return patients.filter(p => `${p.fullName} ${p.phone} ${p.tin ?? ""}`.toLowerCase().includes(needle))
+    return patients.filter(p => `${p.fullName} ${p.phone} ${p.tin ?? ""} ${p.insuranceNumber ?? ""}`.toLowerCase().includes(needle))
   }, [patients, query])
 
   const { visible: paged, hasMore, showMore, shown, total } = usePagedList(filtered, [query])
@@ -109,6 +109,7 @@ export default function PatientsPage({ branchId }: { branchId?: string } = {}) {
                   <td style={{ padding: "9px 10px", fontFamily: "var(--font-mono)" }}>
                     {p.phone}
                     {p.tin && <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>TIN {p.tin}</div>}
+                    {p.insuranceNumber && <div style={{ fontSize: 10, color: "var(--ink-muted)" }}>{t("patients.insuranceNumberPrefix")} {p.insuranceNumber}</div>}
                   </td>
                   <td style={{ padding: "9px 10px" }}>{p.visitCount}</td>
                   <td style={{ padding: "9px 10px", color: "var(--ink-muted)" }}>{p.lastVisitAt ? new Date(p.lastVisitAt).toLocaleDateString() : "—"}</td>
