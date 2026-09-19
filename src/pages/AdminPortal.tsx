@@ -2115,7 +2115,7 @@ function ProductsView() {
                   </td>
                   <td className="px-4 py-3 text-slate-500 capitalize">{p.productType}</td>
                   <td className="px-4 py-3 text-slate-500">
-                    {p.variants.length === 0 ? "—" : p.variants.map((v) => [v.dosage, v.form, v.unit].filter(Boolean).join(" · ") || "—").join(", ")}
+                    {p.variants.length === 0 ? "—" : p.variants.map((v) => [v.dosage, v.form, v.unit !== v.form ? v.unit : null].filter(Boolean).join(" · ") || "—").join(", ")}
                   </td>
                   <td className="px-4 py-3">
                     <select

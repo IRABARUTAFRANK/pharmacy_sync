@@ -1,7 +1,7 @@
 # Supabase setup
 
-1. Create a new Supabase project.
-2. In **SQL Editor**, open and run [supabase_pharmacy_schema.sql](./supabase_pharmacy_schema.sql).
+1. Create a new Supabase project (or, to bring an existing/older project up to date, link the CLI to it instead).
+2. In **SQL Editor**, open and run [LIVE_SCHEMA_SNAPSHOT_2026-09-19.sql](./LIVE_SCHEMA_SNAPSHOT_2026-09-19.sql) — a direct introspection dump of everything (tables, constraints, RLS policies, functions, triggers, grants) actually live on the current project as of that date. Read its own header first: it explains exactly how it behaves on a brand-new project versus an older one that already has some of this. `supabase_pharmacy_schema.sql` and `pharmacy_schema_consolidated.sql` are both stale (superseded, kept for history only) — do not run them instead of the snapshot.
 3. In **Authentication → Providers**, configure email/password sign-in. Keep public sign-up disabled until your branch/user provisioning flow is ready.
 4. Create a branch first, then create each person in **Authentication → Users**. The `public.users.id` value must equal that Auth user's UUID; create the matching profile with a trusted server/admin process (never from a browser using a service-role key).
 
