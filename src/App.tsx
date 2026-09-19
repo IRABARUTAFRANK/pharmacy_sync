@@ -977,10 +977,14 @@ export default function App() {
       return
     }
     if (organization?.myRole === 'org_owner') {
-      // Stock Transfers is never the org_owner's to use -- Branches stays
-      // theirs permanently (see visibleOrgTabs' own comment), so it needs no
-      // correction here even once a real org_manager is appointed.
-      if (orgTab === 'transfers') setOrgTab('dashboard')
+      // Stock Transfers stays the org_owner's to use for as long as the
+      // org_manager seat is empty -- matches assert_can_approve_stock_
+      // transfer()'s own precedence (and canApproveStockNeeds/
+      // canViewOtherBranches in OrganizationPage.tsx). Only once a real
+      // org_manager is appointed does it become that person's job instead;
+      // Branches stays the owner's permanently regardless (see
+      // visibleOrgTabs' own comment).
+      if (organization.hasOrgManager && orgTab === 'transfers') setOrgTab('dashboard')
       return
     }
     // A plain branch owner/manager with no org role of their own, whose
@@ -1090,15 +1094,18 @@ export default function App() {
   // way -- their own RPCs/RLS were never owner-gated either, so both org
   // roles get them from the start.
   //
-  // An org_owner never gets Stock Transfers -- that feature is the org_manager's
-  // and each branch's own owner/manager's alone, org_owner acting on their
-  // own organization or not (this is a policy choice, not merely mirroring
-  // assert_can_approve_stock_transfer's server-side fallback -- that RPC
-  // still lets an org_owner approve/reject while no org_manager has been
-  // appointed yet, as a last-resort safety net so a brand-new organization is
-  // never stuck with zero approvers; this UI just never steers the owner
-  // there). Branches, unlike Stock Transfers, ALWAYS stays visible to the
-  // owner -- creating a new branch (the "+ Add Branch" button on that tab)
+  // An org_owner gets Stock Transfers for exactly as long as the org_manager
+  // seat is empty -- mirrors assert_can_approve_stock_transfer()'s own
+  // server-side precedence (that RPC lets an org_owner approve/reject while
+  // no org_manager has been appointed yet, as a last-resort safety net so a
+  // brand-new organization is never stuck with zero approvers): a solo
+  // org_owner running the whole org themselves needs to actually reach the
+  // tab to use that fallback, not just have the RPC quietly work if they
+  // guessed a URL. Appointing a real org_manager hands the tab to them
+  // instead, same moment canApproveStockNeeds/canViewOtherBranches in
+  // OrganizationPage.tsx flip over. Branches, unlike Stock Transfers, ALWAYS
+  // stays visible to the owner -- creating a new branch (the "+ Add Branch"
+  // button on that tab)
   // stays an owner-only action forever, delegated manager or not, so the
   // owner needs a permanent way back into this tab. What changes once a real
   // org_manager is appointed is narrower: the "View Branch" drill-in button
@@ -1116,7 +1123,7 @@ export default function App() {
   const visibleOrgTabs = organization?.myRole === 'org_manager'
     ? ORG_TABS.filter(tab => tab.id !== 'settings')
     : organization?.myRole === 'org_owner'
-      ? ORG_TABS.filter(tab => tab.id !== 'transfers')
+      ? (organization.hasOrgManager ? ORG_TABS.filter(tab => tab.id !== 'transfers') : ORG_TABS)
       : !organization && myBranchOrganizationId
         ? ORG_TABS.filter(tab => tab.id === 'transfers')
         : ORG_TABS
