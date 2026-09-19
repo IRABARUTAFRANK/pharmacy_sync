@@ -64,10 +64,10 @@ begin
     where p.description like '[INS:%' or p.description like 'RHIA code %'
     order by p.id
   loop
-    v_drug_code := coalesce(
+    v_drug_code := left(coalesce(
       substring(r.description from '^\[INS:[^:]+:([^\]]+)\]'),
       substring(r.description from '^RHIA code (\S+)')
-    );
+    ), 40);
 
     -- Same split rule as splitNameAndVariant(): first number immediately
     -- followed by a recognized strength/size unit is where the base name
@@ -82,6 +82,17 @@ begin
       v_variant_label := btrim(substring(r.name from v_pos));
       if v_base_name = '' then v_base_name := r.name; v_variant_label := null; end if;
     end if;
+
+    -- products.name/description and product_variants.dosage/form/unit are
+    -- all bounded varchar columns -- a variant descriptor pulled straight
+    -- out of a long designation (e.g. one with trailing packaging notes)
+    -- can exceed dosage's 50 chars, same as every import script's own
+    -- .slice()/left() truncation.
+    v_base_name := left(v_base_name, 150);
+    if v_variant_label is not null then v_variant_label := left(v_variant_label, 50); end if;
+    r.dosage := left(r.dosage, 50);
+    r.form := left(r.form, 50);
+    r.unit := left(r.unit, 30);
 
     v_new_desc := '[CATALOG] ' || v_base_name;
 
