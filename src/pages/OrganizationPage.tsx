@@ -2281,7 +2281,7 @@ export default function OrganizationPage({
     }
     return (
       <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <SectionHeader title={t("nav.transfers" as TranslationKey)} subtitle={t("organization.transfersSubtitle")} />
+        <SectionHeader title={t("organization.tabTransfers")} subtitle={t("organization.transfersSubtitle")} />
         {incomingOffers.length > 0 && (
           <Card>
             <CardHeader icon="📨" title={t("organization.stockNeedsIncomingTitle")} subtitle={t("organization.stockNeedsIncomingSubtitle")} />
