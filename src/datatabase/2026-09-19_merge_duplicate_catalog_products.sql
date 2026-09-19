@@ -15,10 +15,15 @@
 --
 -- This matters because real operational data already exists on TOP of some
 -- of these old rows: 22 barcodes and 1 stock batch were already recorded
--- against them. This script does NOT delete that data -- it repoints it
--- (stock_batches.product_variant_id, insurance_variant_prices, reorder_
--- points) onto the correctly-grouped survivor variant/product before
--- deleting the now-redundant duplicate product/variant rows underneath it.
+-- against them. This script does NOT delete that data -- every table that
+-- has a foreign key to products/product_variants (stock_batches,
+-- insurance_variant_prices, insurance_product_coverage, reorder_points,
+-- branch_product_categorization, batch_recalls, sales_forecasts,
+-- stock_transfer_needs, product_requests' resolved_* columns -- found by
+-- grepping every "references public.products/product_variants" in
+-- src/datatabase, the same method used for the RESET wipe script) gets
+-- repointed onto the correctly-grouped survivor variant/product first,
+-- before the now-redundant duplicate product/variant rows are deleted.
 --
 -- Algorithm, per old row (one row = one product with exactly one variant,
 -- confirmed to be the shape of every affected row):
@@ -173,6 +178,36 @@ begin
     update public.reorder_points
       set product_id = v_survivor_product_id
       where product_id = r.product_id;
+
+    -- branch_product_categorization's PK is (branch_id, product_id) -- same
+    -- drop-conflict-then-move pattern as reorder_points above.
+    delete from public.branch_product_categorization bpc
+      using public.branch_product_categorization existing
+      where bpc.product_id = r.product_id
+        and existing.product_id = v_survivor_product_id
+        and existing.branch_id = bpc.branch_id;
+    update public.branch_product_categorization
+      set product_id = v_survivor_product_id
+      where product_id = r.product_id;
+
+    -- insurance_product_coverage's PK is (insurance_provider_id, product_id).
+    delete from public.insurance_product_coverage ipc
+      using public.insurance_product_coverage existing
+      where ipc.product_id = r.product_id
+        and existing.product_id = v_survivor_product_id
+        and existing.insurance_provider_id = ipc.insurance_provider_id;
+    update public.insurance_product_coverage
+      set product_id = v_survivor_product_id
+      where product_id = r.product_id;
+
+    -- batch_recalls, sales_forecasts, stock_transfer_needs, and
+    -- product_requests' resolved_* columns have no unique constraint
+    -- involving product_id/product_variant_id -- a plain repoint is enough.
+    update public.batch_recalls set product_variant_id = v_survivor_variant_id where product_variant_id = v_old_variant_id;
+    update public.sales_forecasts set product_variant_id = v_survivor_variant_id where product_variant_id = v_old_variant_id;
+    update public.stock_transfer_needs set product_variant_id = v_survivor_variant_id where product_variant_id = v_old_variant_id;
+    update public.product_requests set resolved_product_id = v_survivor_product_id where resolved_product_id = r.product_id;
+    update public.product_requests set resolved_variant_id = v_survivor_variant_id where resolved_variant_id = v_old_variant_id;
 
     delete from public.product_variants where id = v_old_variant_id;
     delete from public.products where id = r.product_id;
