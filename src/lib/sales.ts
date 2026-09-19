@@ -353,11 +353,19 @@ export const BARCODE_STATUS_WORD_KEY: Record<string, TranslationKey> = {
 // use, extended with product_id/tax_rate_id so a sale can price and apply
 // insurance without a second round trip. Accepts both packs and cartons; the
 // caller (SalesPage) picks the sell mode based on barcode_type.
-export async function scanBarcode(code: string, taxRates?: TaxRate[]): Promise<ScannedBarcode> {
+// branchId: an org_owner/org_manager viewing another branch's Sales page
+// passes theirs through here so the scan is validated against THAT branch,
+// not silently against current_branch_id() (their own literal home branch)
+// -- omitted/undefined preserves today's exact behavior for everyone else.
+// Without this, a scan could succeed against the caller's own branch while
+// viewing a different one, then fail at complete_sale() (which already
+// resolves branchId correctly) with a confusing "barcode not found" --
+// the two were validating against two different branches for the same cart.
+export async function scanBarcode(code: string, taxRates?: TaxRate[], branchId?: string): Promise<ScannedBarcode> {
   const trimmed = code.trim()
   if (!trimmed) throw new SaleFlowError("salesPage.errorScanEmpty", undefined, "Scan or type a barcode.")
   const [lookup, rates] = await Promise.all([
-    supabase.rpc("lookup_barcode", { p_code: trimmed }),
+    supabase.rpc("lookup_barcode", { p_code: trimmed, ...branchArg(branchId) }),
     taxRates ? Promise.resolve(taxRates) : listTaxRates(),
   ])
   if (lookup.error) raise(lookup.error, "Could not look up this barcode.")

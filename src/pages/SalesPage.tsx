@@ -821,7 +821,7 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
     setScanning(true)
     setError("")
     try {
-      const item = await scanBarcode(code, taxRates)
+      const item = await scanBarcode(code, taxRates, branchId)
       addScannedItem(item)
     } catch (reason) {
       claimedCodesRef.current.delete(upperCode)
@@ -852,7 +852,7 @@ export default function SalesPage({ onViewAllTransactions, branchId, role }: { o
     setScanning(true)
     setError("")
     try {
-      const item = await scanBarcode(code, taxRates)
+      const item = await scanBarcode(code, taxRates, branchId)
       addScannedItem(item)
     } catch (reason) {
       claimedCodesRef.current.delete(upperCode)
