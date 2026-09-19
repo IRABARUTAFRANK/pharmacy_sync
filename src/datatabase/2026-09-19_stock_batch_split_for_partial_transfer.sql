@@ -130,6 +130,20 @@ begin
     raise exception 'Only % pack(s) are available to split off', v_moved;
   end if;
 
+  -- A moved box's own still-active child packs must travel with it: every
+  -- other place that touches a batch's barcodes (dispatch_stock_transfer,
+  -- receive_stock_transfer, loadInventoryDataset's quantity_available) reads
+  -- them purely by stock_batch_id, with no awareness that a box and its
+  -- children could ever disagree about which batch they belong to. Without
+  -- this, a split-off box arrives with 0 sellable units (its packs are still
+  -- silently sitting under the OLD batch) while the original batch keeps
+  -- counting stock it no longer physically has. Sold-out children are left
+  -- alone -- they're already-consumed history that belongs to wherever they
+  -- were actually sold, not to a batch they were never part of in reality.
+  update public.barcodes set stock_batch_id = v_new_batch_id
+  where status = 'active'
+    and parent_barcode_id in (select id from public.barcodes where stock_batch_id = v_new_batch_id and parent_barcode_id is null);
+
   return v_new_batch_id;
 end;
 $$;
