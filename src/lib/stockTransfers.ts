@@ -192,3 +192,26 @@ export async function scanBranchBatch(code: string, branchId?: string): Promise<
   }
   return { stockBatchId: row.stock_batch_id, productName: row.product_name, dosage: row.dosage, batchNumber: row.batch_number }
 }
+
+// How many individually-scannable packs/boxes a batch still has active --
+// the "does this even need a how-many-packs prompt" check RequestTransferModal
+// and RequestStockModal both run right after a scan or pick. A batch of 1
+// (no real pack breakdown) always answers 1, so the prompt never bothers
+// asking about a medicine that was never sold in packs to begin with.
+export async function countActiveBatchUnits(stockBatchId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("count_active_batch_units", { p_stock_batch_id: stockBatchId })
+  if (error) throw error
+  return Number(data ?? 0)
+}
+
+// Splits `quantity` of a batch's own active packs off into a brand-new
+// batch and hands back ITS id -- or, when quantity covers everything the
+// batch already has, hands back the same id unchanged (nothing to split).
+// Callers pass whatever id comes back straight into request_stock_transfer/
+// request_stock_from_branch exactly as they already do today; a split-off
+// batch behaves like any other in every other respect.
+export async function splitStockBatch(stockBatchId: string, quantity: number): Promise<string> {
+  const { data, error } = await supabase.rpc("split_stock_batch", { p_stock_batch_id: stockBatchId, p_quantity: quantity })
+  if (error) throw error
+  return data as string
+}

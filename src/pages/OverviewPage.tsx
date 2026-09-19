@@ -4,7 +4,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { fmtRWFExact, pct } from '../data'
-import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal, LogoSpinner, CenterAlert } from '../components'
+import { Card, SectionHeader, ChartTooltip, Sparkline, AlertRow, Btn, Modal, ExportModal, LogoSpinner } from '../components'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
 import { loadOverview, loadOrgOverview, DATA_FALLBACK_KEYS, type OverviewData, type OverviewPeriod, type TopProduct } from '../lib/overview'
@@ -16,8 +16,6 @@ import {
   dismissOnboardingChecklist, isOnboardingChecklistDismissed, loadOnboardingProgress, onboardingCompletionCount,
   type OnboardingProgress,
 } from '../lib/gettingStarted'
-import { haversineKm } from '../lib/maps'
-import { RequestStockModal, RequestTransferModal, type BranchWithDistance } from './StockRequestModals'
 
 type DrillDownMetric = 'revenue' | 'transactions' | 'items'
 
@@ -665,7 +663,7 @@ const INSIGHT_STYLE = {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function OverviewPage({
-  period, branchName, alerts, onViewAlerts, onViewFullReport, organization, branches, initialScopeBranchId, userId, onNavigate, onStockRequestMade,
+  period, branchName, alerts, onViewAlerts, onViewFullReport, organization, branches, initialScopeBranchId, userId, onNavigate,
 }: {
   period: OverviewPeriod
   branchName: string
@@ -691,16 +689,6 @@ export default function OverviewPage({
   // for the plain sidebar Overview page, where the checklist belongs.
   userId?: string
   onNavigate?: (page: string) => void
-  // Only meaningful for the org-wide dashboard embedded inside
-  // OrganizationPage.tsx's own "dashboard" tab: switching that page's
-  // internal activeTab to "transfers" never remounts OrganizationPage (it's
-  // all one mounted instance), so its own orgTransfers/orgNeeds oversight
-  // lists would otherwise still show stale data after a request made right
-  // here. The plain sidebar Overview and "View Branch" drill-in cases don't
-  // pass this -- navigating between App.tsx's own pages always remounts
-  // OrganizationPage fresh, so its oversight lists pick up the new request
-  // on their own the next time it's visited.
-  onStockRequestMade?: () => void
 }) {
   const { t } = useTranslation()
   const { term: searchTerm } = useGlobalSearch()
@@ -736,10 +724,6 @@ export default function OverviewPage({
   // null = "All branches" (the org-wide default). Only meaningful when
   // `organization` is set.
   const [scopeBranchId, setScopeBranchId] = useState<string | null>(initialScopeBranchId ?? null)
-  const [showRequestTransfer, setShowRequestTransfer] = useState(false)
-  const [showRequestStock, setShowRequestStock] = useState(false)
-  const [requestSuccessMsg, setRequestSuccessMsg] = useState<string | null>(null)
-  const [requestSuccessSeq, setRequestSuccessSeq] = useState(0)
 
   const toggleWidget = (key: WidgetKey) => {
     setVisibleWidgets(prev => {
@@ -804,31 +788,6 @@ export default function OverviewPage({
   // "All branches combined" label for that branch's own name so picking one
   // branch is never silently mislabeled as still showing the aggregate.
   const viewingSpecificBranch = isOrgWideView && !!scopeBranchId
-
-  // Requesting a transfer/stock FOR a branch belongs on that branch's own
-  // dashboard, not the org-wide oversight tab (OrganizationPage.tsx's
-  // Stock Transfers tab keeps only the all-organization approval lists) --
-  // true whenever an org_owner/org_manager is looking at exactly one
-  // branch, whether that's a "View Branch" drill-in (lockedToBranch) or the
-  // org-wide picker above narrowed to one (viewingSpecificBranch). scopeBranchId
-  // is the target branch either way. A plain branch owner/manager's own
-  // Overview never sets `organization`, so this never shows for them --
-  // unchanged from before, they still use the Organization > Stock
-  // Transfers tab's own request buttons.
-  const showBranchStockActions = !!organization && !!scopeBranchId
-  const stockActionBranch = branches?.find(b => b.branchId === scopeBranchId) ?? null
-  const destinationBranches: BranchWithDistance[] = showBranchStockActions
-    ? (branches ?? [])
-        .filter(b => b.branchId !== scopeBranchId)
-        .map(b => ({
-          ...b,
-          distanceKm:
-            stockActionBranch?.latitude != null && stockActionBranch?.longitude != null && b.latitude != null && b.longitude != null
-              ? haversineKm(stockActionBranch.latitude, stockActionBranch.longitude, b.latitude, b.longitude)
-              : null,
-        }))
-        .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
-    : []
 
   // Horizon-UI-style executive look for the org-wide dashboard: rounded,
   // border-free, soft-shadow cards throughout instead of the plain bordered
@@ -993,45 +952,10 @@ export default function OverviewPage({
             </select>
           )
         )}
-        {showBranchStockActions && (
-          <>
-            <Btn variant="secondary" small onClick={() => setShowRequestTransfer(true)}>🔁 {t('overviewPage.requestTransferButton')}</Btn>
-            <Btn variant="secondary" small onClick={() => setShowRequestStock(true)}>📥 {t('overviewPage.requestStockButton')}</Btn>
-          </>
-        )}
         <Btn variant="ghost" small onClick={() => void refresh()}>{loading ? `◴ ${t('overviewPage.refreshing')}` : `↻ ${t('overviewPage.refresh')}`}</Btn>
         <Btn variant="ghost" small onClick={() => setShowExportModal(true)}>↗ {t('overviewPage.exportButton')}</Btn>
         <Btn variant="secondary" small onClick={() => setShowBuilder(true)}>⊞ {t('overviewPage.customizeButton')}</Btn>
       </div>
-
-      {requestSuccessMsg && <CenterAlert key={requestSuccessSeq} message={requestSuccessMsg} />}
-
-      {showRequestTransfer && (
-        <RequestTransferModal
-          destinationBranches={destinationBranches}
-          fromBranchId={scopeBranchId ?? undefined}
-          onClose={() => setShowRequestTransfer(false)}
-          onRequested={() => {
-            setShowRequestTransfer(false)
-            setRequestSuccessMsg(t('overviewPage.transferRequestedToast'))
-            setRequestSuccessSeq(s => s + 1)
-            onStockRequestMade?.()
-          }}
-        />
-      )}
-      {showRequestStock && (
-        <RequestStockModal
-          destinationBranches={destinationBranches}
-          fromBranchId={scopeBranchId ?? undefined}
-          onClose={() => setShowRequestStock(false)}
-          onRequested={() => {
-            setShowRequestStock(false)
-            setRequestSuccessMsg(t('overviewPage.stockRequestedToast'))
-            setRequestSuccessSeq(s => s + 1)
-            onStockRequestMade?.()
-          }}
-        />
-      )}
 
       {/* KPI row -- a single summary card of solid pastel tiles for the
           org-wide aggregate (isOrgWideView), the plain tall bordered card
@@ -1181,7 +1105,13 @@ export default function OverviewPage({
                   <XAxis dataKey="dayKey" tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false}
                     tickFormatter={(key: TranslationKey) => t(key)} />
                   <YAxis tick={{ fontSize: 11, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip content={<ChartTooltip />} />
+                  {/* Recharts' tooltip `label` is the raw axis VALUE (the
+                      untranslated "overviewPage.dayXxx" key), not the tick's
+                      own display text -- tickFormatter above only affects
+                      what's drawn on the axis itself. Without labelFormatter
+                      here too, the tooltip showed the literal key string
+                      instead of "Sat". */}
+                  <Tooltip content={<ChartTooltip />} labelFormatter={(key: unknown) => t(key as TranslationKey)} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--ink-mid)" }} />
                   <Bar dataKey="txn" name={t('overviewPage.seriesTransactions')} fill={isOrgWideView ? orgAccent : '#1e5fa8'} radius={[4, 4, 0, 0]} barSize={22} />
                 </BarChart>

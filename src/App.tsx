@@ -57,6 +57,7 @@ const PAGE_LOADERS = {
   reports: () => import('./pages/ReportsPage'),
   branch: () => import('./pages/BranchSettingsPage'),
   organization: () => import('./pages/OrganizationPage'),
+  branchTransfers: () => import('./pages/BranchTransferPage'),
 } satisfies Record<string, () => Promise<{ default: ComponentType<any> }>>
 
 const OverviewPage        = lazy(PAGE_LOADERS.overview)
@@ -76,6 +77,7 @@ const PatientsPage         = lazy(PAGE_LOADERS.patients)
 const ReportsPage          = lazy(PAGE_LOADERS.reports)
 const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
 const OrganizationPage     = lazy(PAGE_LOADERS.organization)
+const BranchTransferPage   = lazy(PAGE_LOADERS.branchTransfers)
 const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
 const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
@@ -139,6 +141,11 @@ function computeVisibleNav(
     n.roles.includes(role)
     && (n.id !== 'organization' || role === 'owner' || organization !== null || myBranchOrganizationId !== null)
     && (n.id !== 'overview' || !ownerDelegatedAway)
+    // Only an org_owner/org_manager gets this tab -- a plain branch owner/
+    // manager (organization === null even if their branch belongs to one,
+    // see myBranchOrganizationId's own distinction) keeps using Organization
+    // > Stock Transfers for their own branch instead.
+    && (n.id !== 'branchTransfers' || organization !== null)
     && (!isDedicatedOrgManagerOwnNav || n.id === 'organization' || n.id === 'help'),
   )
 }
@@ -1502,6 +1509,7 @@ export default function App() {
       case 'alerts':        return <AlertsPage branchId={viewingBranchId} onSelectAlert={goToAlertTarget} />
       case 'transactions':  return <TransactionsPage period={dateRange} branchId={viewingBranchId} />
       case 'insurance':     return <InsurancePage branchId={viewingBranchId} />
+      case 'branchTransfers': return <BranchTransferPage branchId={viewingBranchId ?? access?.branchId} organization={organization} branches={orgBranches} />
       case 'analyst':       return <AnalystPage />
       case 'analytics':     return <AnalyticsPage period={dateRange} branchId={viewingBranchId} />
       case 'compliance':    return <CompliancePage branchId={viewingBranchId} />

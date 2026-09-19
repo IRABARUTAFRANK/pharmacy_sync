@@ -60,6 +60,18 @@ function startOfWeek(value: Date): Date {
   return new Date(day.getTime() - ((day.getDay() + 6) % 7) * DAY_MS)
 }
 
+// The last 7 calendar days INCLUDING today -- not "this calendar week,
+// Monday..Sunday" (startOfWeek above): that version zeroed out every day
+// before whatever weekday "today" happens to be (e.g. only Saturday would
+// ever show a bar on a Saturday, every earlier day reading a false zero
+// even with real sales history behind it) and reset back to all-zero again
+// every Monday regardless of how much real trailing history existed. This
+// is what the Daily Transactions card actually needs: a real trailing
+// window that always has 7 days of context, wherever "today" falls.
+function startOfTrailingWeek(value: Date): Date {
+  return new Date(startOfDay(value).getTime() - 6 * DAY_MS)
+}
+
 export function resolveRange(period: OverviewPeriod, now: Date = new Date()): Range {
   let start: Date
   let end: Date = now
@@ -273,10 +285,10 @@ export async function loadOverview(period: OverviewPeriod): Promise<OverviewData
   const now = new Date()
   const range = resolveRange(period, now)
 
-  // The Daily Transactions card always covers the current Monday..Sunday week,
-  // which for period="today" starts BEFORE prevStart. Fetch from whichever is
+  // The Daily Transactions card always covers the trailing 7 days, which for
+  // period="today" starts well BEFORE prevStart. Fetch from whichever is
   // earlier, or that card renders a week of false zeros.
-  const weekStart = startOfWeek(now)
+  const weekStart = startOfTrailingWeek(now)
   const fetchFrom = new Date(Math.min(range.prevStart.getTime(), weekStart.getTime()))
   const fetchTo = new Date(Math.max(range.end.getTime(), now.getTime()))
 
@@ -314,7 +326,7 @@ export async function loadOrgOverview(
 ): Promise<OverviewData> {
   const now = new Date()
   const range = resolveRange(period, now)
-  const weekStart = startOfWeek(now)
+  const weekStart = startOfTrailingWeek(now)
   const fetchFrom = new Date(Math.min(range.prevStart.getTime(), weekStart.getTime()))
   const fetchTo = new Date(Math.max(range.end.getTime(), now.getTime()))
 
@@ -345,7 +357,7 @@ export async function loadOrgOverview(
 
 function aggregateOverview(now: Date, range: Range, raw: OverviewRaw): OverviewData {
   const { sales, taxRates, barcodes, batches, variants, products, categories, categorization, reorderPoints, items } = raw
-  const weekStart = startOfWeek(now)
+  const weekStart = startOfTrailingWeek(now)
 
   const taxPctById = new Map<string, number>(taxRates.map(t => [t.id, asNumber(t.rate_percentage)]))
   const batchById = new Map<string, any>(batches.map(b => [b.id, b]))
@@ -508,12 +520,18 @@ function aggregateOverview(now: Date, range: Range, raw: OverviewRaw): OverviewD
   }
   const revenueTrend = Array.from(trendBuckets.values())
 
-  // ── Daily transactions, Monday..Sunday of the current week ───────────────
-  const DAY_KEYS: TranslationKey[] = [
-    "overviewPage.dayMon", "overviewPage.dayTue", "overviewPage.dayWed", "overviewPage.dayThu",
-    "overviewPage.dayFri", "overviewPage.daySat", "overviewPage.daySun",
+  // ── Daily transactions, the trailing 7 days ending today ──────────────────
+  // Indexed by Date.getDay() (0=Sunday..6=Saturday), not a fixed Mon..Sun
+  // sequence -- the 7 bars below are whichever 7 real calendar days actually
+  // led up to today, in order, wherever in the week "today" falls.
+  const WEEKDAY_KEYS: TranslationKey[] = [
+    "overviewPage.daySun", "overviewPage.dayMon", "overviewPage.dayTue", "overviewPage.dayWed",
+    "overviewPage.dayThu", "overviewPage.dayFri", "overviewPage.daySat",
   ]
-  const dailyTransactions: DayBar[] = DAY_KEYS.map(dayKey => ({ dayKey, txn: 0, amount: 0 }))
+  const dailyTransactions: DayBar[] = Array.from({ length: 7 }, (_, i) => {
+    const day = new Date(weekStart.getTime() + i * DAY_MS)
+    return { dayKey: WEEKDAY_KEYS[day.getDay()], txn: 0, amount: 0 }
+  })
   for (const sale of sales) {
     const offset = Math.floor((startOfDay(new Date(sale.sold_at)).getTime() - weekStart.getTime()) / DAY_MS)
     if (offset < 0 || offset > 6) continue

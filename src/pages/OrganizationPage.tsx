@@ -2146,7 +2146,6 @@ export default function OrganizationPage({
                 onViewAlerts={onViewAlerts}
                 organization={organization}
                 branches={branches}
-                onStockRequestMade={() => { void refreshTransfers(); void refreshNeeds() }}
               />
 
               {/* Combined revenue trend across every branch, one line each,
