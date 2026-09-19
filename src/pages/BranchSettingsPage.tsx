@@ -11,7 +11,7 @@ import {
 import { updatePassword } from "../lib/auth"
 import { createBranchDiscount, listBranchDiscounts, type BranchDiscount, type DiscountType } from "../lib/sales"
 import { createBranchCategory, listBranchCategories, updateBranchCategory, type BranchCategory } from "../lib/categories"
-import { inviteStaff, listBranchStaff, setStaffActive, updateStaffRole, type BranchUserRole, type StaffMember, type StaffRole } from "../lib/staff"
+import { inviteStaff, listBranchStaff, removeStaffAccount, setStaffActive, updateStaffCredentials, updateStaffRole, type BranchUserRole, type StaffMember, type StaffRole } from "../lib/staff"
 import { errorMessage } from "../lib/supabase"
 import type { Role } from "../data"
 import { PasswordInput } from "./AuthShell"
@@ -444,6 +444,94 @@ function ChangeRoleModal({ member, onClose, onChanged, branchId }: { member: Sta
   </Modal>
 }
 
+// Real credential visibility is limited to what Supabase Auth can actually
+// expose -- a password is a one-way hash, never retrievable, even here.
+// This is the substitute the credentials-visibility request resolves to:
+// whoever could see this person's email (see list_branch_staff()'s own rank
+// masking) can set them a brand-new email and/or password instead of
+// reading their old ones. Both fields are optional but at least one is
+// required (enforced again server-side in update-staff-credentials).
+// Authorization is re-checked server-side regardless (assert_can_manage_
+// staff_account) -- this modal's own gating on the button that opens it is
+// just so it's never offered somewhere the click would only error.
+function EditCredentialsModal({ member, onClose, onDone }: { member: StaffMember; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation()
+  const [newEmail, setNewEmail] = useState(member.email ?? "")
+  const [newPassword, setNewPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    const emailChanged = newEmail.trim().toLowerCase() !== (member.email ?? "").trim().toLowerCase()
+    if (!emailChanged && newPassword.length === 0) { setError(t("branchSettings.credentialsNothingToChange")); return }
+    if (emailChanged && !newEmail.includes("@")) { setError(t("branchSettings.credentialsInvalidEmail")); return }
+    if (newPassword.length > 0 && newPassword.length < 6) { setError(t("branchSettings.usersPasswordTooShort")); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await updateStaffCredentials(member.id, emailChanged ? newEmail.trim() : undefined, newPassword || undefined)
+      onDone()
+    } catch (reason) {
+      setError(errorMessage(reason, t("branchSettings.resetPasswordError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <Modal title={t("branchSettings.resetPasswordTitle", { name: member.fullName })} onClose={onClose} width={400}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("branchSettings.resetPasswordIntro")}</p>
+      {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.credentialsEmailLabel")}</label>
+        <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={inputStyle} placeholder={t("branchSettings.credentialsEmailPlaceholder")} />
+      </div>
+      <div>
+        <label style={{ fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>{t("branchSettings.resetPasswordNewLabel")}</label>
+        <PasswordInput value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} placeholder={t("branchSettings.credentialsPasswordPlaceholder")} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>{t("branchSettings.usersCancel")}</Btn>
+        <Btn variant="primary" onClick={() => void submit()}>{busy ? t("branchSettings.resetPasswordSaving") : t("branchSettings.resetPasswordSubmit")}</Btn>
+      </div>
+    </div>
+  </Modal>
+}
+
+// Deliberately no "type the name to confirm" friction beyond a plain
+// Cancel/Remove choice -- mark_staff_removed() already re-checks the exact
+// same rank rule every other staff action here does, so the button is
+// never even offered somewhere the click would just error.
+function RemoveAccountModal({ member, onClose, onDone }: { member: StaffMember; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation()
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await removeStaffAccount(member.id)
+      onDone()
+    } catch (reason) {
+      setError(errorMessage(reason, t("branchSettings.removeAccountError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return <Modal title={t("branchSettings.removeAccountTitle", { name: member.fullName })} onClose={onClose} width={400}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("branchSettings.removeAccountIntro")}</p>
+      {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+        <Btn variant="ghost" onClick={onClose}>{t("branchSettings.usersCancel")}</Btn>
+        <Btn variant="danger" onClick={() => void submit()}>{busy ? t("branchSettings.removeAccountSaving") : t("branchSettings.removeAccountConfirm")}</Btn>
+      </div>
+    </div>
+  </Modal>
+}
+
 function CategoryModal({ initial, onClose, onSaved }: {
   initial?: BranchCategory
   onClose: () => void
@@ -506,7 +594,7 @@ function CategoryModal({ initial, onClose, onSaved }: {
 // lets a deep link (a feature-discovery nudge, the Getting Started checklist)
 // land directly on a specific tab instead of always opening on Profile.
 export default function BranchSettingsPage({ onLogoSaved, role, branchId, initialTab }: { onLogoSaved?: (url: string | null) => void; role: Role; branchId?: string; initialTab?: SettingsTab }) {
-  const { t } = useTranslation()
+  const { t, lang, setLang } = useTranslation()
   const isOwner = role === "owner"
   const visibleTabs = isOwner ? SETTINGS_TABS : SETTINGS_TABS.filter(tab => tab.id !== "finance")
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "profile")
@@ -584,6 +672,8 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId, initia
   const [staffError, setStaffError] = useState<string | null>(null)
   const [showInvite, setShowInvite] = useState(false)
   const [changeRoleTarget, setChangeRoleTarget] = useState<StaffMember | null>(null)
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<StaffMember | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<StaffMember | null>(null)
 
   const [categories, setCategories] = useState<BranchCategory[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
@@ -818,6 +908,16 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId, initia
       setSuccessMsg(t("branchSettings.saveSuccess"))
       setSuccessSeq(seq => seq + 1)
       onLogoSaved?.(logoPath ? branchLogoUrl(logoPath) : null)
+      // This Locale card's own default_language is a SEED for other,
+      // not-yet-preferenced viewers (see App.tsx's own comment on
+      // hasExplicitLangPreference) -- it deliberately never overrides
+      // someone else's real choice. But when the person saving this setting
+      // is looking at their OWN branch (branchId undefined -- see this
+      // component's own header comment), saving "the language" is exactly
+      // what they just asked to happen to their own session too, so this
+      // applies it immediately rather than silently taking effect only for
+      // some future first-time visitor.
+      if (!branchId && defaultLanguage !== lang) setLang(defaultLanguage)
     } catch (reason) {
       setError(errorMessage(reason, t("branchSettings.saveError")))
     } finally {
@@ -1275,7 +1375,8 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId, initia
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
                             {member.fullName}
-                            {!member.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("branchSettings.inactiveLabel")}</span>}
+                            {member.isRemoved && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("branchSettings.removedLabel")}</span>}
+                            {!member.isRemoved && !member.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("branchSettings.inactiveLabel")}</span>}
                           </div>
                           <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{member.email ?? "—"}</div>
                         </div>
@@ -1286,9 +1387,15 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId, initia
                           <Btn variant="secondary" small onClick={() => setChangeRoleTarget(member)}>{t("branchSettings.changeRole")}</Btn>
                         )}
                         {member.role !== "owner" && (isOwner || member.role === "seller") && (
+                          <Btn variant="secondary" small onClick={() => setResetPasswordTarget(member)}>{t("branchSettings.editCredentials")}</Btn>
+                        )}
+                        {member.role !== "owner" && (isOwner || member.role === "seller") && !member.isRemoved && (
                           <Btn variant={member.isActive ? "danger" : "secondary"} small onClick={() => void toggleStaffActive(member)}>
                             {member.isActive ? t("branchSettings.deactivate") : t("branchSettings.activate")}
                           </Btn>
+                        )}
+                        {member.role !== "owner" && (isOwner || member.role === "seller") && !member.isRemoved && (
+                          <Btn variant="danger" small onClick={() => setRemoveTarget(member)}>{t("branchSettings.removeAccount")}</Btn>
                         )}
                       </div>
                     </div>
@@ -1397,6 +1504,20 @@ export default function BranchSettingsPage({ onLogoSaved, role, branchId, initia
         onClose={() => setChangeRoleTarget(null)}
         onChanged={() => { setChangeRoleTarget(null); setSuccessMsg(t("branchSettings.usersRoleChangeSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
         branchId={branchId}
+      />
+    )}
+    {resetPasswordTarget && (
+      <EditCredentialsModal
+        member={resetPasswordTarget}
+        onClose={() => setResetPasswordTarget(null)}
+        onDone={() => { setResetPasswordTarget(null); setSuccessMsg(t("branchSettings.resetPasswordSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
+      />
+    )}
+    {removeTarget && (
+      <RemoveAccountModal
+        member={removeTarget}
+        onClose={() => setRemoveTarget(null)}
+        onDone={() => { setRemoveTarget(null); setSuccessMsg(t("branchSettings.removeAccountSuccess")); setSuccessSeq(seq => seq + 1); void refreshStaff() }}
       />
     )}
     {showAddCategory && (

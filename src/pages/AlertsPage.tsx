@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { alertActionTarget, ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, resolveAlertMessage, type LiveAlert } from '../lib/alerts'
+import { alertActionTarget, ALERT_SOURCE_TITLE_KEYS, loadLiveAlerts, markAlertRead, markAllAlertsRead, resolveAlertMessage, type AlertScope, type LiveAlert } from '../lib/alerts'
 import { useTranslation } from '../lib/i18n'
 import { useGlobalSearch } from '../lib/search'
 import { errorMessage } from '../lib/supabase'
@@ -19,14 +19,17 @@ const sourceColors: Record<string, { c: string; bg: string }> = {
   low_stock:                 { c: '#d97706', bg: '#fef3c7' },
 }
 
-// NOTE: loadLiveAlerts() reads public.notifications directly under RLS
-// scoped to the caller's own branch -- there is currently no way to point it
-// at a different branch (see the read-path migration's own scope notes).
-// `branchId` is accepted (App.tsx always passes it) so this page still shows
-// the CALLER's own branch's alerts while "viewing" another branch, rather
-// than erroring -- widening notifications' RLS policy is a follow-up.
-export default function AlertsPage({ branchId: _branchId, onSelectAlert }: { branchId?: string; onSelectAlert?: (alert: LiveAlert) => void } = {}) {
+// `branchId` doubles as the scope passed straight to loadLiveAlerts():
+// undefined -> the caller's own branch, a single id -> that one branch (a
+// "View Branch" drill-in), an array -> every branch in it combined
+// (Organization > Alerts' "All branches" view). `branchNames` is only ever
+// passed alongside an array scope, to label each row's branch in that
+// combined table. `onSelectAlert`, when given, renders a click-through
+// button on any alert alertActionTarget() can resolve -- App.tsx's own
+// dashboard alert feed uses this to deep-link into the relevant page.
+export default function AlertsPage({ branchId, branchNames, onSelectAlert }: { branchId?: AlertScope; branchNames?: Record<string, string>; onSelectAlert?: (alert: LiveAlert) => void } = {}) {
   const { t } = useTranslation()
+  const isMultiBranch = Array.isArray(branchId) && !!branchNames
   const COLUMN_DEFS: { key: ColKey; label: string }[] = [
     { key: 'source_type', label: t('alertsPage.colSourceType') },
     { key: 'is_read',     label: t('alertsPage.colReadStatus') },
@@ -49,13 +52,14 @@ export default function AlertsPage({ branchId: _branchId, onSelectAlert }: { bra
       // some of it, and leaves the rest for later needs "unread" to still
       // mean that afterward. Read status only ever changes from the explicit
       // per-row "Mark read" button or "Mark all read" below.
-      setAlerts(await loadLiveAlerts())
+      setAlerts(await loadLiveAlerts(branchId))
     } catch (reason) {
       setError(errorMessage(reason, t('alertsPage.loadError')))
     } finally {
       setLoading(false)
     }
-  }, [t])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, Array.isArray(branchId) ? branchId.join(",") : branchId, isMultiBranch])
 
   useEffect(() => { void refresh() }, [refresh])
 
@@ -146,6 +150,7 @@ export default function AlertsPage({ branchId: _branchId, onSelectAlert }: { bra
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colMessage')}</th>
+                {isMultiBranch && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colBranch')}</th>}
                 {visibleCols.has('source_type') && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colSourceType')}</th>}
                 {visibleCols.has('is_read')     && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colStatus')}</th>}
                 {visibleCols.has('created_at')  && <th style={{ textAlign: 'left', padding: '7px 10px', fontSize: 10, fontWeight: 600, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t('alertsPage.colDate')}</th>}
@@ -162,6 +167,7 @@ export default function AlertsPage({ branchId: _branchId, onSelectAlert }: { bra
                       <div style={{ fontWeight: n.isRead ? 400 : 600, color: 'var(--ink)', fontSize: 12 }}>{t(n.titleKey)}</div>
                       <div style={{ fontSize: 10, color: 'var(--ink-muted)', marginTop: 3, lineHeight: 1.4 }}>{resolveAlertMessage(n, t)}</div>
                     </td>
+                    {isMultiBranch && <td style={{ padding: '10px 10px', color: 'var(--ink-muted)' }}>{branchNames?.[n.branchId] ?? "—"}</td>}
                     {visibleCols.has('source_type') && <td style={{ padding: '10px 10px' }}><StatusBadge label={label} color={sc.c} bg={sc.bg} /></td>}
                     {visibleCols.has('is_read')     && <td style={{ padding: '10px 10px' }}><StatusBadge label={n.isRead ? t('alertsPage.read') : t('alertsPage.unread')} color={n.isRead ? '#16a34a' : '#dc2626'} bg={n.isRead ? '#d1fae5' : '#fef2f2'} /></td>}
                     {visibleCols.has('created_at')  && <td style={{ padding: '10px 10px', fontSize: 11, color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{new Date(n.createdAt).toLocaleString()}</td>}

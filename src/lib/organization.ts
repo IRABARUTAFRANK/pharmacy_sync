@@ -59,6 +59,7 @@ export interface OrganizationPerson {
   branchId: string | null
   branchName: string | null
   isActive: boolean
+  isRemoved: boolean
 }
 
 export interface RoleChangeLogEntry {
@@ -173,7 +174,7 @@ export async function listOrganizationPeople(organizationId: string): Promise<Or
   return ((data ?? []) as any[]).map(row => ({
     userId: row.user_id, fullName: row.full_name, email: row.email,
     scope: row.scope, role: row.role, branchId: row.branch_id, branchName: row.branch_name,
-    isActive: row.is_active,
+    isActive: row.is_active, isRemoved: row.is_removed,
   }))
 }
 

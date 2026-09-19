@@ -37,6 +37,57 @@ export function Logo({ size = 32, showWordmark = true, tone = 'light' }: {
   )
 }
 
+// A loading state that's actually the product's own mark in motion, instead
+// of a plain "Loading..." spinner -- pure CSS 3D (perspective + rotateY on
+// the existing logo.png, see index.css's .logo-spinner-* rules), no
+// animation library, no separate asset. `size` is deliberately capped by the
+// caller, not this component -- stays a normal-sized inline mark, never a
+// full-bleed splash (that's IntroSplash's own, separate job, once per app
+// load).
+export function LogoSpinner({ size = 56 }: { size?: number }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+      <div className="logo-spinner-tilt logo-spinner-bob" style={{ width: size, height: size }}>
+        <div className="logo-spinner-spin" style={{ width: '100%', height: '100%' }}>
+          <img src={logoImg} alt="" width={size} height={size} style={{ objectFit: 'contain', display: 'block' }} />
+        </div>
+      </div>
+      <div className="logo-spinner-shadow" style={{ width: size * 0.6, height: size * 0.12, borderRadius: '50%', background: 'var(--ink)' }} />
+    </div>
+  )
+}
+
+// ─── Chart type switcher ──────────────────────────────────────────────────────
+// One shared pill row for "let the viewer pick how this chart renders" --
+// each caller owns its own per-type render branches (a category breakdown
+// and a sales trend need different axes/series), this just standardizes the
+// picker control itself so every chart that offers the choice looks and
+// behaves the same way.
+export function ChartTypeSwitcher<T extends string>({ value, onChange, options }: {
+  value: T
+  onChange: (next: T) => void
+  options: { id: T; label: string }[]
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {options.map(o => (
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          style={{
+            padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+            border: `1px solid ${value === o.id ? 'var(--primary)' : 'var(--border)'}`,
+            background: value === o.id ? 'var(--primary-light)' : 'var(--surface)',
+            color: value === o.id ? 'var(--primary)' : 'var(--ink-mid)',
+          }}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 export function Card({ children, style = {}, onClick }: { children: ReactNode; style?: CSSProperties; onClick?: () => void }) {
@@ -349,16 +400,16 @@ export function ProgressBar({ value, max = 100, color = 'var(--primary)', height
 // ─── Btn ──────────────────────────────────────────────────────────────────────
 
 export function Btn({
-  children, variant = 'primary', onClick, small, style = {},
+  children, variant = 'primary', onClick, small, disabled, style = {},
 }: {
   children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
-  onClick?: () => void; small?: boolean; style?: CSSProperties
+  onClick?: () => void; small?: boolean; disabled?: boolean; style?: CSSProperties
 }) {
   const base: CSSProperties = {
     padding: small ? '5px 12px' : '8px 16px', borderRadius: 8,
-    fontSize: small ? 11 : 13, fontWeight: 600, cursor: 'pointer',
+    fontSize: small ? 11 : 13, fontWeight: 600, cursor: disabled ? 'not-allowed' : 'pointer',
     fontFamily: 'inherit', transition: 'all 0.15s', border: '1px solid transparent',
-    display: 'inline-flex', alignItems: 'center', gap: 6, ...style,
+    display: 'inline-flex', alignItems: 'center', gap: 6, opacity: disabled ? 0.55 : 1, ...style,
   }
   const variants: Record<string, CSSProperties> = {
     primary:   { background: 'var(--btn-bg, var(--primary))', color: '#fff',   border: '1px solid var(--primary)' },
@@ -366,7 +417,7 @@ export function Btn({
     ghost:     { background: 'var(--surface)',                 color: 'var(--ink-mid)', border: '1px solid var(--border)' },
     danger:    { background: '#fef2f2',              color: '#dc2626',        border: '1px solid #fca5a5' },
   }
-  return <button onClick={onClick} style={{ ...base, ...variants[variant] }}>{children}</button>
+  return <button onClick={onClick} disabled={disabled} style={{ ...base, ...variants[variant] }}>{children}</button>
 }
 
 // ─── Search Select (type-ahead combobox) ──────────────────────────────────────

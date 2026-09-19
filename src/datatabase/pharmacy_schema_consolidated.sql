@@ -1,6 +1,21 @@
   -- ============================================================================
   -- PharmSync — CONSOLIDATED CANONICAL SCHEMA (PostgreSQL / Supabase)
   -- ============================================================================
+  -- STALE as of 2026-09-19 -- do not treat this file as current. Its own
+  -- "-- originally X" section headers stop folding in new dated files after
+  -- 2026-09-18_admin_product_catalog_import.sql, silently skipping an entire
+  -- month of real schema work (organization/RBAC, branch geolocation, stock
+  -- transfer negotiation, storage locations, Pesapal payments, staff
+  -- removal/credentials, the one-manager-per-branch trigger, and more).
+  -- For a database bootstrap or upgrade that reflects everything actually
+  -- live today, use LIVE_SCHEMA_SNAPSHOT_2026-09-19.sql instead -- it is a
+  -- direct introspection dump of the running database, not a hand-folded
+  -- history, and its own header explains exactly how to apply it (fresh
+  -- project or an older/existing one, like a backup project).
+  -- ============================================================================
+  --
+  -- Everything below this point is left exactly as it was, for history only.
+  --
   -- Run this single file in the Supabase SQL Editor on a new project. It replaces
   -- running the following files in sequence and produces the same end state:
   --

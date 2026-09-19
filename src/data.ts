@@ -252,6 +252,13 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'reports',     label: 'Products in Stock',    icon: '📦', roles: ['owner', 'manager'] },
   { id: 'transactions',label: 'Transactions',         icon: '💳', roles: ['owner', 'manager'] },
   { id: 'insurance',   label: 'Insurance',            icon: '🏥', roles: ['owner', 'manager'] },
+  // Shown only for an org_owner (while no org_manager exists yet) or a real
+  // org_manager, on whichever branch they're currently looking at (their
+  // own, or one reached via "View Branch") -- see App.tsx's
+  // computeVisibleNav for the `organization !== null` gate. A plain branch
+  // owner/manager never sees this; they still request a transfer/stock for
+  // their own branch from Organization > Stock Transfers, unchanged.
+  { id: 'branchTransfers', label: 'Stock Transfer',   icon: '🔁', roles: ['owner', 'manager'] },
   // 'analyst' (AI Analyst) is intentionally left out of NAV_ITEMS -- the
   // feature works end-to-end but needs Anthropic billing/credits the owner
   // hasn't set up yet. The page, route, Edge Function, and SQL tools are all

@@ -7,7 +7,7 @@ import type { TranslationKey } from './lib/i18n/en'
 import DatabaseBackedPage from './pages/DatabaseBackedPage'
 import BranchAccessPage from './pages/BranchAccessPage'
 import type { SettingsTab } from './pages/BranchSettingsPage'
-import { Logo, Modal } from './components'
+import { Logo, LogoSpinner, Modal } from './components'
 import { Sidebar } from './Sidebar'
 
 
@@ -57,6 +57,7 @@ const PAGE_LOADERS = {
   reports: () => import('./pages/ReportsPage'),
   branch: () => import('./pages/BranchSettingsPage'),
   organization: () => import('./pages/OrganizationPage'),
+  branchTransfers: () => import('./pages/BranchTransferPage'),
 } satisfies Record<string, () => Promise<{ default: ComponentType<any> }>>
 
 const OverviewPage        = lazy(PAGE_LOADERS.overview)
@@ -76,6 +77,7 @@ const PatientsPage         = lazy(PAGE_LOADERS.patients)
 const ReportsPage          = lazy(PAGE_LOADERS.reports)
 const BranchSettingsPage   = lazy(PAGE_LOADERS.branch)
 const OrganizationPage     = lazy(PAGE_LOADERS.organization)
+const BranchTransferPage   = lazy(PAGE_LOADERS.branchTransfers)
 const AdminPortal          = lazy(() => import('./pages/AdminPortal'))
 const BranchPortal         = lazy(() => import('./pages/BranchPortal'))
 const ResetPassword        = lazy(() => import('./pages/ResetPassword'))
@@ -139,6 +141,11 @@ function computeVisibleNav(
     n.roles.includes(role)
     && (n.id !== 'organization' || role === 'owner' || organization !== null || myBranchOrganizationId !== null)
     && (n.id !== 'overview' || !ownerDelegatedAway)
+    // Only an org_owner/org_manager gets this tab -- a plain branch owner/
+    // manager (organization === null even if their branch belongs to one,
+    // see myBranchOrganizationId's own distinction) keeps using Organization
+    // > Stock Transfers for their own branch instead.
+    && (n.id !== 'branchTransfers' || organization !== null)
     && (!isDedicatedOrgManagerOwnNav || n.id === 'organization' || n.id === 'help'),
   )
 }
@@ -234,12 +241,15 @@ function useHashRoute(): HashRoute {
 // duplicated constant rather than a shared import -- see the `orgTab` state
 // comment above for why).
 
-type OrgTab = 'dashboard' | 'transfers' | 'branches' | 'members' | 'settings'
+type OrgTab = 'dashboard' | 'transfers' | 'branches' | 'analytics' | 'inventory' | 'alerts' | 'members' | 'settings'
 
 const ORG_TABS: { id: OrgTab; icon: string; labelKey: TranslationKey }[] = [
   { id: 'dashboard', icon: '📊', labelKey: 'organization.tabDashboard' },
   { id: 'transfers', icon: '🔁', labelKey: 'organization.tabTransfers' },
   { id: 'branches', icon: '🏬', labelKey: 'organization.tabBranches' },
+  { id: 'analytics', icon: '📈', labelKey: 'organization.tabAnalytics' },
+  { id: 'inventory', icon: '📦', labelKey: 'organization.tabInventory' },
+  { id: 'alerts', icon: '🔔', labelKey: 'organization.tabAlerts' },
   { id: 'members', icon: '👥', labelKey: 'organization.tabMembers' },
   { id: 'settings', icon: '⚙️', labelKey: 'organization.tabSettings' },
 ]
@@ -571,7 +581,7 @@ function IntroSplash({ exiting }: { exiting: boolean }) {
       position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 14, background: 'var(--bg)',
     }}>
-      <div className="intro-mark"><Logo size={56} showWordmark={false} /></div>
+      <div className="intro-mark"><LogoSpinner size={56} /></div>
       <div className="intro-wordmark" style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 22, letterSpacing: '-0.01em', color: 'var(--ink)' }}>
         Pharm<span style={{ color: 'var(--primary)' }}>Sync</span>
       </div>
@@ -792,13 +802,23 @@ export default function App() {
     const timer = window.setTimeout(() => {
       loadOnboardingProgress()
         .then(progress => {
-          const candidate = FEATURE_DISCOVERY.find(f => !f.done(progress) && shouldShowFeatureNudge(access.userId, f.key))
+          const candidate = FEATURE_DISCOVERY.find(f =>
+            !f.done(progress) && shouldShowFeatureNudge(access.userId, f.key)
+            // reorder_points redirects to the branch's own Inventory Dashboard
+            // -- showing it while looking at the Organization dashboard (an
+            // org_owner/org_manager's default view) makes no sense for
+            // someone who isn't actually running a branch day to day. Only
+            // fires once someone has actually opened a branch's own
+            // dashboard (page leaves 'organization' the moment "View Branch"
+            // is used, same as every other branch-scoped page).
+            && (f.key !== 'reorder_points' || page === 'overview')
+          )
           if (candidate) setDiscovery(candidate)
         })
         .catch(() => { /* best-effort -- just skipped this session */ })
     }, 4000)
     return () => window.clearTimeout(timer)
-  }, [access, tourOpen])
+  }, [access, tourOpen, page])
 
   function closeDiscovery() {
     if (access && discovery) {
@@ -963,15 +983,25 @@ export default function App() {
     }
   }, [access, role, organization, page, viewingBranch, myBranchOrganizationId])
 
-  // Same correction, one level down: an org_manager only gets Dashboard/
-  // Stock Transfers/Members inside the Organization section (see
-  // visibleOrgTabs below) -- if orgTab is sitting on Branches or Settings
+  // Same correction, one level down: an org_manager gets every tab except
+  // Settings (see visibleOrgTabs below) -- if orgTab is sitting on Settings
   // when that restriction takes effect (e.g. right after being demoted from
   // org_owner), snap back to Dashboard rather than showing a tab they no
   // longer have a sidebar entry for.
   useLayoutEffect(() => {
     if (organization?.myRole === 'org_manager') {
-      if (orgTab !== 'dashboard' && orgTab !== 'transfers' && orgTab !== 'members') setOrgTab('dashboard')
+      if (orgTab === 'settings') setOrgTab('dashboard')
+      return
+    }
+    if (organization?.myRole === 'org_owner') {
+      // Stock Transfers stays the org_owner's to use for as long as the
+      // org_manager seat is empty -- matches assert_can_approve_stock_
+      // transfer()'s own precedence (and canApproveStockNeeds/
+      // canViewOtherBranches in OrganizationPage.tsx). Only once a real
+      // org_manager is appointed does it become that person's job instead;
+      // Branches stays the owner's permanently regardless (see
+      // visibleOrgTabs' own comment).
+      if (organization.hasOrgManager && orgTab === 'transfers') setOrgTab('dashboard')
       return
     }
     // A plain branch owner/manager with no org role of their own, whose
@@ -1023,7 +1053,12 @@ export default function App() {
     setShowUser(false)
   }
 
-  const loadingFallback = <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'var(--font-body)' }}>{t('shell.loadingWorkspace')}</main>
+  const loadingFallback = (
+    <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: 'var(--bg)', color: 'var(--ink-muted)', fontFamily: 'var(--font-body)' }}>
+      <LogoSpinner size={56} />
+      <span style={{ fontSize: 13 }}>{t('shell.loadingWorkspace')}</span>
+    </main>
+  )
 
   if (hashRoute === 'admin') return <Suspense fallback={loadingFallback}><AdminPortal /></Suspense>
   if (hashRoute === 'branch') return <Suspense fallback={loadingFallback}><BranchPortal /></Suspense>
@@ -1062,19 +1097,53 @@ export default function App() {
 
   const currentRole = ROLES.find(r => r.id === role)!
   const visibleNav = computeVisibleNav(role, organization, !!viewingBranch, myBranchOrganizationId)
-  // An org_manager only gets Dashboard/Stock Transfers/Members inside the
-  // Organization section -- Branches and Settings stay owner-only. An
-  // org_owner keeps all five.
+  // An org_manager gets every ORG_TABS entry except Settings, which stays
+  // owner-only (restructuring the org itself, e.g. renaming it or deleting a
+  // branch, is never delegated) -- Dashboard/Stock Transfers/Branches/
+  // Analytics/Inventory/Alerts/Members are all read-or-act tabs a manager
+  // needs day to day. Branches was owner-only until the org had a real
+  // precedence rule to lean on; now that assert_org_member already permits
+  // any active org member to read branch data server-side
+  // (effective_branch_id, list_organization_branches, org_branch_summary --
+  // none of them were ever owner-gated), withholding the tab from a manager
+  // was purely a frontend gap, not a security boundary. Fixed here. Analytics/
+  // Inventory/Alerts are new, all-branches-or-one-branch views built the same
+  // way -- their own RPCs/RLS were never owner-gated either, so both org
+  // roles get them from the start.
+  //
+  // An org_owner gets Stock Transfers for exactly as long as the org_manager
+  // seat is empty -- mirrors assert_can_approve_stock_transfer()'s own
+  // server-side precedence (that RPC lets an org_owner approve/reject while
+  // no org_manager has been appointed yet, as a last-resort safety net so a
+  // brand-new organization is never stuck with zero approvers): a solo
+  // org_owner running the whole org themselves needs to actually reach the
+  // tab to use that fallback, not just have the RPC quietly work if they
+  // guessed a URL. Appointing a real org_manager hands the tab to them
+  // instead, same moment canApproveStockNeeds/canViewOtherBranches in
+  // OrganizationPage.tsx flip over. Branches, unlike Stock Transfers, ALWAYS
+  // stays visible to the owner -- creating a new branch (the "+ Add Branch"
+  // button on that tab)
+  // stays an owner-only action forever, delegated manager or not, so the
+  // owner needs a permanent way back into this tab. What changes once a real
+  // org_manager is appointed is narrower: the "View Branch" drill-in button
+  // itself (see OrganizationPage.tsx's canViewOtherBranches), not the whole
+  // tab -- viewing another branch's own operational dashboard becomes the
+  // manager's job at that point, same as every other cross-branch action
+  // (assert_can_manage_org_branch), while the owner still sees every
+  // branch's summary right here and can still add new ones.
+  //
   // A plain branch owner/manager with no org_owner/org_manager role of their
   // own (organization is null) but whose branch belongs to one
   // (myBranchOrganizationId isn't) only ever needs Stock Transfers here --
   // every other tab's own RPCs require real org membership and would just
   // fail for them.
   const visibleOrgTabs = organization?.myRole === 'org_manager'
-    ? ORG_TABS.filter(tab => tab.id === 'dashboard' || tab.id === 'transfers' || tab.id === 'members')
-    : !organization && myBranchOrganizationId
-      ? ORG_TABS.filter(tab => tab.id === 'transfers')
-      : ORG_TABS
+    ? ORG_TABS.filter(tab => tab.id !== 'settings')
+    : organization?.myRole === 'org_owner'
+      ? (organization.hasOrgManager ? ORG_TABS.filter(tab => tab.id !== 'transfers') : ORG_TABS)
+      : !organization && myBranchOrganizationId
+        ? ORG_TABS.filter(tab => tab.id === 'transfers')
+        : ORG_TABS
   const alertCount = alerts.filter(a => !a.isRead).length
   const navBadge = (id: string) => (id === 'alerts' ? alertCount : undefined)
 
@@ -1431,7 +1500,7 @@ export default function App() {
                                      userId={access!.userId}
                                      onNavigate={setPage}
                                    />
-      case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} branchId={viewingBranchId} />
+      case 'inventory':     return <LiveInventoryPage key={inventoryFocus?.seq ?? 0} initialStatus={inventoryFocus ? 'attention' : undefined} branchId={viewingBranchId ?? access?.branchId} />
       case 'receiving':     return <StockReceivingPage branchId={viewingBranchId} />
       case 'barcode':       return <BarcodeManagerPage branchId={viewingBranchId} />
       case 'sales':         return <SalesPage onViewAllTransactions={() => setPage('transactions')} branchId={viewingBranchId} role={role} />
@@ -1440,6 +1509,7 @@ export default function App() {
       case 'alerts':        return <AlertsPage branchId={viewingBranchId} onSelectAlert={goToAlertTarget} />
       case 'transactions':  return <TransactionsPage period={dateRange} branchId={viewingBranchId} />
       case 'insurance':     return <InsurancePage branchId={viewingBranchId} />
+      case 'branchTransfers': return <BranchTransferPage branchId={viewingBranchId ?? access?.branchId} organization={organization} branches={orgBranches} />
       case 'analyst':       return <AnalystPage />
       case 'analytics':     return <AnalyticsPage period={dateRange} branchId={viewingBranchId} />
       case 'compliance':    return <CompliancePage branchId={viewingBranchId} />

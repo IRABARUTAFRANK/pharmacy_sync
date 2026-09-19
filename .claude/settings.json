@@ -44,5 +44,8 @@
     "additionalDirectories": [
       "\\tmp"
     ]
+  },
+  "enabledPlugins": {
+    "playwright@claude-plugins-official": true
   }
 }

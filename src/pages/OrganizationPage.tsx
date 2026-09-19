@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, Cell, ComposedChart, Line, Pie, PieChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts"
 import { Btn, Card, CenterAlert, ChartTooltip, Modal, SectionHeader, StatusBadge } from "../components"
+import { fmtRWFExact } from "../data"
 import { useTranslation } from "../lib/i18n"
 import type { TranslationKey } from "../lib/i18n/en"
 import { errorMessage } from "../lib/supabase"
@@ -15,35 +16,34 @@ import {
   type BranchRole, type OrgBranchSummary, type OrgRole, type OrganizationBranch, type OrganizationPerson,
   type OrganizationSummary, type RoleChangeLogEntry,
 } from "../lib/organization"
-import { loadInventoryDataset, type InventoryRow } from "../lib/inventory"
+import { removeStaffAccount, updateStaffCredentials } from "../lib/staff"
+import {
+  loadCategoryBreakdown, loadForecastOutcomes, loadSalesForecast, loadSalesForecastAccuracy, loadSalesForecastSeries, loadSupplierPerformance, loadTopProducts, saveSalesForecastSnapshot,
+  type CategoryBreakdownRow, type ForecastOutcome, type SalesForecast, type SupplierPerformanceRow, type TopProductRow,
+} from "../lib/analytics"
 import {
   approveStockTransfer, cancelStockTransfer, dispatchStockTransfer, listBranchStockTransfers,
-  listOrganizationStockTransfers, receiveStockTransfer, rejectStockTransfer, requestStockTransfer,
-  type StockTransfer, type StockTransferStatus,
+  listOrganizationStockTransfers, listStockTransferManifest, receiveStockTransfer, rejectStockTransfer,
+  type StockTransfer, type StockTransferManifestItem, type StockTransferStatus,
 } from "../lib/stockTransfers"
 import {
   approveStockNeed, listBranchBatchesForVariant, listIncomingStockOffers, listStockNeedOffers, listStockNeeds,
-  rejectStockNeed, requestStockFromBranch, respondToStockOffer, retryStockNeed,
+  rejectStockNeed, respondToStockOffer, retryStockNeed,
   type IncomingStockOffer, type StockNeed, type StockNeedBatch, type StockNeedStatus,
 } from "../lib/stockNeeds"
-import { loadOrgOverview, type OverviewPeriod } from "../lib/overview"
+import { loadOrgOverview, resolveRange, type OverviewPeriod } from "../lib/overview"
 import type { LiveAlert } from "../lib/alerts"
 import L from "leaflet"
 import { addBaseLayerToggle, haversineKm, OSM_ATTRIBUTION, OSM_TILE_URL, PHARMACY_ICON, toggleFullscreen } from "../lib/maps"
 import { PasswordInput } from "./AuthShell"
 import OverviewPage from "./OverviewPage"
+import AnalyticsPage, { FORECAST_LIVE_REFRESH_MS, formatForecastPeriodLabel, inferForecastGranularity } from "./AnalyticsPage"
+import LiveInventoryPage from "./LiveInventoryPage"
+import AlertsPage from "./AlertsPage"
+import { RequestStockModal, RequestTransferModal, formatDistance, type BranchWithDistance } from "./StockRequestModals"
 
 const inputStyle = { width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" as const }
 const labelStyle = { fontSize: 10, fontWeight: 600, color: "var(--ink-muted)", textTransform: "uppercase" as const, letterSpacing: "0.05em", display: "block", marginBottom: 4 }
-
-// An OrganizationBranch with its straight-line distance from the caller's
-// own branch folded in -- null when either branch has no location pin set.
-// See destinationBranches below for how it's computed and sorted.
-type BranchWithDistance = OrganizationBranch & { distanceKm: number | null }
-
-function formatDistance(km: number | null, t: (key: TranslationKey) => string): string {
-  return km == null ? t("organization.distanceUnknown") : `${km < 10 ? km.toFixed(1) : Math.round(km)} km`
-}
 
 // Small "see your branches on a map" visual for the Branches tab -- purely
 // a bonus overview (the real payoff of setting a branch's location is the
@@ -362,6 +362,31 @@ function branchDotColor(index: number): string {
   return BRANCH_DOT_PALETTE[index % BRANCH_DOT_PALETTE.length]
 }
 
+// Same fixed-order categorical palette AnalyticsPage.tsx's own per-branch
+// category breakdown pie already uses -- reused verbatim (not re-derived) so
+// "Antibiotics" reads as the same color whether you're looking at one
+// branch's report or the org-wide combined one. Assigned by each category's
+// fixed rank in the sorted breakdown, never cycled arbitrarily -- a category
+// that falls off the front page keeps the color it would have had, it just
+// isn't shown.
+const CATEGORY_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7", "#e34948", "#008300"]
+
+// Defaults for the org-wide "All branches" forecast card's history/horizon
+// inputs -- editable (see orgForecastHistory/orgForecastHorizon state), just
+// not the fully configurable per-product/category tool AnalyticsPage offers
+// once you narrow to one branch.
+const DEFAULT_FORECAST_HISTORY_DAYS = 60
+const DEFAULT_FORECAST_HORIZON_DAYS = 14
+
+function MiniStatTile({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div style={{ flex: "1 1 150px", minWidth: 140, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "14px 16px" }}>
+      <div style={{ fontSize: 19, fontWeight: 700, color: accent ?? "var(--ink)", letterSpacing: "-0.01em" }}>{value}</div>
+      <div style={{ fontSize: 11, color: "var(--ink-muted)", marginTop: 2 }}>{label}</div>
+    </div>
+  )
+}
+
 const TRANSFER_STATUS_COLORS: Record<StockTransferStatus, { c: string; bg: string }> = {
   pending: { c: "#d97706", bg: "#fef3c7" },
   approved: { c: "#2563eb", bg: "#dbeafe" },
@@ -672,6 +697,97 @@ function ChangeRoleModal({ member, hasOrgManager, onClose, onConfirm }: {
   )
 }
 
+// Same substitute as BranchSettingsPage's own EditCredentialsModal -- a real
+// password can never be shown (Supabase Auth only ever stores a one-way
+// hash), so "see the credentials of who's below you" becomes "set them a
+// new email and/or password" instead, gated the same way list_organization_
+// people() already masks email visibility. Re-checked server-side
+// regardless (assert_can_manage_staff_account) -- this button is only ever
+// offered where m.email is already visible, i.e. exactly where the caller
+// already outranks the target.
+function EditCredentialsModal({ member, onClose, onDone }: { member: OrganizationPerson; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation()
+  const [newEmail, setNewEmail] = useState(member.email ?? "")
+  const [newPassword, setNewPassword] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    const emailChanged = newEmail.trim().toLowerCase() !== (member.email ?? "").trim().toLowerCase()
+    if (!emailChanged && newPassword.length === 0) { setError(t("organization.credentialsNothingToChange")); return }
+    if (emailChanged && !newEmail.includes("@")) { setError(t("organization.credentialsInvalidEmail")); return }
+    if (newPassword.length > 0 && newPassword.length < 6) { setError(t("organization.usersPasswordTooShort")); return }
+    setBusy(true)
+    setError(null)
+    try {
+      await updateStaffCredentials(member.userId, emailChanged ? newEmail.trim() : undefined, newPassword || undefined)
+      onDone()
+    } catch (reason) {
+      setError(errorMessage(reason, t("organization.resetPasswordError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title={t("organization.resetPasswordTitle", { name: member.fullName })} onClose={onClose} width={400}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("organization.resetPasswordIntro")}</p>
+        {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+        <div>
+          <label style={labelStyle}>{t("organization.credentialsEmailLabel")}</label>
+          <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>{t("organization.resetPasswordNewLabel")}</label>
+          <PasswordInput value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
+          <Btn variant="primary" onClick={() => void submit()}>{busy ? t("organization.resetPasswordSaving") : t("organization.resetPasswordSubmit")}</Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Permanently revokes login (Auth-level ban) without deleting any row --
+// distinct from the Deactivate/Reactivate toggle above, which is reversible.
+// mark_staff_removed() re-checks the same rank rule this button's own
+// gating already relies on, so there's no separate "type the name to
+// confirm" step here beyond a plain Cancel/Remove choice.
+function RemoveAccountModal({ member, onClose, onDone }: { member: OrganizationPerson; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation()
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await removeStaffAccount(member.userId)
+      onDone()
+    } catch (reason) {
+      setError(errorMessage(reason, t("organization.removeAccountError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title={t("organization.removeAccountTitle", { name: member.fullName })} onClose={onClose} width={400}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("organization.removeAccountIntro")}</p>
+        {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
+          <Btn variant="danger" onClick={() => void submit()}>{busy ? t("organization.removeAccountSaving") : t("organization.removeAccountConfirm")}</Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 function AssignRoleModal({ organizationId, branches, onClose, onDone }: {
   organizationId: string; branches: OrganizationBranch[]; onClose: () => void
   onDone: (result: "created" | "granted" | "invited") => void
@@ -776,185 +892,6 @@ function AssignRoleModal({ organizationId, branches, onClose, onDone }: {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
           <Btn variant="primary" onClick={() => void submit()}>{busy ? t("organization.inviting") : t("organization.inviteMemberSubmit")}</Btn>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-function RequestTransferModal({ destinationBranches, onClose, onRequested }: {
-  destinationBranches: BranchWithDistance[]; onClose: () => void; onRequested: () => void
-}) {
-  const { t } = useTranslation()
-  const [toBranchId, setToBranchId] = useState(destinationBranches[0]?.branchId ?? "")
-  const [notes, setNotes] = useState("")
-  const [search, setSearch] = useState("")
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [rows, setRows] = useState<InventoryRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    loadInventoryDataset()
-      .then(dataset => setRows(dataset.rows.filter(r => r.quantity_available > 0)))
-      .catch(reason => setError(errorMessage(reason, t("organization.transferLoadStockError"))))
-      .finally(() => setLoading(false))
-  }, [t])
-
-  const filtered = useMemo(() => {
-    const needle = search.trim().toLowerCase()
-    if (!needle) return rows
-    return rows.filter(r => r.name.toLowerCase().includes(needle) || r.batch_number.toLowerCase().includes(needle))
-  }, [rows, search])
-
-  function toggle(batchId: string) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(batchId)) next.delete(batchId); else next.add(batchId)
-      return next
-    })
-  }
-
-  async function submit() {
-    if (!toBranchId) { setError(t("organization.transferDestinationRequired")); return }
-    if (selected.size === 0) { setError(t("organization.transferNoBatchesSelected")); return }
-    setBusy(true)
-    setError(null)
-    try {
-      await requestStockTransfer(toBranchId, Array.from(selected), notes.trim() || undefined)
-      onRequested()
-    } catch (reason) {
-      setError(errorMessage(reason, t("organization.transferRequestError")))
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Modal title={t("organization.requestTransferTitle")} onClose={onClose} width={560}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("organization.requestTransferIntro")}</p>
-        {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
-        <div>
-          <label style={labelStyle}>{t("organization.destinationBranchLabel")}</label>
-          <select value={toBranchId} onChange={e => setToBranchId(e.target.value)} style={inputStyle}>
-            {destinationBranches.map(b => <option key={b.branchId} value={b.branchId}>{b.name} -- {formatDistance(b.distanceKm, t)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>{t("organization.pickBatchesLabel")}</label>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("organization.pickBatchesSearchPlaceholder")} style={{ ...inputStyle, marginBottom: 8 }} />
-          <div style={{ maxHeight: 220, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 7 }}>
-            {loading ? <p style={{ padding: 12, fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : filtered.length === 0 ? (
-              <p style={{ padding: 12, fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.transferNoStock")}</p>
-            ) : filtered.map(row => (
-              <label key={row.batch_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: "1px solid var(--bg-alt)", cursor: "pointer", fontSize: 12 }}>
-                <input type="checkbox" checked={selected.has(row.batch_id)} onChange={() => toggle(row.batch_id)} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "var(--ink)" }}>{row.name}</div>
-                  <div style={{ color: "var(--ink-muted)", fontSize: 11 }}>{row.batch_number} · {row.quantity_available} {t("organization.transferUnitsAvailable")}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
-        <div>
-          <label style={labelStyle}>{t("organization.transferNotesLabel")}</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
-          <Btn variant="primary" onClick={() => void submit()}>{busy ? t("organization.creating") : t("organization.requestTransferSubmit")}</Btn>
-        </div>
-      </div>
-    </Modal>
-  )
-}
-
-// The pull side, opposite of RequestTransferModal above: "I'm short on X",
-// not "I have spare X to send". No availability filter on the product
-// picker -- the whole point is this branch may already be at zero of it.
-// Unlike the old design, the requester picks ONE specific branch to ask --
-// this is a targeted request, not a broadcast.
-function RequestStockModal({ destinationBranches, onClose, onRequested }: {
-  destinationBranches: BranchWithDistance[]; onClose: () => void; onRequested: () => void
-}) {
-  const { t } = useTranslation()
-  const [targetBranchId, setTargetBranchId] = useState(destinationBranches[0]?.branchId ?? "")
-  const [productVariantId, setProductVariantId] = useState("")
-  const [rows, setRows] = useState<InventoryRow[]>([])
-  const [quantity, setQuantity] = useState("")
-  const [notes, setNotes] = useState("")
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    loadInventoryDataset()
-      .then(dataset => setRows(dataset.rows))
-      .catch(reason => setError(errorMessage(reason, t("organization.transferLoadStockError"))))
-      .finally(() => setLoading(false))
-  }, [t])
-
-  const productOptions = useMemo(() => {
-    const seen = new Set<string>()
-    const options: Array<{ value: string; label: string }> = []
-    for (const row of rows) {
-      if (seen.has(row.variant_id)) continue
-      seen.add(row.variant_id)
-      options.push({ value: row.variant_id, label: [row.name, row.dosage].filter(Boolean).join(" ") })
-    }
-    return options
-  }, [rows])
-
-  async function submit() {
-    if (!targetBranchId) { setError(t("organization.stockNeedBranchRequired")); return }
-    if (!productVariantId) { setError(t("organization.stockNeedProductRequired")); return }
-    const qty = Number(quantity)
-    if (!Number.isFinite(qty) || qty < 1) { setError(t("organization.stockNeedQuantityInvalid")); return }
-    setBusy(true)
-    setError(null)
-    try {
-      await requestStockFromBranch(targetBranchId, productVariantId, qty, notes.trim() || undefined)
-      onRequested()
-    } catch (reason) {
-      setError(errorMessage(reason, t("organization.stockNeedRequestError")))
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Modal title={t("organization.requestStockTitle")} onClose={onClose} width={480}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("organization.requestStockIntro")}</p>
-        {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
-        <div>
-          <label style={labelStyle}>{t("organization.stockNeedBranchLabel")}</label>
-          {/* Nearest first -- see destinationBranches' own comment in the
-              parent component for how distance is computed and why an
-              unknown one still sorts last rather than being hidden. */}
-          <select value={targetBranchId} onChange={e => setTargetBranchId(e.target.value)} style={inputStyle}>
-            {destinationBranches.map(b => <option key={b.branchId} value={b.branchId}>{b.name} -- {formatDistance(b.distanceKm, t)}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>{t("organization.stockNeedProductLabel")}</label>
-          <select value={productVariantId} onChange={e => setProductVariantId(e.target.value)} style={inputStyle} disabled={loading}>
-            <option value="">{loading ? t("organization.loading") : t("organization.stockNeedProductPlaceholder")}</option>
-            {productOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>{t("organization.stockNeedQuantityLabel")}</label>
-          <input type="number" min={1} value={quantity} onChange={e => setQuantity(e.target.value)} style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>{t("organization.transferNotesLabel")}</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} style={inputStyle} />
-        </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
-          <Btn variant="primary" onClick={() => void submit()}>{busy ? t("organization.creating") : t("organization.requestStockSubmit")}</Btn>
         </div>
       </div>
     </Modal>
@@ -1174,6 +1111,129 @@ function TransferRow({ transfer, currentBranchId, onAction }: {
   )
 }
 
+// Scan-to-confirm for both physical legs of a transfer -- requested
+// directly: the sending branch scans every item going into the shipment
+// before it can actually be sent, and the receiving branch scans every item
+// as it arrives before it's added to their own inventory. The real
+// dispatch_stock_transfer()/receive_stock_transfer() RPCs are unchanged --
+// they already flip every barcode under the transfer's batches 'active' <->
+// 'in_transit' without ever regenerating one, so whatever the sender
+// scanned out arrives with the SAME codes, scannable and sellable at the
+// receiving branch immediately, no reprinting. This modal only gates WHEN
+// that call fires: not until every item list_stock_transfer_manifest()
+// returns for this phase has actually been scanned.
+function ScanTransferModal({ transfer, mode, onClose, onDone }: {
+  transfer: StockTransfer
+  mode: "dispatch" | "receive"
+  onClose: () => void
+  onDone: () => void
+}) {
+  const { t } = useTranslation()
+  const [manifest, setManifest] = useState<StockTransferManifestItem[] | null>(null)
+  const [scannedIds, setScannedIds] = useState<Set<string>>(new Set())
+  const [code, setCode] = useState("")
+  const [scanError, setScanError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    listStockTransferManifest(transfer.id, mode === "dispatch" ? "active" : "in_transit")
+      .then(setManifest)
+      .catch(reason => setLoadError(errorMessage(reason, t("organization.scanTransferLoadError"))))
+  }, [transfer.id, mode, t])
+
+  useEffect(() => { inputRef.current?.focus() }, [manifest])
+
+  function submitScan() {
+    const trimmed = code.trim()
+    setCode("")
+    if (!trimmed || !manifest) return
+    const match = manifest.find(m => m.code === trimmed)
+    if (!match) { setScanError(t("organization.scanTransferNotFound", { code: trimmed })); return }
+    if (scannedIds.has(match.barcodeId)) { setScanError(t("organization.scanTransferAlreadyScanned")); return }
+    setScanError(null)
+    setScannedIds(prev => new Set(prev).add(match.barcodeId))
+  }
+
+  async function confirm() {
+    setBusy(true)
+    setLoadError(null)
+    try {
+      if (mode === "dispatch") await dispatchStockTransfer(transfer.id)
+      else await receiveStockTransfer(transfer.id)
+      onDone()
+    } catch (reason) {
+      setLoadError(errorMessage(reason, t("organization.transferActionError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const total = manifest?.length ?? 0
+  const scannedCount = scannedIds.size
+  const allScanned = total === 0 || scannedCount === total
+
+  return (
+    <Modal
+      title={t(mode === "dispatch" ? "organization.scanTransferDispatchTitle" : "organization.scanTransferReceiveTitle", {
+        branch: mode === "dispatch" ? transfer.toBranchName : transfer.fromBranchName,
+      })}
+      onClose={onClose}
+      width={480}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 12, color: "var(--ink-muted)" }}>
+          {t(mode === "dispatch" ? "organization.scanTransferDispatchIntro" : "organization.scanTransferReceiveIntro")}
+        </p>
+        {loadError && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{loadError}</p>}
+        {manifest === null ? (
+          <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p>
+        ) : total === 0 ? (
+          <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: 16 }}>{t("organization.scanTransferNothingToScan")}</p>
+        ) : (
+          <>
+            <div>
+              <input
+                ref={inputRef}
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitScan() } }}
+                placeholder={t("organization.scanTransferScanPlaceholder")}
+                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid var(--primary)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" }}
+              />
+              {scanError && <p style={{ margin: "6px 0 0", fontSize: 11, color: "#dc2626" }}>{scanError}</p>}
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: allScanned ? "#16a34a" : "var(--ink)" }}>
+              {t("organization.scanTransferProgress", { scanned: scannedCount, total })}
+            </div>
+            <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
+              {manifest.map((m, i) => {
+                const done = scannedIds.has(m.barcodeId)
+                return (
+                  <div key={m.barcodeId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i === manifest.length - 1 ? "none" : "1px solid var(--bg-alt)", opacity: done ? 1 : 0.7 }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{m.productName}{m.dosage ? ` · ${m.dosage}` : ""}</div>
+                      <div style={{ fontSize: 10, color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>{m.batchNumber} · {m.code}</div>
+                    </div>
+                    <span style={{ fontSize: 16, color: done ? "#16a34a" : "var(--ink-faint)" }}>{done ? "✓" : "○"}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
+          <Btn variant="primary" disabled={busy || manifest === null || !allScanned} onClick={() => void confirm()}>
+            {busy ? t("organization.scanTransferSaving") : t(mode === "dispatch" ? "organization.transferDispatch" : "organization.transferReceive")}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // One row per request, from either the requester's or the org's point of
 // view. What action shows, if any, depends on who's looking and where the
 // negotiation currently stands:
@@ -1255,7 +1315,7 @@ function IncomingOfferRow({ offer, onRespond }: { offer: IncomingStockOffer; onR
 
 // Kept in sync with App.tsx's own local ORG_TABS constant, which drives the
 // actual tab switcher now (see the `activeTab` prop below).
-type OrgTab = "dashboard" | "transfers" | "branches" | "members" | "settings"
+type OrgTab = "dashboard" | "transfers" | "branches" | "analytics" | "inventory" | "alerts" | "members" | "settings"
 
 export default function OrganizationPage({
   currentUserId, currentBranchId, organization, myBranchOrganizationId, onOrganizationChanged, onViewBranch, activeTab, period, alerts, onViewAlerts, onGoToTransfers,
@@ -1293,7 +1353,7 @@ export default function OrganizationPage({
   onGoToTransfers: () => void
   activeTab: OrgTab
 }) {
-  const { t } = useTranslation()
+  const { t, lang } = useTranslation()
   const [branches, setBranches] = useState<OrganizationBranch[]>([])
   const [branchesLoading, setBranchesLoading] = useState(true)
   const [branchesError, setBranchesError] = useState<string | null>(null)
@@ -1309,6 +1369,8 @@ export default function OrganizationPage({
   // changes what they can reach across every branch, which is not
   // something to do on a single stray click.
   const [changeRoleTarget, setChangeRoleTarget] = useState<OrganizationPerson | null>(null)
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<OrganizationPerson | null>(null)
+  const [removeAccountTarget, setRemoveAccountTarget] = useState<OrganizationPerson | null>(null)
 
   const [log, setLog] = useState<RoleChangeLogEntry[]>([])
   const [logLoading, setLogLoading] = useState(true)
@@ -1330,11 +1392,70 @@ export default function OrganizationPage({
   const [branchTrendError, setBranchTrendError] = useState<string | null>(null)
   const [activeTrendBranches, setActiveTrendBranches] = useState<Set<string>>(new Set())
 
+  // Shared by the Analytics/Inventory/Alerts tabs below -- null = "All
+  // branches" combined, a branchId = narrowed to that one. One picker, one
+  // piece of state, reused across all three rather than three separate
+  // dropdowns that could drift out of sync with each other.
+  const [orgScopeBranchId, setOrgScopeBranchId] = useState<string | null>(null)
+  const orgScope = orgScopeBranchId ?? (branches.length > 0 ? branches.map(b => b.branchId) : undefined)
+  const branchNameById = useMemo(() => Object.fromEntries(branches.map(b => [b.branchId, b.name])), [branches])
+
+  // "All branches" analytics is a merge of each branch's own top-products/
+  // category-breakdown call (same reasoning as branchTrend above -- there is
+  // no single combined-across-branches RPC for these, so this reuses the
+  // exact per-branch calls AnalyticsPage itself already makes for one
+  // branch, once per branch, and sums by product/category name). A specific
+  // branch instead renders the full <AnalyticsPage> as-is, so nothing here
+  // runs for that case -- see activeTab === "analytics" below.
+  const [orgTopProducts, setOrgTopProducts] = useState<TopProductRow[]>([])
+  const [orgCategoryBreakdown, setOrgCategoryBreakdown] = useState<CategoryBreakdownRow[]>([])
+  // Units received from suppliers, broken down per branch (not just an
+  // org-wide total) -- requested directly: the org manager's dashboard needs
+  // to show specifically which branch received how many units, not one
+  // combined figure that hides which branch it actually came from.
+  const [orgSupplierUnitsByBranch, setOrgSupplierUnitsByBranch] = useState<{ branchName: string; unitsReceived: number }[]>([])
+  const [orgAnalyticsLoading, setOrgAnalyticsLoading] = useState(true)
+  const [orgAnalyticsError, setOrgAnalyticsError] = useState<string | null>(null)
+
+  // "All branches" sales forecast -- same per-branch-merge idea as the two
+  // above, applied to ai_sales_forecast_series()/ai_sales_forecast(): each
+  // branch's own whole-branch (no product/category filter) forecast is
+  // independently a real linear regression over ITS OWN history, so summing
+  // same-period revenue across branches gives a genuine combined projection,
+  // not a fudge. Fixed history/horizon (not the full picker AnalyticsPage
+  // offers for one branch) -- this is the at-a-glance org summary, the
+  // per-branch drill-in still has the full configurable tool.
+  const [orgForecastSeries, setOrgForecastSeries] = useState<Array<{
+    periodStart: string; label: string; actualRevenue: number | null; forecastRevenue: number | null; range?: [number, number]
+    onTrend: boolean | null; tradingGreen?: number; tradingRed?: number
+  }>>([])
+  // Which shape the combined "All branches" forecast renders as -- same
+  // four choices as AnalyticsPage's own single-branch forecast chart.
+  const [orgForecastChartType, setOrgForecastChartType] = useState<"line" | "column" | "bar" | "pie">("line")
+  const [orgForecast, setOrgForecast] = useState<{ trendPerDay: number; avgDailyQuantity: number; projectedQuantityNextPeriod: number; projectedRevenueNextPeriod: number } | null>(null)
+  const [orgForecastLoading, setOrgForecastLoading] = useState(true)
+  const [orgForecastError, setOrgForecastError] = useState<string | null>(null)
+  // Training window is fixed (DEFAULT_FORECAST_HISTORY_DAYS) -- like
+  // AnalyticsPage's own forecast, "how many days back to train on" is no
+  // longer a separate exposed input, only "how many days ahead" is.
+  const [orgForecastHorizon, setOrgForecastHorizon] = useState(DEFAULT_FORECAST_HORIZON_DAYS)
+  // Track record: every past forecast run (org-wide or per-branch, any
+  // history/horizon) whose own predicted window has since fully elapsed,
+  // merged across branches -- see list_forecast_outcomes(). Independent of
+  // orgForecastHorizon above (that controls the LIVE chart only).
+  const [orgForecastOutcomes, setOrgForecastOutcomes] = useState<ForecastOutcome[]>([])
+  const [orgForecastOutcomesLoading, setOrgForecastOutcomesLoading] = useState(true)
+
   const [myTransfers, setMyTransfers] = useState<StockTransfer[]>([])
   const [orgTransfers, setOrgTransfers] = useState<StockTransfer[]>([])
   const [transfersLoading, setTransfersLoading] = useState(true)
   const [transfersError, setTransfersError] = useState<string | null>(null)
   const [showRequestTransfer, setShowRequestTransfer] = useState(false)
+  // Dispatch/receive no longer fire straight from the row -- both now open
+  // ScanTransferModal, which requires every expected item actually scanned
+  // before it calls the real dispatch/receive RPC (see handleTransferAction
+  // below and the modal's own header comment).
+  const [scanTransferTarget, setScanTransferTarget] = useState<{ transfer: StockTransfer; mode: "dispatch" | "receive" } | null>(null)
 
   const [myNeeds, setMyNeeds] = useState<StockNeed[]>([])
   const [orgNeeds, setOrgNeeds] = useState<StockNeed[]>([])
@@ -1371,6 +1492,14 @@ export default function OrganizationPage({
   // act while no org_manager has been appointed yet, matching
   // assert_can_approve_stock_transfer() on the backend exactly.
   const canApproveStockNeeds = isOrgManagerCaller || (isOrgOwner && !organization?.hasOrgManager)
+  // Same precedence rule, applied to "View Branch" -- drilling into another
+  // branch's own operational dashboard is the org_manager's job once one is
+  // appointed (assert_can_manage_org_branch's own precedence), the owner's
+  // fallback only while that seat is still empty. Unlike Stock Transfers,
+  // the Branches tab itself never disappears for the owner (see App.tsx's
+  // visibleOrgTabs) -- they still see every branch's summary and can still
+  // add new ones; only the drill-in button is gone.
+  const canViewOtherBranches = isOrgManagerCaller || (isOrgOwner && !organization?.hasOrgManager)
   // Transfer destinations are every OTHER branch in the org -- a transfer
   // always moves stock away from the caller's own branch. Declared before
   // the `!organization` early return below (which also needs it) rather
@@ -1480,6 +1609,167 @@ export default function OrganizationPage({
     }
   }, [organizationId, branches, period, t])
 
+  // Merges each branch's own top-products/category-breakdown into one
+  // org-wide ranking, for the Analytics tab's "All branches" scope only (a
+  // specific branch renders the real <AnalyticsPage>, which needs none of
+  // this). Fetches a wider top-50 per branch rather than each branch's own
+  // top-10 before merging -- a product popular at only one branch could
+  // otherwise be pushed off a narrower per-branch list and undercounted here,
+  // even though it would still make the true combined top 10.
+  const refreshOrgAnalytics = useCallback(async () => {
+    if (!organizationId || branches.length === 0 || orgScopeBranchId) { setOrgAnalyticsLoading(false); return }
+    setOrgAnalyticsLoading(true)
+    setOrgAnalyticsError(null)
+    try {
+      const { start, end } = resolveRange(period)
+      const [from, to] = [start.toISOString(), end.toISOString()]
+      const perBranch = await Promise.all(
+        branches.map(b => Promise.all([
+          loadTopProducts(from, to, "revenue", "desc", 50, b.branchId), loadCategoryBreakdown(from, to, b.branchId),
+          loadSupplierPerformance(from, to, b.branchId),
+        ])),
+      )
+      const productTotals = new Map<string, TopProductRow>()
+      const categoryTotals = new Map<string, CategoryBreakdownRow>()
+      for (const [products, categories] of perBranch) {
+        for (const p of products) {
+          const existing = productTotals.get(p.productId)
+          productTotals.set(p.productId, existing
+            ? { ...existing, quantitySold: existing.quantitySold + p.quantitySold, revenue: existing.revenue + p.revenue }
+            : { ...p })
+        }
+        for (const c of categories) {
+          const existing = categoryTotals.get(c.categoryName)
+          categoryTotals.set(c.categoryName, existing
+            ? { ...existing, quantitySold: existing.quantitySold + c.quantitySold, revenue: existing.revenue + c.revenue }
+            : { ...c })
+        }
+      }
+      setOrgTopProducts(Array.from(productTotals.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10))
+      setOrgCategoryBreakdown(Array.from(categoryTotals.values()).sort((a, b) => b.revenue - a.revenue))
+      setOrgSupplierUnitsByBranch(branches.map((b, i) => ({
+        branchName: b.name,
+        unitsReceived: perBranch[i][2].reduce((sum: number, s: SupplierPerformanceRow) => sum + s.unitsReceived, 0),
+      })))
+    } catch (reason) {
+      setOrgAnalyticsError(errorMessage(reason, t("organization.dashboardLoadError")))
+    } finally {
+      setOrgAnalyticsLoading(false)
+    }
+  }, [organizationId, branches, orgScopeBranchId, period, t])
+
+  // Combined "All branches" forecast -- each branch's own ai_sales_forecast/
+  // ai_sales_forecast_series called with the SAME history/horizon/bucket
+  // ("day") so every branch's periods line up on the same calendar boundary
+  // before summing. trendPerDay and projectedRevenueNextPeriod are both real
+  // revenue-per-day figures, so summing them across independent per-branch
+  // regressions is a legitimate combined trend/projection, not an
+  // approximation dressed up as one. Horizon is user-editable (see
+  // orgForecastHorizon) -- re-run on every change, same as AnalyticsPage's
+  // own single-branch forecast; the training window stays fixed.
+  // `silent` mirrors AnalyticsPage's own runForecast() -- skips the loading
+  // spinner for the background live-refresh below, so the chart quietly
+  // updates instead of flashing "Loading..." over it every 60 seconds.
+  const refreshOrgForecast = useCallback(async (silent = false) => {
+    if (!organizationId || branches.length === 0 || orgScopeBranchId) { setOrgForecastLoading(false); return }
+    if (!silent) setOrgForecastLoading(true)
+    setOrgForecastError(null)
+    try {
+      const perBranch = await Promise.all(branches.map(b => Promise.all([
+        loadSalesForecastSeries({ daysHistory: DEFAULT_FORECAST_HISTORY_DAYS, horizonDays: orgForecastHorizon, bucket: "day", branchId: b.branchId }),
+        loadSalesForecast({ daysHistory: DEFAULT_FORECAST_HISTORY_DAYS, horizonDays: orgForecastHorizon, branchId: b.branchId }),
+      ])))
+      // Best-effort, same as AnalyticsPage's own runForecast() -- remembers
+      // each branch's own future points so list_forecast_outcomes() can
+      // compare them to what actually happens once this window elapses.
+      // Fire-and-forget: a failed save here shouldn't block showing today's
+      // chart, just means this particular run's track record entry is lost.
+      branches.forEach((b, i) => {
+        const futurePoints = perBranch[i][0].filter(p => p.isForecast)
+        if (futurePoints.length === 0) return
+        void saveSalesForecastSnapshot({
+          bucket: "day", branchId: b.branchId,
+          points: futurePoints.map(p => ({ periodStart: p.periodStart, predictedRevenue: p.forecastRevenue, predictedQuantity: p.forecastQuantity, lowerBound: p.lowerBound, upperBound: p.upperBound })),
+        }).catch(reason => console.error("Could not save org-wide forecast snapshot:", reason))
+      })
+      // Same "live trading" comparison as AnalyticsPage's own forecast chart,
+      // merged across branches: for each branch, what was predicted in
+      // advance for its own already-elapsed periods, summed by period the
+      // same way actual/forecast revenue already are below.
+      const actualPeriodsByBranch = perBranch.map(([series]) => series.filter(p => !p.isForecast).map(p => p.periodStart))
+      const accuracyPerBranch = await Promise.all(branches.map((b, i) => {
+        const periods = actualPeriodsByBranch[i]
+        return periods.length === 0 ? Promise.resolve([]) : loadSalesForecastAccuracy({ from: periods[0], to: periods[periods.length - 1], branchId: b.branchId })
+      }))
+      const predictedByPeriod = new Map<string, number>()
+      for (const accuracy of accuracyPerBranch) {
+        for (const point of accuracy) {
+          if (point.predictedRevenue == null) continue
+          predictedByPeriod.set(point.periodStart, (predictedByPeriod.get(point.periodStart) ?? 0) + point.predictedRevenue)
+        }
+      }
+      const byPeriod = new Map<string, { actualRevenue: number | null; forecastRevenue: number | null; lowerBound: number | null; upperBound: number | null }>()
+      for (const [series] of perBranch) {
+        for (const point of series) {
+          const row = byPeriod.get(point.periodStart) ?? { actualRevenue: null, forecastRevenue: null, lowerBound: null, upperBound: null }
+          if (point.actualRevenue != null) row.actualRevenue = (row.actualRevenue ?? 0) + point.actualRevenue
+          if (point.forecastRevenue != null) row.forecastRevenue = (row.forecastRevenue ?? 0) + point.forecastRevenue
+          if (point.lowerBound != null) row.lowerBound = (row.lowerBound ?? 0) + point.lowerBound
+          if (point.upperBound != null) row.upperBound = (row.upperBound ?? 0) + point.upperBound
+          byPeriod.set(point.periodStart, row)
+        }
+      }
+      const granularity = inferForecastGranularity(Array.from(byPeriod.keys()).sort())
+      const rows = Array.from(byPeriod.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([periodStart, v]) => {
+        const predicted = predictedByPeriod.get(periodStart)
+        const onTrend = v.actualRevenue != null && predicted != null ? v.actualRevenue >= predicted : null
+        return {
+          periodStart, label: formatForecastPeriodLabel(periodStart, granularity, lang),
+          actualRevenue: v.actualRevenue, forecastRevenue: v.forecastRevenue,
+          range: v.lowerBound != null && v.upperBound != null ? [v.lowerBound, v.upperBound] as [number, number] : undefined,
+          onTrend, tradingGreen: onTrend === true ? v.actualRevenue! : undefined, tradingRed: onTrend === false ? v.actualRevenue! : undefined,
+        }
+      })
+      // Bridge each color change so the two segments share a vertex --
+      // same technique as AnalyticsPage's own forecastChartData.
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i].onTrend === null || rows[i - 1].onTrend === null || rows[i].onTrend === rows[i - 1].onTrend) continue
+        if (rows[i].onTrend) rows[i - 1].tradingRed = rows[i - 1].actualRevenue!
+        else rows[i - 1].tradingGreen = rows[i - 1].actualRevenue!
+      }
+      setOrgForecastSeries(rows)
+      const summaries = perBranch.map(([, summary]) => summary)
+      setOrgForecast({
+        trendPerDay: summaries.reduce((total, s) => total + s.trendPerDay, 0),
+        avgDailyQuantity: summaries.reduce((total, s) => total + s.avgDailyQuantity, 0),
+        projectedQuantityNextPeriod: summaries.reduce((total, s) => total + s.projectedQuantityNextPeriod, 0),
+        projectedRevenueNextPeriod: summaries.reduce((total, s) => total + s.projectedRevenueNextPeriod, 0),
+      })
+    } catch (reason) {
+      if (!silent) setOrgForecastError(errorMessage(reason, t("organization.dashboardLoadError")))
+    } finally {
+      if (!silent) setOrgForecastLoading(false)
+    }
+  }, [organizationId, branches, orgScopeBranchId, orgForecastHorizon, lang, t])
+
+  // Independent of orgForecastHistory/Horizon (and of the current chart
+  // entirely) -- this is the durable track record of every forecast run
+  // that has ever completed for these branches, org-wide or per-branch.
+  const refreshOrgForecastOutcomes = useCallback(async () => {
+    if (!organizationId || branches.length === 0 || orgScopeBranchId) { setOrgForecastOutcomesLoading(false); return }
+    setOrgForecastOutcomesLoading(true)
+    try {
+      const perBranch = await Promise.all(branches.map(b => loadForecastOutcomes(10, b.branchId)))
+      setOrgForecastOutcomes(perBranch.flat().sort((a, b) => b.generatedAt.localeCompare(a.generatedAt)).slice(0, 15))
+    } catch {
+      // Best-effort/secondary panel -- a failure here shouldn't block the
+      // live forecast chart above, which already has its own error state.
+      setOrgForecastOutcomes([])
+    } finally {
+      setOrgForecastOutcomesLoading(false)
+    }
+  }, [organizationId, branches, orgScopeBranchId])
+
   const refreshTransfers = useCallback(async () => {
     if (!transferOrganizationId) return
     setTransfersLoading(true)
@@ -1533,6 +1823,22 @@ export default function OrganizationPage({
   useEffect(() => { void refreshLog() }, [refreshLog])
   useEffect(() => { void refreshSummary() }, [refreshSummary])
   useEffect(() => { void refreshBranchTrend() }, [refreshBranchTrend])
+  useEffect(() => { void refreshOrgAnalytics() }, [refreshOrgAnalytics])
+  // 400ms debounce -- same reasoning as AnalyticsPage's own forecast effect:
+  // without it, every keystroke in the horizon number input below would
+  // fire its own full per-branch fetch.
+  useEffect(() => {
+    const handle = setTimeout(() => { void refreshOrgForecast() }, 400)
+    return () => clearTimeout(handle)
+  }, [refreshOrgForecast])
+  // Live trading, same as AnalyticsPage's own forecast chart -- quietly
+  // re-fetches every FORECAST_LIVE_REFRESH_MS so today's still-accumulating
+  // actual sales (and the green/red segment they drive) stay current.
+  useEffect(() => {
+    const id = setInterval(() => { void refreshOrgForecast(true) }, FORECAST_LIVE_REFRESH_MS)
+    return () => clearInterval(id)
+  }, [refreshOrgForecast])
+  useEffect(() => { void refreshOrgForecastOutcomes() }, [refreshOrgForecastOutcomes])
   useEffect(() => { void refreshTransfers() }, [refreshTransfers])
   useEffect(() => { void refreshNeeds() }, [refreshNeeds])
 
@@ -1599,11 +1905,12 @@ export default function OrganizationPage({
   }
 
   async function handleTransferAction(action: "approve" | "reject" | "dispatch" | "receive" | "cancel", transfer: StockTransfer) {
+    // Physically moving stock (dispatch/receive) goes through a scan-to-
+    // confirm modal instead of firing immediately -- see ScanTransferModal.
+    if (action === "dispatch" || action === "receive") { setScanTransferTarget({ transfer, mode: action }); return }
     try {
       if (action === "approve") await approveStockTransfer(transfer.id)
       else if (action === "reject") await rejectStockTransfer(transfer.id)
-      else if (action === "dispatch") await dispatchStockTransfer(transfer.id)
-      else if (action === "receive") await receiveStockTransfer(transfer.id)
       else await cancelStockTransfer(transfer.id)
       void refreshTransfers()
     } catch (reason) {
@@ -1648,6 +1955,56 @@ export default function OrganizationPage({
     }
   }
 
+  // Members "classed according to the branch they work for" instead of one
+  // flat list: organization-level people (org_owner/org_manager -- scope
+  // "organization", no branch of their own) get their own group first, then
+  // one group per branch, in the same order as the Branches tab's own list.
+  // A branch with no staff at all is skipped, not shown as an empty group.
+  // Pie view of the combined forecast has no time axis -- summarizes the
+  // same on-trend/off-trend comparison as AnalyticsPage's own forecastPieData.
+  const orgForecastPieData = useMemo(() => {
+    const onTrend = orgForecastSeries.filter(r => r.onTrend === true).length
+    const offTrend = orgForecastSeries.filter(r => r.onTrend === false).length
+    return [
+      { name: t("analyticsPage.forecastOnTrendLabel"), value: onTrend, color: "#16a34a" },
+      { name: t("analyticsPage.forecastOffTrendLabel"), value: offTrend, color: "#dc2626" },
+    ].filter(d => d.value > 0)
+  }, [orgForecastSeries, t])
+
+  const memberGroups = useMemo(() => {
+    const orgLevel = members.filter(m => m.scope === "organization")
+    const groups: { key: string; label: string; members: OrganizationPerson[] }[] = []
+    if (orgLevel.length > 0) groups.push({ key: "org", label: t("organization.membersGroupOrgLevel"), members: orgLevel })
+    for (const b of branches) {
+      const branchMembers = members.filter(m => m.scope === "branch" && m.branchId === b.branchId)
+      if (branchMembers.length > 0) groups.push({ key: b.branchId, label: b.name, members: branchMembers })
+    }
+    // Any branch-scoped member whose branch isn't in `branches` (shouldn't
+    // normally happen, but branches loads separately from members) still
+    // needs to show up somewhere rather than silently vanishing.
+    const groupedIds = new Set(groups.flatMap(g => g.members.map(m => m.userId)))
+    const leftover = members.filter(m => !groupedIds.has(m.userId))
+    if (leftover.length > 0) groups.push({ key: "other", label: t("organization.membersGroupOther"), members: leftover })
+    return groups
+  }, [members, branches, t])
+
+  // Shared by the Analytics/Inventory/Alerts tabs' headers -- the same
+  // "All branches" / one-branch picker OverviewPage already established for
+  // the Dashboard tab (see its own scopeBranchId), just reading/writing
+  // orgScopeBranchId instead so all three tabs stay in sync with each other.
+  function scopePicker() {
+    return (
+      <select
+        value={orgScopeBranchId ?? ""}
+        onChange={e => setOrgScopeBranchId(e.target.value || null)}
+        style={{ fontSize: 12, padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--ink)", fontFamily: "inherit", cursor: "pointer", outline: "none" }}
+      >
+        <option value="">{t("overviewPage.allBranches")}</option>
+        {branches.map(b => <option key={b.branchId} value={b.branchId}>{b.name}</option>)}
+      </select>
+    )
+  }
+
   if (!organization) {
     // Two different reasons a caller can have no org_owner/org_manager role:
     // a genuine standalone branch owner (myBranchOrganizationId also null --
@@ -1664,7 +2021,7 @@ export default function OrganizationPage({
     }
     return (
       <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <SectionHeader title={t("nav.transfers" as TranslationKey)} subtitle={t("organization.transfersSubtitle")} />
+        <SectionHeader title={t("organization.tabTransfers")} subtitle={t("organization.transfersSubtitle")} />
         {incomingOffers.length > 0 && (
           <Card>
             <CardHeader icon="📨" title={t("organization.stockNeedsIncomingTitle")} subtitle={t("organization.stockNeedsIncomingSubtitle")} />
@@ -1720,6 +2077,14 @@ export default function OrganizationPage({
             destinationBranches={destinationBranches}
             onClose={() => setShowRequestTransfer(false)}
             onRequested={() => { setShowRequestTransfer(false); announce(t("organization.transferRequested")); void refreshTransfers() }}
+          />
+        )}
+        {scanTransferTarget && (
+          <ScanTransferModal
+            transfer={scanTransferTarget.transfer}
+            mode={scanTransferTarget.mode}
+            onClose={() => setScanTransferTarget(null)}
+            onDone={() => { setScanTransferTarget(null); void refreshTransfers() }}
           />
         )}
       </div>
@@ -1930,8 +2295,8 @@ export default function OrganizationPage({
                             return (
                               <tr
                                 key={row.branchId}
-                                onClick={() => branch && onViewBranch({ branchId: branch.branchId, branchName: branch.name, branchCode: branch.branchCode })}
-                                style={{ borderBottom: "1px solid var(--bg-alt)", cursor: branch ? "pointer" : "default" }}
+                                onClick={() => branch && canViewOtherBranches && onViewBranch({ branchId: branch.branchId, branchName: branch.name, branchCode: branch.branchCode })}
+                                style={{ borderBottom: "1px solid var(--bg-alt)", cursor: branch && canViewOtherBranches ? "pointer" : "default" }}
                               >
                                 <td style={{ padding: "8px 10px", fontWeight: 600, color: "var(--ink)" }}>
                                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -1960,54 +2325,21 @@ export default function OrganizationPage({
 
           {activeTab === "transfers" && (
             <>
-              <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
-                  <CardHeader icon="🔁" title={t("organization.transfersMineTitle")} subtitle={t("organization.transfersSubtitle")} />
-                  <Btn variant="primary" small onClick={() => setShowRequestTransfer(true)}>+ {t("organization.requestTransfer")}</Btn>
-                </div>
-                {transfersError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{transfersError}</p>}
-                {transfersLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : myTransfers.map(tr => (
-                  <TransferRow key={tr.id} transfer={tr} currentBranchId={currentBranchId} onAction={handleTransferAction} />
-                ))}
-                {!transfersLoading && myTransfers.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.transfersEmpty")}</p>}
-              </Card>
-
+              {/* Requesting FOR a specific branch (both the push "send me
+                  this" transfer and the pull "I need this" stock request)
+                  now lives on that branch's own dashboard (OverviewPage,
+                  once its scope picker is narrowed to one branch, or via
+                  "View Branch") -- not here. This tab is oversight only:
+                  every transfer/need across the whole organization, for an
+                  org_owner (while no org_manager exists yet, same
+                  precedence as canApproveStockNeeds/canViewOtherBranches
+                  above) or a real org_manager to review and approve. */}
               <Card>
                 <CardHeader icon="🏢" title={t("organization.transfersOrgTitle")} subtitle={t("organization.transfersOrgSubtitle")} />
                 {!transfersLoading && orgTransfers.map(tr => (
                   <TransferRow key={tr.id} transfer={tr} currentBranchId={currentBranchId} onAction={handleTransferAction} />
                 ))}
                 {!transfersLoading && orgTransfers.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.transfersEmpty")}</p>}
-              </Card>
-
-              {/* Pull side: "I'm short on X" -- opposite direction from the
-                  push cards above, and a real branch-to-branch negotiation
-                  rather than an org_manager unilaterally picking a source.
-                  Any owner/manager who reaches this tab can request or
-                  respond; only an org_owner/org_manager (isOrgOwner ||
-                  isOrgManagerCaller) gives the final approval. */}
-              {incomingOffers.length > 0 && (
-                <Card>
-                  <CardHeader icon="📨" title={t("organization.stockNeedsIncomingTitle")} subtitle={t("organization.stockNeedsIncomingSubtitle")} />
-                  {incomingOffers.map(o => (
-                    <IncomingOfferRow key={o.id} offer={o} onRespond={setRespondOfferTarget} />
-                  ))}
-                </Card>
-              )}
-
-              <Card>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
-                  <CardHeader icon="📥" title={t("organization.stockNeedsMineTitle")} subtitle={t("organization.stockNeedsMineSubtitle")} />
-                  <Btn variant="primary" small onClick={() => setShowRequestStock(true)}>+ {t("organization.requestStock")}</Btn>
-                </div>
-                {needsError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{needsError}</p>}
-                {needsLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : myNeeds.map(n => (
-                  <NeedRow
-                    key={n.id} need={n} currentBranchId={currentBranchId} isOrgApprover={canApproveStockNeeds}
-                    onRetry={setRetryNeedTarget} onApprove={handleApproveNeed} onReject={handleRejectNeed}
-                  />
-                ))}
-                {!needsLoading && myNeeds.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.stockNeedsEmpty")}</p>}
               </Card>
 
               {(isOrgOwner || isOrgManagerCaller) && (
@@ -2053,7 +2385,7 @@ export default function OrganizationPage({
                               <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{b.branchCode ?? b.address ?? "—"}</div>
                             </div>
                           </div>
-                          <StatusBadge label={b.status} color={colors.c} bg={colors.bg} />
+                          <StatusBadge label={b.status === "active" ? t("organization.statusActive") : t("organization.statusSuspended")} color={colors.c} bg={colors.bg} />
                         </div>
 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
@@ -2076,7 +2408,7 @@ export default function OrganizationPage({
                             {manager ? manager.fullName : (b.staffCount > 0 ? t("organization.staffCountLabel", { count: b.staffCount }) : t("organization.noStaffYet"))}
                           </div>
                           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                            {(isOrgOwner || isOrgManagerCaller) && <Btn variant="primary" small onClick={() => onViewBranch({ branchId: b.branchId, branchName: b.name, branchCode: b.branchCode })}>{t("organization.viewBranch")}</Btn>}
+                            {canViewOtherBranches && <Btn variant="primary" small onClick={() => onViewBranch({ branchId: b.branchId, branchName: b.name, branchCode: b.branchCode })}>{t("organization.viewBranch")}</Btn>}
                             {isOrgOwner && <Btn variant="secondary" small onClick={() => setStaffingBranch({ id: b.branchId, name: b.name, alreadyStaffed: b.staffCount > 0 })}>{t("organization.staffBranch")}</Btn>}
                           </div>
                         </div>
@@ -2091,6 +2423,204 @@ export default function OrganizationPage({
             </div>
           )}
 
+          {activeTab === "analytics" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t("organization.analyticsTitle")}</h2>
+                  <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.analyticsSubtitle")}</p>
+                </div>
+                {scopePicker()}
+              </div>
+              {orgScopeBranchId ? (
+                // A specific branch -- the full Analytics & Forecasting suite,
+                // exactly as that branch's own owner/manager would see it.
+                <AnalyticsPage period={period} branchId={orgScopeBranchId} />
+              ) : (
+                <>
+                  {orgAnalyticsError && <p style={{ fontSize: 12, color: "#b91c1c" }}>{orgAnalyticsError}</p>}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <Card>
+                      <CardHeader icon="🏆" title={t("analyticsPage.topProductsTitle")} subtitle={t("organization.analyticsSubtitle")} />
+                      {orgAnalyticsLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 12 }}>{t("organization.loading")}</p> : orgTopProducts.length === 0 ? (
+                        <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: 16 }}>{t("organization.branchesEmpty")}</p>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={Math.max(180, orgTopProducts.length * 34)}>
+                          <BarChart data={orgTopProducts.map(p => ({ ...p, label: p.dosage ? `${p.productName} (${p.dosage})` : p.productName }))} layout="vertical" margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+                            <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" horizontal={false} />
+                            <XAxis type="number" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => fmtRWFExact(v)} />
+                            <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 11, fill: "var(--ink)" }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<ChartTooltip />} />
+                            <Bar dataKey="revenue" name={t("analyticsPage.topProductsTitle")} fill="#1e5fa8" radius={[0, 4, 4, 0]} barSize={16} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </Card>
+                    <Card>
+                      <CardHeader icon="🗂️" title={t("organization.categoryBreakdownTitle")} subtitle={t("organization.analyticsSubtitle")} />
+                      {orgAnalyticsLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 12 }}>{t("organization.loading")}</p> : orgCategoryBreakdown.length === 0 ? (
+                        <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: 16 }}>{t("organization.branchesEmpty")}</p>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={Math.max(180, orgCategoryBreakdown.length * 34)}>
+                          <BarChart data={orgCategoryBreakdown} layout="vertical" margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+                            <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" horizontal={false} />
+                            <XAxis type="number" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} tickFormatter={v => fmtRWFExact(v)} />
+                            <YAxis type="category" dataKey="categoryName" width={140} tick={{ fontSize: 11, fill: "var(--ink)" }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<ChartTooltip />} />
+                            <Bar dataKey="revenue" name={t("organization.categoryBreakdownTitle")} radius={[0, 4, 4, 0]} barSize={16}>
+                              {orgCategoryBreakdown.map((c, i) => <Cell key={c.categoryName} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />)}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* Units received from suppliers, per branch -- the org
+                      manager's own dashboard needs to see specifically which
+                      branch received how many units, not one org-wide total
+                      that hides that. Real numbers straight from
+                      analytics_supplier_performance(), same RPC each branch's
+                      own Analytics page already calls for its Supplier
+                      Performance table. */}
+                  <Card>
+                    <CardHeader icon="🚚" title={t("organization.supplierUnitsTitle")} subtitle={t("organization.supplierUnitsSubtitle")} />
+                    {orgAnalyticsLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 12 }}>{t("organization.loading")}</p> : orgSupplierUnitsByBranch.every(r => r.unitsReceived === 0) ? (
+                      <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: 16 }}>{t("organization.branchesEmpty")}</p>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={Math.max(160, orgSupplierUnitsByBranch.length * 40)}>
+                        <BarChart data={orgSupplierUnitsByBranch} layout="vertical" margin={{ top: 4, right: 24, bottom: 0, left: 0 }}>
+                          <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" horizontal={false} />
+                          <XAxis type="number" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="branchName" width={140} tick={{ fontSize: 11, fill: "var(--ink)" }} axisLine={false} tickLine={false} />
+                          <Tooltip content={<ChartTooltip />} />
+                          <Bar dataKey="unitsReceived" name={t("organization.supplierUnitsTitle")} fill="#eb6834" radius={[0, 4, 4, 0]} barSize={18} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </Card>
+
+                  {/* Combined sales forecast -- see refreshOrgForecast's own
+                      comment for why summing each branch's independent
+                      regression is legitimate here, not a fudge. */}
+                  <Card>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                      <CardHeader icon="🔮" title={t("analyticsPage.forecastTitle")} subtitle={t("analyticsPage.forecastSubtitle")} />
+                      <div>
+                        <label style={labelStyle}>{t("analyticsPage.forecastHorizonLabel")}</label>
+                        <input
+                          type="number" min={1} max={365} value={orgForecastHorizon}
+                          onChange={e => setOrgForecastHorizon(Number(e.target.value) || DEFAULT_FORECAST_HORIZON_DAYS)}
+                          style={{ padding: "7px 10px", border: "1px solid var(--border)", borderRadius: 8, fontFamily: "inherit", fontSize: 12, width: 90 }}
+                        />
+                      </div>
+                    </div>
+                    {orgForecastError && <p style={{ fontSize: 12, color: "#b91c1c", marginTop: 12 }}>{orgForecastError}</p>}
+                    {orgForecastLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 12 }}>{t("organization.loading")}</p> : (
+                      <>
+                        {orgForecastSeries.length > 1 && (
+                          <div style={{ marginTop: 12 }}>
+                            <ResponsiveContainer width="100%" height={280}>
+                              <ComposedChart data={orgForecastSeries} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                                <defs>
+                                  <linearGradient id="gOrgForecastBand" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#16a34a" stopOpacity={0.18} />
+                                    <stop offset="100%" stopColor="#16a34a" stopOpacity={0.02} />
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid stroke="var(--border)" strokeDasharray="4 4" />
+                                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} minTickGap={16} />
+                                <YAxis tick={{ fontSize: 10, fill: "var(--ink-muted)" }} axisLine={false} tickLine={false} width={70} tickFormatter={v => fmtRWFExact(v)} />
+                                <Tooltip content={(props: any) => <ChartTooltip {...props} payload={props.payload?.filter((p: any) => p.value != null && p.dataKey !== "range")} />} />
+                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                                <Area type="monotone" dataKey="range" name={t("analyticsPage.forecastBandLabel")} stroke="none" fill="url(#gOrgForecastBand)" connectNulls legendType="none" />
+                                <Line type="monotone" dataKey="tradingGreen" name={t("analyticsPage.forecastOnTrendLabel")} stroke="#16a34a" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="tradingRed" name={t("analyticsPage.forecastOffTrendLabel")} stroke="#dc2626" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="actualRevenue" name={t("analyticsPage.forecastActualLabel")} stroke="var(--ink-faint)" strokeWidth={1.5} dot={false} connectNulls={false} legendType="none" />
+                                <Line type="monotone" dataKey="forecastRevenue" name={t("analyticsPage.forecastDashedLabel")} stroke="#16a34a" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 3 }} />
+                              </ComposedChart>
+                            </ResponsiveContainer>
+                            <div style={{ fontSize: 11, color: "var(--ink-faint)", textAlign: "center", marginTop: 4 }}>{t("analyticsPage.forecastBandCaption")}</div>
+                          </div>
+                        )}
+                        {orgForecast && (
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
+                            <MiniStatTile label={t("analyticsPage.forecastAvgDailyQty")} value={String(Math.round(orgForecast.avgDailyQuantity))} />
+                            <MiniStatTile label={t("analyticsPage.forecastProjectedQty", { days: orgForecastHorizon })} value={String(Math.round(orgForecast.projectedQuantityNextPeriod))} accent="var(--primary)" />
+                            <MiniStatTile label={t("analyticsPage.forecastProjectedRevenue", { days: orgForecastHorizon })} value={fmtRWFExact(orgForecast.projectedRevenueNextPeriod)} accent="var(--primary)" />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </Card>
+
+                  {/* Durable track record -- independent of the live chart's
+                      own history/horizon above, see refreshOrgForecastOutcomes'
+                      own comment. Builds up over time as forecasts (org-wide
+                      or per-branch) complete their own predicted window. */}
+                  <Card>
+                    <CardHeader icon="🎯" title={t("organization.forecastOutcomesTitle")} subtitle={t("organization.forecastOutcomesSubtitle")} />
+                    {orgForecastOutcomesLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 12 }}>{t("organization.loading")}</p> : orgForecastOutcomes.length === 0 ? (
+                      <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: 16 }}>{t("organization.forecastOutcomesEmpty")}</p>
+                    ) : (
+                      <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+                        {orgForecastOutcomes.map(o => {
+                          const pct = o.accuracyPct
+                          const badge = pct == null ? null
+                            : pct >= 85 && pct <= 115 ? { c: "#16a34a", bg: "#d1fae5" }
+                            : pct < 60 || pct > 140 ? { c: "#dc2626", bg: "#fef2f2" }
+                            : { c: "#d97706", bg: "#fef3c7" }
+                          return (
+                            <div key={o.snapshotId} style={{ padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 10 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>{o.scope}</div>
+                                  <div style={{ fontSize: 11, color: "var(--ink-muted)" }}>{o.periodFrom} → {o.periodTo}</div>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.forecastOutcomesPredicted")}: <strong style={{ color: "var(--ink)" }}>{fmtRWFExact(o.predictedRevenue)}</strong></span>
+                                  <span style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.forecastOutcomesActual")}: <strong style={{ color: "var(--ink)" }}>{fmtRWFExact(o.actualRevenue)}</strong></span>
+                                  {badge && pct != null && <StatusBadge label={`${pct}%`} color={badge.c} bg={badge.bg} />}
+                                </div>
+                              </div>
+                              {o.reason && <div style={{ fontSize: 12, color: "var(--ink-muted)", marginTop: 8 }}>{o.reason}</div>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </Card>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === "inventory" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t("organization.inventoryTitle")}</h2>
+                  <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.inventorySubtitle")}</p>
+                </div>
+                {scopePicker()}
+              </div>
+              <LiveInventoryPage branchId={orgScope} branchNames={orgScopeBranchId ? undefined : branchNameById} />
+            </div>
+          )}
+
+          {activeTab === "alerts" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{t("organization.alertsTitle")}</h2>
+                  <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.alertsSubtitle")}</p>
+                </div>
+                {scopePicker()}
+              </div>
+              <AlertsPage branchId={orgScope} branchNames={orgScopeBranchId ? undefined : branchNameById} />
+            </div>
+          )}
+
           {activeTab === "members" && (
             <Card>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
@@ -2098,54 +2628,93 @@ export default function OrganizationPage({
                 {(isOrgOwner || isOrgManagerCaller) && <Btn variant="primary" small onClick={() => setShowInviteMember(true)}>+ {t("organization.inviteMember")}</Btn>}
               </div>
               {membersError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{membersError}</p>}
-              {membersLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : members.map((m, i) => {
-                const isSelf = m.userId === currentUserId
-                const isTargetOwner = m.scope === "organization" && m.role === "org_owner"
-                const isTargetOrgManager = m.scope === "organization" && m.role === "org_manager"
-                // Matches org_set_user_active()'s own authorization exactly,
-                // so a button never appears somewhere the click would just
-                // error: deactivating an org_manager is owner-only;
-                // branch_manager/sales_person can be toggled by either
-                // org_owner or org_manager; org_owner can never be targeted.
-                const canDeactivate = !isSelf && !isTargetOwner && (isOrgOwner || !isTargetOrgManager)
-                const canManageOrgLevel = isOrgOwner && m.scope === "organization" && !isSelf && !isTargetOwner
-                // Only a currently active branch manager, only while the
-                // organization doesn't already have one (matches
-                // invite_organization_member()'s own one-org_manager cap),
-                // and only the org_owner can appoint one -- same authority
-                // invite_organization_member() itself requires.
-                // One control, both directions: promote a branch manager up to
-                // org_manager, or move the current org_manager back down to a
-                // branch role. Owner-only either way (org_change_member_role()
-                // asserts the same), never on yourself or the owner's own row,
-                // and promoting is only offered while the one-org_manager seat
-                // is actually free.
-                const canChangeRole = isOrgOwner && !isSelf && !isTargetOwner && m.isActive
-                  && (isTargetOrgManager || (m.scope === "branch" && m.role === "manager" && !organization.hasOrgManager))
-                return (
-                  <div key={m.userId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i === members.length - 1 ? "none" : "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
-                        {m.fullName}{isSelf ? ` (${t("organization.you")})` : ""}
-                        {!m.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("organization.inactiveLabel")}</span>}
+              {membersLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : (
+                <>
+                  {/* Grouped by branch (org-level org_owner/org_manager in
+                      their own group first, matching the org_role/branch_role
+                      hierarchy) instead of one flat list -- "classing them
+                      according to the branch" as asked, so a person mentally
+                      scoped to one branch never has to scan the whole roster
+                      to find their own team. Branch order matches the
+                      Branches tab's own list; a branch with zero members
+                      (brand new, unstaffed) is skipped rather than shown
+                      empty. */}
+                  {memberGroups.map((group, gi) => (
+                    <div key={group.key} style={{ marginBottom: gi === memberGroups.length - 1 ? 0 : 20 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
+                        {group.label}
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{m.email ?? "—"}{m.branchName ? ` · ${m.branchName}` : ""}</div>
+                      {group.members.map((m, i) => {
+                        const isSelf = m.userId === currentUserId
+                        const isTargetOwner = m.scope === "organization" && m.role === "org_owner"
+                        const isTargetOrgManager = m.scope === "organization" && m.role === "org_manager"
+                        // Matches org_set_user_active()'s own authorization
+                        // exactly, so a button never appears somewhere the
+                        // click would just error: deactivating an org_manager
+                        // is owner-only; branch_manager/sales_person can be
+                        // toggled by either org_owner or org_manager;
+                        // org_owner can never be targeted.
+                        const canDeactivate = !isSelf && !isTargetOwner && (isOrgOwner || !isTargetOrgManager)
+                        const canManageOrgLevel = isOrgOwner && m.scope === "organization" && !isSelf && !isTargetOwner
+                        // Only a currently active branch manager, only while
+                        // the organization doesn't already have one (matches
+                        // invite_organization_member()'s own one-org_manager
+                        // cap), and only the org_owner can appoint one -- same
+                        // authority invite_organization_member() itself
+                        // requires. One control, both directions: promote a
+                        // branch manager up to org_manager, or move the
+                        // current org_manager back down to a branch role.
+                        // Owner-only either way (org_change_member_role()
+                        // asserts the same), never on yourself or the owner's
+                        // own row, and promoting is only offered while the
+                        // one-org_manager seat is actually free.
+                        const canChangeRole = isOrgOwner && !isSelf && !isTargetOwner && m.isActive
+                          && (isTargetOrgManager || (m.scope === "branch" && m.role === "manager" && !organization.hasOrgManager))
+                        return (
+                          <div key={m.userId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i === group.members.length - 1 ? "none" : "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
+                            <div>
+                              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
+                                {m.fullName}{isSelf ? ` (${t("organization.you")})` : ""}
+                                {m.isRemoved && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("organization.removedLabel")}</span>}
+                                {!m.isRemoved && !m.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("organization.inactiveLabel")}</span>}
+                              </div>
+                              <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{m.email ?? "—"}</div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <PersonRoleBadge scope={m.scope} role={m.role} />
+                              {canChangeRole && (
+                                <Btn variant="secondary" small onClick={() => setChangeRoleTarget(m)}>{t("organization.changeRole")}</Btn>
+                              )}
+                              {/* A real password can never be shown -- see this
+                                  page's own EditCredentialsModal comment. Offered
+                                  exactly where the caller already outranks this
+                                  person (m.email non-null means
+                                  list_organization_people() didn't mask it),
+                                  never on your own row. */}
+                              {!isSelf && m.email != null && (
+                                <Btn variant="secondary" small onClick={() => setResetPasswordTarget(m)}>{t("organization.editCredentials")}</Btn>
+                              )}
+                              {canDeactivate && !m.isRemoved && (
+                                <Btn variant={m.isActive ? "danger" : "secondary"} small onClick={() => void handleToggleActive(m)}>
+                                  {m.isActive ? t("organization.deactivate") : t("organization.reactivate")}
+                                </Btn>
+                              )}
+                              {canManageOrgLevel && <Btn variant="danger" small onClick={() => void handleRemoveMember(m)}>{t("organization.remove")}</Btn>}
+                              {/* Permanent login ban (mark_staff_removed()), distinct
+                                  from the reversible Deactivate above -- same rank
+                                  rule as canDeactivate, so offered wherever that is,
+                                  minus once already removed. */}
+                              {canDeactivate && !m.isRemoved && (
+                                <Btn variant="danger" small onClick={() => setRemoveAccountTarget(m)}>{t("organization.removeAccount")}</Btn>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <PersonRoleBadge scope={m.scope} role={m.role} />
-                      {canChangeRole && (
-                        <Btn variant="secondary" small onClick={() => setChangeRoleTarget(m)}>{t("organization.changeRole")}</Btn>
-                      )}
-                      {canDeactivate && (
-                        <Btn variant={m.isActive ? "danger" : "secondary"} small onClick={() => void handleToggleActive(m)}>
-                          {m.isActive ? t("organization.deactivate") : t("organization.reactivate")}
-                        </Btn>
-                      )}
-                      {canManageOrgLevel && <Btn variant="danger" small onClick={() => void handleRemoveMember(m)}>{t("organization.remove")}</Btn>}
-                    </div>
-                  </div>
-                )
-              })}
+                  ))}
+                </>
+              )}
               {!membersLoading && members.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.membersEmpty")}</p>}
             </Card>
           )}
@@ -2161,7 +2730,7 @@ export default function OrganizationPage({
                   </div>
                   <div>
                     <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.statusLabel")}</div>
-                    <div style={{ marginTop: 4 }}><StatusBadge label={organization.status} color={organization.status === "active" ? "#16a34a" : "#dc2626"} bg={organization.status === "active" ? "#d1fae5" : "#fef2f2"} /></div>
+                    <div style={{ marginTop: 4 }}><StatusBadge label={organization.status === "active" ? t("organization.statusActive") : t("organization.statusSuspended")} color={organization.status === "active" ? "#16a34a" : "#dc2626"} bg={organization.status === "active" ? "#d1fae5" : "#fef2f2"} /></div>
                   </div>
                   <div>
                     <div style={{ fontSize: 10, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{t("organization.branchCountLabel")}</div>
@@ -2263,6 +2832,22 @@ export default function OrganizationPage({
         />
       )}
 
+      {resetPasswordTarget && (
+        <EditCredentialsModal
+          member={resetPasswordTarget}
+          onClose={() => setResetPasswordTarget(null)}
+          onDone={() => { setResetPasswordTarget(null); void refreshMembers() }}
+        />
+      )}
+
+      {removeAccountTarget && (
+        <RemoveAccountModal
+          member={removeAccountTarget}
+          onClose={() => setRemoveAccountTarget(null)}
+          onDone={() => { setRemoveAccountTarget(null); void refreshMembers() }}
+        />
+      )}
+
       {showInviteMember && (
         <AssignRoleModal
           organizationId={organization.organizationId}
@@ -2288,19 +2873,12 @@ export default function OrganizationPage({
         />
       )}
 
-      {showRequestTransfer && (
-        <RequestTransferModal
-          destinationBranches={destinationBranches}
-          onClose={() => setShowRequestTransfer(false)}
-          onRequested={() => { setShowRequestTransfer(false); announce(t("organization.transferRequested")); void refreshTransfers() }}
-        />
-      )}
-
-      {showRequestStock && (
-        <RequestStockModal
-          destinationBranches={destinationBranches}
-          onClose={() => setShowRequestStock(false)}
-          onRequested={() => { setShowRequestStock(false); announce(t("organization.stockRequested")); void refreshNeeds() }}
+      {scanTransferTarget && (
+        <ScanTransferModal
+          transfer={scanTransferTarget.transfer}
+          mode={scanTransferTarget.mode}
+          onClose={() => setScanTransferTarget(null)}
+          onDone={() => { setScanTransferTarget(null); void refreshTransfers() }}
         />
       )}
 

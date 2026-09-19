@@ -29,13 +29,14 @@
 // caller to already be org_owner of that organization, and enforces the
 // same one-org_manager-per-org cap invite_organization_member() enforces on
 // the OTP-invite path in 2026-09-09_organization_roles_v2.sql. On success
-// this inserts into BOTH public.users (role stored as 'manager' at an
-// auto-picked, purely technical anchor branch -- public.users.branch_id is
-// NOT NULL by schema, but list_branch_staff() excludes anyone holding an
-// active org_manager membership from every branch's roster, so this never
-// surfaces as "their branch" anywhere) and public.organization_members
-// (role 'org_manager'), and logs the grant via log_org_manager_grant() so
-// the audit trail matches every other role change in this schema.
+// this calls create_org_manager_login(), which atomically inserts into BOTH
+// public.users (role stored as 'manager' at an auto-picked, purely technical
+// anchor branch -- public.users.branch_id is NOT NULL by schema, but
+// list_branch_staff() excludes anyone holding an active org_manager
+// membership from every branch's roster, so this never surfaces as "their
+// branch" anywhere) and public.organization_members (role 'org_manager') in
+// one transaction, and logs the grant via log_org_manager_grant() so the
+// audit trail matches every other role change in this schema.
 //
 // Deploy with (from the project root, after `supabase login` and
 // `supabase link --project-ref <ref>`):
@@ -56,6 +57,25 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   })
+}
+
+// A branch may only ever have one real manager -- mirrors the DB's own
+// users_one_owner_per_branch guarantee for 'owner', extended to 'manager'.
+// Not a plain count, though: an org_manager's own technical-anchor row also
+// has role='manager' on public.users (a required-NOT-NULL placeholder, never
+// a real branch assignment -- see this file's own header comment and
+// list_branch_staff()'s matching exclusion), so that row must never count
+// as "this branch already has a manager".
+async function branchHasRealManager(adminClient: ReturnType<typeof createClient>, branchId: string): Promise<boolean> {
+  const { data: managers } = await adminClient.from("users").select("id").eq("branch_id", branchId).eq("role", "manager")
+  if (!managers || managers.length === 0) return false
+  const { data: orgManagerAnchors } = await adminClient
+    .from("organization_members")
+    .select("user_id")
+    .eq("role", "org_manager")
+    .in("user_id", managers.map(m => m.id))
+  const anchorIds = new Set((orgManagerAnchors ?? []).map(a => a.user_id))
+  return managers.some(m => !anchorIds.has(m.id))
 }
 
 Deno.serve(async (req) => {
@@ -201,29 +221,19 @@ Deno.serve(async (req) => {
     // activate_organization_invite() already maps an org_owner/org_manager
     // invite down to a branch role -- inert here since branch_id is just
     // the technical anchor above, never a real staffing assignment.
-    const { error: insertError } = await adminClient.from("users").insert({
-      id: created.user.id,
-      branch_id: anchorBranchId,
-      full_name: fullName,
-      email,
-      role: "manager",
-      is_active: true,
-    })
-    if (insertError) {
-      await adminClient.auth.admin.deleteUser(created.user.id)
-      return json({ error: insertError.message }, 400)
-    }
-
-    const { error: memberError } = await adminClient.from("organization_members").insert({
-      organization_id: organizationId,
-      user_id: created.user.id,
-      role: "org_manager",
+    //
+    // Both rows (the anchor + its organization_members grant) are written
+    // by ONE RPC call, not two separate inserts -- see create_org_manager_
+    // login()'s own comment (2026-09-18_one_manager_per_branch_db_trigger.
+    // sql): the deferred one-manager-per-branch trigger on public.users
+    // needs both rows to exist in the SAME transaction to correctly
+    // recognize this row as an anchor rather than a real branch manager. A
+    // failure here rolls back both inserts automatically -- no manual
+    // rollback of the users row needed, only the auth user itself.
+    const { error: memberError } = await adminClient.rpc("create_org_manager_login", {
+      p_user_id: created.user.id, p_branch_id: anchorBranchId, p_full_name: fullName, p_email: email, p_organization_id: organizationId,
     })
     if (memberError) {
-      // Roll back everything created so far -- a failed org_manager grant
-      // must never leave behind a bare branch-level login with no org
-      // standing at all.
-      await adminClient.from("users").delete().eq("id", created.user.id)
       await adminClient.auth.admin.deleteUser(created.user.id)
       return json({ error: memberError.message }, 400)
     }
@@ -267,9 +277,10 @@ Deno.serve(async (req) => {
 
     // An org_owner/org_manager may add a manager or seller to ANY branch in
     // the organization, any time -- not just a freshly created, unstaffed
-    // one. The one real constraint that still has to hold: a branch can
-    // only ever have one owner (users_one_owner_per_branch), so 'owner' is
-    // only ever a valid choice for a branch's very first hire.
+    // one. Two real constraints still have to hold: a branch can only ever
+    // have one owner (users_one_owner_per_branch) and only ever one real
+    // manager -- 'owner' is only ever a valid choice for a branch's very
+    // first hire; 'manager' is rejected once the branch already has one.
     const { count: existingStaffCount } = await adminClient
       .from("users")
       .select("id", { count: "exact", head: true })
@@ -277,12 +288,18 @@ Deno.serve(async (req) => {
     if (role === "owner" && (existingStaffCount ?? 0) > 0) {
       return json({ error: "This branch already has an owner -- add a manager or seller instead" }, 409)
     }
+    if (role === "manager" && (await branchHasRealManager(adminClient, requestedBranchId))) {
+      return json({ error: "This branch already has a manager -- change their role first, or add a seller instead" }, 409)
+    }
 
     targetBranchId = requestedBranchId
   } else {
     if (role === "owner") return json({ error: "Only an organization owner/manager may create an owner login for a different branch" }, 403)
     if (role === "manager" && caller.role !== "owner") {
       return json({ error: "Only the branch owner may create a manager login" }, 403)
+    }
+    if (role === "manager" && (await branchHasRealManager(adminClient, caller.branch_id))) {
+      return json({ error: "This branch already has a manager -- change their role first, or add a seller instead" }, 409)
     }
     const branchStatus = (caller as unknown as { branches: { status: string } | null }).branches?.status
     if (branchStatus !== "active") return json({ error: "This pharmacy is not active" }, 403)
