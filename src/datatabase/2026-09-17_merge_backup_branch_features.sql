@@ -39,8 +39,13 @@
 -- ============================================================================
 
 -- ── find_patient_by_identifier: branch-scoped (org) + insurance_number ──────
+-- Drops both prior signatures -- whichever one is actually live (the plain
+-- 1-arg version if only the backup branch's work ever ran here, or origin's
+-- already-branch-scoped 2-arg version if that ran first), since either one
+-- blocks CREATE OR REPLACE from adding insurance_number to the return type.
 
 drop function if exists public.find_patient_by_identifier(text);
+drop function if exists public.find_patient_by_identifier(text, uuid);
 
 create or replace function public.find_patient_by_identifier(p_identifier text, p_branch_id uuid default null)
 returns table(id uuid, full_name text, gender text, age integer, tin_or_phone text, phone text, tin text, insurance_number text)
@@ -63,8 +68,11 @@ revoke all on function public.find_patient_by_identifier(text, uuid) from public
 grant execute on function public.find_patient_by_identifier(text, uuid) to authenticated;
 
 -- ── list_branch_patients: branch-scoped (org) + insurance_number ────────────
+-- Same reasoning as find_patient_by_identifier above: drop both possible
+-- prior signatures before redefining the return type.
 
 drop function if exists public.list_branch_patients();
+drop function if exists public.list_branch_patients(uuid);
 
 create or replace function public.list_branch_patients(p_branch_id uuid default null)
 returns table(

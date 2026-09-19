@@ -61,6 +61,16 @@
   from { stroke-dashoffset: 300; }
   to   { stroke-dashoffset: 0; }
 }
+/* Home page hero background bubbles (MarketingHome's BackgroundBubbles) --
+   a big, slow, organic drift-and-breathe loop, not a mechanical bounce.
+   Each bubble runs this on its own duration/delay so they never sync up. */
+@keyframes bubbleDrift {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(4%, -6%) scale(1.08); }
+  66%  { transform: translate(-3%, 4%) scale(0.95); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+.bubble-drift { animation-name: bubbleDrift; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
 
 .animate-fade-up     { animation: fadeUp 0.65s cubic-bezier(.22,.68,0,1.2) both; }
 .animate-fade-in     { animation: fadeIn 0.55s ease both; }
@@ -240,6 +250,43 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 .pharmacy-pin-glyph { transform: rotate(45deg); font-size: 14px; line-height: 1; }
 
+/* A brief ring pulse whenever a pin is placed/moved (drag, click, "use my
+   location", search, switching 2D/3D view) -- box-shadow, not `transform`,
+   since .pharmacy-pin already uses transform for its own -45deg rotation
+   and a scale-based pulse would visibly un-rotate the pin mid-animation. */
+@keyframes pin-drop-pulse-ring {
+  0%   { box-shadow: 0 2px 6px rgba(0,0,0,0.35), 0 0 0 0 rgba(30,95,168,0.55); }
+  100% { box-shadow: 0 2px 6px rgba(0,0,0,0.35), 0 0 0 16px rgba(30,95,168,0); }
+}
+.pin-drop-pulse { animation: pin-drop-pulse-ring 0.6s ease-out; }
+
+/* The device-GPS accuracy radius drawn around a branch's pin (see
+   BranchLocationMap in BranchSettingsPage.tsx) -- a soft breathing opacity
+   so it reads as "live signal", not a static, easy-to-miss ring. Targets
+   Leaflet's own <path> element via the circle's `className` option. */
+@keyframes accuracy-circle-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.accuracy-circle-pulse { animation: accuracy-circle-breathe 2.4s ease-in-out infinite; }
+
+/* Branches-overview map (OrganizationPage) -- the click-to-measure-distance
+   toggle button (below the map, not floating on top of it -- an earlier,
+   absolutely-positioned version sat in the same top-left corner as
+   Leaflet's own zoom control and fought with it for space) and the
+   permanent on-map distance label drawn along the measured line. Plain CSS
+   instead of a Leaflet plugin: this app already avoids extra map libraries
+   beyond Leaflet + OSM tiles themselves. */
+.map-measure-btn-inline {
+  display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--surface);
+  color: var(--ink); font-size: 12px; font-weight: 600; font-family: inherit;
+  cursor: pointer;
+}
+.map-measure-btn-inline.is-active { background: var(--primary, #1e5fa8); color: #fff; border-color: transparent; }
+.leaflet-tooltip.measure-distance-label {
+  background: #1e5fa8; color: #fff; border: none; font-weight: 700; font-size: 12px;
+  padding: 3px 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+}
+.leaflet-tooltip.measure-distance-label::before { display: none; }
+
 /* Public landing page + branch sign-in (BranchAccessPage). Same rule applies:
    plain CSS keyframes only, no animation library. */
 @keyframes psync-rise  { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
@@ -362,8 +409,30 @@ button:focus:not(:focus-visible) { outline: none; }
   @keyframes toast-in          { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
   @keyframes toast-out         { from { opacity: 1; transform: none; } to { opacity: 1; transform: none; } }
   @keyframes fadeIn             { from { opacity: 1; } to { opacity: 1; } }
+  @keyframes bubbleDrift        { from { transform: none; } to { transform: none; } }
+  @keyframes pin-drop-pulse-ring { from { box-shadow: 0 2px 6px rgba(0,0,0,0.35); } to { box-shadow: 0 2px 6px rgba(0,0,0,0.35); } }
+  @keyframes accuracy-circle-breathe { from { opacity: 1; } to { opacity: 1; } }
   .dashboard-card-clickable:hover { transform: none; }
+  html { scroll-behavior: auto; }
 }
+
+/* Topbar overflow (App.tsx's Walkthrough + Notifications strip) — nothing
+   here ever hides; the strip slides left/right instead, the same way the
+   search box already shrinks instead of vanishing. What crowds this out
+   isn't the window getting narrower, it's showingBranchDrillIn's wider
+   "org view" pill (branch name + code + badge + "Back to Organization")
+   eating into the same row on an otherwise perfectly normal-width screen.
+   App.tsx gives this strip min-width:0 (so it can actually give up width
+   instead of forcing the whole topbar wider) and overflow-x:auto (so
+   whatever doesn't fit is reachable by wheel/trackpad/touch/drag scroll);
+   this just makes that scrollbar unobtrusive instead of a raw OS one. */
+.topbar-trailing-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.topbar-trailing-scroll::-webkit-scrollbar { height: 4px; }
+.topbar-trailing-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+.topbar-trailing-scroll::-webkit-scrollbar-track { background: transparent; }
 
 /* ── Responsive ──────────────────────────────────────────────────────────────
    The shell was built desktop-first: a permanent sidebar, a single top-bar
@@ -377,6 +446,29 @@ button:focus:not(:focus-visible) { outline: none; }
 /* Tablet — tighten the page gutter, keep the multi-column layouts. */
 @media (max-width: 1024px) {
   .app-main { padding: 16px 14px !important; }
+}
+
+/* Drilled into a branch from Organization > Branches (App.tsx's
+   showingBranchDrillIn -- see .app-topbar-drilled), the topbar carries a
+   second sidebar's width (the org rail) PLUS a much wider pill (branch name
+   + code + "org view" badge + "Back" button vs. the plain branch code shown
+   everywhere else) in the same row. That combination runs out of room
+   earlier than the plain topbar does -- measured genuinely overflowing at
+   1024px wide (still comfortably above the 768px breakpoint below) -- so
+   this wraps to two rows at a wider threshold specifically when drilled in,
+   same technique as the 768px rule below, just triggered sooner. */
+@media (max-width: 1200px) {
+  .app-topbar-drilled {
+    height: auto !important;
+    flex-wrap: wrap;
+    padding: 8px 12px !important;
+    row-gap: 8px;
+  }
+  .app-topbar-drilled [data-tour="search"] {
+    order: 10;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
 }
 
 /* Narrow — one column everywhere, and let the top bar wrap onto two rows
@@ -430,6 +522,11 @@ html {
   /* iOS enlarges text on rotation to landscape unless this is pinned. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* The marketing home page's nav links (#features, #how-it-works, #footer)
+     used to jump instantly; this makes every same-page anchor scroll
+     smoothly everywhere in the app. Turned back off above under
+     prefers-reduced-motion, same as this file's other motion. */
+  scroll-behavior: smooth;
 }
 
 /* iOS Safari's 100vh includes the browser chrome, so a 100vh app shell has its

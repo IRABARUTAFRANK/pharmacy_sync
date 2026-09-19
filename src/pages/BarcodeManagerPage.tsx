@@ -37,6 +37,7 @@ const statusColor: Record<BarcodeStatus, { color: string; background: string }> 
   expired: { color: "#9333ea", background: "#f5f3ff" },
   recalled: { color: "#dc2626", background: "#fef2f2" },
   damaged: { color: "#d97706", background: "#fef3c7" },
+  in_transit: { color: "#2563eb", background: "#dbeafe" },
 }
 
 const typeColor: Record<BarcodeType, { color: string; background: string }> = {
@@ -70,6 +71,13 @@ export default function BarcodeManagerPage({ branchId: _branchId }: { branchId?:
   useEffect(() => setQuery(globalTerm), [globalTerm])
   const [status, setStatus] = useState<"all" | BarcodeStatus>("all")
   const [type, setType] = useState<"all" | BarcodeType>("all")
+  // A branch with a long history can easily have thousands of box/pack
+  // groups -- rendering all of them as DOM at once (even collapsed) is what
+  // was freezing this page on load. Only a page's worth renders up front;
+  // "Show more" grows it, and any filter/search change snaps it back down
+  // so switching status/type/query doesn't leave a stale huge render.
+  const PAGE_SIZE = 60
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<BarcodeRow | null>(null)
   const [printJob, setPrintJob] = useState<{ title: string; labels: PrintableBarcode[] } | null>(null)
@@ -113,6 +121,9 @@ export default function BarcodeManagerPage({ branchId: _branchId }: { branchId?:
       .filter(entry => entry.parentMatch || entry.children.length > 0)
   }, [dataset.groups, query, status, type])
 
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [query, status, type])
+  const shownGroups = useMemo(() => visible.slice(0, visibleCount), [visible, visibleCount])
+
   const shownRows = visible.reduce((total, entry) => total + entry.children.length + (entry.parentMatch ? 1 : 0), 0)
   const parentOfSelected = selected?.parent_barcode_id
     ? dataset.rows.find(row => row.id === selected.parent_barcode_id) ?? null
@@ -155,7 +166,7 @@ export default function BarcodeManagerPage({ branchId: _branchId }: { branchId?:
       </div>
     </div>
 
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10 }}>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${BARCODE_STATUSES.length}, 1fr)`, gap: 10 }}>
       {BARCODE_STATUSES.map((key, i) => {
         const meta = statusColor[key]
         const active = status === key
@@ -239,7 +250,7 @@ export default function BarcodeManagerPage({ branchId: _branchId }: { branchId?:
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {visible.map(({ group, parentMatch, children }) => {
+        {shownGroups.map(({ group, parentMatch, children }) => {
           const isOpen = expanded.has(group.key)
           return <div key={group.key} style={{ border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "var(--bg)" }}>
@@ -313,6 +324,14 @@ export default function BarcodeManagerPage({ branchId: _branchId }: { branchId?:
         {!loading && visible.length === 0 && <div style={{ padding: 32, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>
           {dataset.rows.length === 0 ? t("barcodeManager.emptyNone") : t("barcodeManager.emptyFiltered")}
         </div>}
+
+        {visible.length > shownGroups.length && (
+          <div style={{ textAlign: "center", marginTop: 4 }}>
+            <Btn variant="secondary" small onClick={() => setVisibleCount(count => count + PAGE_SIZE)}>
+              {t("barcodeManager.showMore", { count: visible.length - shownGroups.length })}
+            </Btn>
+          </div>
+        )}
       </div>
     </Card>
 

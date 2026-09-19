@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
+} from "recharts";
+import { ChartTooltip } from "../components";
 import { usePagedList, LoadMoreButton } from "../lib/pagination";
 import {
   LayoutDashboard, CheckSquare, Building2, ShieldAlert, Ticket,
   Phone, Mail, MapPin, Clock, AlertTriangle, CheckCircle2, XCircle,
   Lock, Unlock, RefreshCw, ChevronRight, Eye, Send, Bell, Activity,
-  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound, Package, Plus, Ban, Tag, Percent,
+  Users, TrendingUp, X, Check, ArrowLeft, Trash2, KeyRound, Package, Plus, Ban, Tag, Percent, Pencil,
   Upload, FileSpreadsheet,
 } from "lucide-react";
 import type { BranchRecord, BranchStatus, OrganizationApplicationRecord } from "../lib/store";
@@ -33,8 +37,14 @@ import {
   adminListAllBranches,
   adminListOrganizations,
   adminSetOrganizationStatus,
+  adminUpdateOrganizationDetails,
+  adminPlatformStats,
+  adminPatientsTimeSeries,
   type AllBranchRecord,
   type AdminOrganizationRecord,
+  type AdminPlatformStats,
+  type AdminPatientsTimeSeriesPoint,
+  type AdminStatsInterval,
 } from "../lib/onboarding";
 import {
   adminListSupportTickets,
@@ -44,19 +54,22 @@ import {
 } from "../lib/tickets";
 import {
   adminApproveProductRequest,
+  adminBackfillCategoriesToAllBranches,
   adminCreateCategory,
   adminCreateProduct,
   adminCreateTaxRate,
+  adminImportProductCatalog,
   adminListCategories,
   adminListProductRequests,
   adminListProducts,
+  adminListTaxRates,
   adminRejectProductRequest,
   adminSetProductTax,
-  listTaxRates,
   productRequestImageUrl,
   type AdminCategoryRow,
   type AdminProduct,
   type AdminProductRequestRow,
+  type CatalogImportResult,
   type ProductVariantInput,
   type TaxRate,
 } from "../lib/products";
@@ -64,10 +77,10 @@ import {
   adminClearInsuranceCoverage,
   adminCreateInsuranceProvider,
   adminImportInsurancePriceList,
+  adminLoadCoverageOverridesWithNames,
+  adminLoadInsuranceProviders,
   adminSetInsuranceCoverage,
   adminUpdateInsuranceProvider,
-  loadCoverageOverridesWithNames,
-  loadInsuranceProviders,
   type CoverageOverrideRow,
   type InsuranceImportResult,
   type InsuranceImportRow,
@@ -88,6 +101,12 @@ import { useTranslation, LanguageSwitcher } from "../lib/i18n";
 import type { TranslationKey } from "../lib/i18n/en";
 
 type NavId = "dashboard" | "approvals" | "branches" | "organizations" | "security" | "tickets" | "products" | "categories" | "productRequests" | "insurance";
+
+// How many buckets the Dashboard's "patients over time" chart pulls per
+// interval -- 30 days, 12 weeks, or 12 months, all comfortably one screen's
+// worth of chart points. Module-level (not recreated every render) since
+// it's read inside AdminPortal's refresh() useCallback below.
+const PATIENTS_SERIES_PERIODS: Record<AdminStatsInterval, number> = { day: 30, week: 12, month: 12 };
 
 function statusLabelKey(status: BranchStatus | TicketStatus): TranslationKey {
   const map: Record<string, TranslationKey> = {
@@ -182,12 +201,32 @@ function fmt(iso: string) {
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
-function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: AdminTicketRow[] }) {
+// Interval labels for the platform-wide "patients received" chart --
+// date-only period_start values from admin_patients_time_series() formatted
+// per bucket size (a day gets "12 Sep", a week/month gets "Sep 2026" would
+// be misleading for weekly buckets, so week/month both just show the
+// bucket's start date -- exact enough at a glance, consistent either way).
+function formatPeriodLabel(periodStart: string, interval: AdminStatsInterval): string {
+  const d = new Date(periodStart + "T00:00:00");
+  if (interval === "day") return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+}
+
+function Dashboard({
+  branches, tickets, platformStats, patientsSeries, patientsInterval, onPatientsIntervalChange,
+}: {
+  branches: BranchRecord[]; tickets: AdminTicketRow[];
+  platformStats: AdminPlatformStats | null;
+  patientsSeries: AdminPatientsTimeSeriesPoint[];
+  patientsInterval: AdminStatsInterval;
+  onPatientsIntervalChange: (interval: AdminStatsInterval) => void;
+}) {
   const { t } = useTranslation();
   const pending = branches.filter((b) => b.status === "pending").length;
   const active  = branches.filter((b) => b.status === "active").length;
   const locked  = branches.filter((b) => b.status === "locked").length;
   const openTix = tickets.filter((t) => t.status === "open").length;
+  const chartData = patientsSeries.map((p) => ({ label: formatPeriodLabel(p.periodStart, patientsInterval), count: p.patientCount }));
 
   const feed = [
     ...branches.map((b) => ({
@@ -216,6 +255,103 @@ function Dashboard({ branches, tickets }: { branches: BranchRecord[]; tickets: A
         <StatCard icon={<Activity className="w-5 h-5 text-blue-600" />} label={t("admin.activeBranches")} value={active} color="bg-blue-50" delay={60} />
         <StatCard icon={<Lock className="w-5 h-5 text-orange-600" />} label={t("admin.lockedBranchesLabel")} value={locked} color="bg-orange-50" delay={120} />
         <StatCard icon={<Ticket className="w-5 h-5 text-violet-600" />} label={t("admin.openTicketsLabel")} value={openTix} color="bg-violet-50" delay={180} />
+      </div>
+
+      {/* Platform-wide usage, across every organization -- how many chains,
+          how many branches/staff are actually on the system, and how many
+          patients the whole platform has served. Settled independently in
+          refresh() like every other admin_* call, so a not-yet-applied
+          migration only blanks this one section, never the whole console. */}
+      <div>
+        <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest mb-3">{t("admin.platformUsageTitle")}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard icon={<Building2 className="w-5 h-5 text-blue-600" />} label={t("admin.statOrganizations")} value={platformStats?.totalOrganizations ?? "—"} color="bg-blue-50" />
+          <StatCard icon={<MapPin className="w-5 h-5 text-blue-600" />} label={t("admin.statTotalBranches")} value={platformStats?.totalBranches ?? "—"} sub={platformStats ? t("admin.statActiveOfTotal", { active: platformStats.activeBranches }) : undefined} color="bg-blue-50" />
+          <StatCard icon={<Users className="w-5 h-5 text-emerald-600" />} label={t("admin.statTotalMembers")} value={platformStats?.totalMembers ?? "—"} sub={platformStats ? t("admin.statActiveOfTotal", { active: platformStats.activeMembers }) : undefined} color="bg-emerald-50" />
+          <StatCard icon={<Users className="w-5 h-5 text-violet-600" />} label={t("admin.statTotalPatients")} value={platformStats?.totalPatients ?? "—"} color="bg-violet-50" />
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2 bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden p-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-blue-600" />
+              <p className="font-semibold text-sm text-slate-700">{t("admin.patientsOverTimeTitle")}</p>
+            </div>
+            <div className="flex gap-1">
+              {(["day", "week", "month"] as AdminStatsInterval[]).map((iv) => (
+                <button key={iv} onClick={() => onPatientsIntervalChange(iv)}
+                  className={`px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide rounded-lg border transition-colors ${
+                    patientsInterval === iv ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-500 hover:border-blue-300"
+                  }`}>
+                  {t(iv === "day" ? "admin.intervalDaily" : iv === "week" ? "admin.intervalWeekly" : "admin.intervalMonthly")}
+                </button>
+              ))}
+            </div>
+          </div>
+          {chartData.length === 0 ? (
+            <p className="text-center py-10 text-xs text-slate-400">{t("admin.patientsOverTimeEmpty")}</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="gPatients" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} minTickGap={16} />
+                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area
+                  type="monotone" dataKey="count" name={t("admin.statTotalPatients")} stroke="#2563eb" fill="url(#gPatients)"
+                  strokeWidth={2} dot={false} activeDot={{ r: 4 }}
+                  animationDuration={900} animationEasing="ease-out"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* A quick "what state are our branches in" breakdown next to the
+            trend line -- the same three counts already shown as StatCards
+            above, just visualized as proportions instead of raw numbers,
+            which is the thing a flat number grid can't show at a glance. */}
+        <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden p-5 flex flex-col">
+          <div className="flex items-center gap-2 mb-4">
+            <Activity className="w-4 h-4 text-blue-600" />
+            <p className="font-semibold text-sm text-slate-700">{t("admin.branchStatusBreakdownTitle")}</p>
+          </div>
+          {active + pending + locked === 0 ? (
+            <p className="text-center py-10 text-xs text-slate-400 flex-1">{t("admin.patientsOverTimeEmpty")}</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: t("admin.activeBranches"), value: active, color: "#2563eb" },
+                    { name: t("admin.pendingApproval"), value: pending, color: "#d97706" },
+                    { name: t("admin.lockedBranchesLabel"), value: locked, color: "#ea580c" },
+                  ].filter((slice) => slice.value > 0)}
+                  dataKey="value" nameKey="name" cx="50%" cy="46%" innerRadius={45} outerRadius={72} paddingAngle={3}
+                  animationDuration={900} animationEasing="ease-out"
+                >
+                  {[
+                    { name: t("admin.activeBranches"), value: active, color: "#2563eb" },
+                    { name: t("admin.pendingApproval"), value: pending, color: "#d97706" },
+                    { name: t("admin.lockedBranchesLabel"), value: locked, color: "#ea580c" },
+                  ].filter((slice) => slice.value > 0).map((slice) => (
+                    <Cell key={slice.name} fill={slice.color} stroke="#fff" strokeWidth={2} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+                <Legend verticalAlign="bottom" height={32} iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#64748b" }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
       </div>
 
       {locked > 0 && (
@@ -489,13 +625,44 @@ function Approvals({
 
 // ── Branches directory ────────────────────────────────────────────────────────
 
-function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchRecord[]; adminEmail: string; onChange: () => void }) {
+// One row shape both branch sources (the old pharmacy-application flow and
+// the newer organization flow) can be displayed through, so the directory
+// is a genuine "every branch on the platform" list instead of only ever
+// showing the old flow -- which is why this tab used to look empty for an
+// org-only setup: org-flow branches (add_branch_to_organization()) have no
+// application row at all, so they were invisible here even though they're
+// real, active branches.
+type UnifiedBranchRow = {
+  id: string; code: string; name: string; location: string; phone: string;
+  branchCode: string | null; status: BranchStatus; failedLogins: number; org: string | null;
+} & ({ kind: "application"; source: BranchRecord } | { kind: "org"; source: AllBranchRecord });
+
+function BranchDirectory({ branches, orgBranches, adminEmail, onChange }: {
+  branches: BranchRecord[]; orgBranches: AllBranchRecord[]; adminEmail: string; onChange: () => void;
+}) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<BranchStatus | "all">("all");
   const [detail, setDetail] = useState<BranchRecord | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<BranchRecord | null>(null);
+  const [orgDetail, setOrgDetail] = useState<AllBranchRecord | null>(null);
+  const [lockTarget, setLockTarget] = useState<AllBranchRecord | null>(null);
+  const [releaseTarget, setReleaseTarget] = useState<AllBranchRecord | null>(null);
 
-  const filtered = filter === "all" ? branches : branches.filter((b) => b.status === filter);
+  const rows: UnifiedBranchRow[] = [
+    ...branches.map((b): UnifiedBranchRow => ({
+      kind: "application", source: b, id: b.id, code: b.applicationCode ?? b.id.slice(0, 8),
+      name: b.pharmacyName, location: b.location.split(",")[0], phone: b.phone,
+      branchCode: b.branchCode ?? null, status: b.status, failedLogins: b.failedLogins, org: null,
+    })),
+    ...orgBranches.map((b): UnifiedBranchRow => ({
+      kind: "org", source: b, id: b.id, code: b.branchCode ?? b.id.slice(0, 8),
+      name: b.name, location: (b.address ?? "—").split(",")[0], phone: b.phone ?? "—",
+      branchCode: b.branchCode, status: b.status as BranchStatus, failedLogins: b.failedLogins,
+      org: b.organizationLegalName ?? null,
+    })),
+  ];
+
+  const filtered = filter === "all" ? rows : rows.filter((r) => r.status === filter);
   const { visible: shown, hasMore, showMore, shown: shownCount, total } = usePagedList(filtered, [filter]);
   const opts: (BranchStatus | "all")[] = ["all","pending","otp_sent","active","locked","denied"];
 
@@ -523,16 +690,56 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
     );
   }
 
+  // Organization-flow branches don't have the old flow's application-based
+  // detail view (no applicationCode/submittedAt/deniedReason to show) -- a
+  // full page here too, same OrgBranchEditForm the Organizations tab uses,
+  // so editing one reads identically no matter which tab it's reached from.
+  if (orgDetail) {
+    return (
+      <div className="space-y-6 animate-fade-up">
+        <button onClick={() => setOrgDetail(null)} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-blue-700 transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.backToBranches")}
+        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h2 className="text-xl font-bold text-slate-800">{orgDetail.name}</h2>
+          <Badge status={orgDetail.status as BranchStatus} />
+        </div>
+        {orgDetail.organizationLegalName && <p className="text-xs text-slate-400 -mt-4">{orgDetail.organizationLegalName}</p>}
+        <OrgBranchEditForm branch={orgDetail} onCancel={() => setOrgDetail(null)} onSaved={() => { setOrgDetail(null); onChange(); }} />
+        {lockTarget && (
+          <LockOrgBranchModal branch={lockTarget} onClose={() => setLockTarget(null)} onLocked={() => { setLockTarget(null); setOrgDetail(null); onChange(); }} />
+        )}
+        {releaseTarget && (
+          <ReleaseOrgBranchModal branch={releaseTarget} onClose={() => setReleaseTarget(null)} onReleased={() => { setReleaseTarget(null); setOrgDetail(null); onChange(); }} />
+        )}
+        <div className="bg-white rounded-xl border border-red-100 shadow-sm p-5 max-w-lg">
+          <p className="text-sm font-bold text-slate-800">{t("admin.dangerZone")}</p>
+          {orgDetail.status === "locked" ? (
+            <button onClick={() => setReleaseTarget(orgDetail)}
+              className="mt-3 flex items-center gap-2 border border-blue-200 text-blue-700 hover:bg-blue-50 font-semibold py-2.5 px-5 rounded-lg text-xs transition-colors">
+              <Unlock className="w-3.5 h-3.5" /> {t("admin.releaseBranch")}
+            </button>
+          ) : (
+            <button onClick={() => setLockTarget(orgDetail)}
+              className="mt-3 flex items-center gap-2 border border-orange-200 text-orange-600 hover:bg-orange-50 font-semibold py-2.5 px-5 rounded-lg text-xs transition-colors">
+              <Lock className="w-3.5 h-3.5" /> {t("admin.temporarilyLock")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const colHeaders: TranslationKey[] = [
     "admin.colAppId", "admin.colPharmacy", "admin.colLocation", "admin.colPhone",
-    "admin.colBranchCode", "admin.colStatus", "admin.colFailedLogins",
+    "admin.colBranchCode", "admin.colOrganization", "admin.colStatus", "admin.colFailedLogins",
   ];
 
   return (
     <div className="space-y-6 animate-fade-up">
       <div>
         <h2 className="text-xl font-bold text-slate-800">{t("admin.branchDirectory")}</h2>
-        <p className="text-xs text-slate-400 mt-0.5">{t("admin.branchesRegistered", { count: branches.length })}</p>
+        <p className="text-xs text-slate-400 mt-0.5">{t("admin.branchesRegistered", { count: rows.length })}</p>
       </div>
 
 
@@ -561,20 +768,21 @@ function BranchDirectory({ branches, adminEmail, onChange }: { branches: BranchR
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {shown.map((b) => (
-                <tr key={b.id} onClick={() => setDetail(b)} className="hover:bg-blue-50/30 transition-colors cursor-pointer">
-                  <td className="px-4 py-3 font-mono text-slate-400">{b.applicationCode ?? b.id.slice(0, 8)}</td>
+              {shown.map((r) => (
+                <tr key={r.id} onClick={() => r.kind === "application" ? setDetail(r.source) : setOrgDetail(r.source)} className="hover:bg-blue-50/30 transition-colors cursor-pointer">
+                  <td className="px-4 py-3 font-mono text-slate-400">{r.code}</td>
                   <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
-                    {b.pharmacyName}
-                    <ExpiryWarning branch={b} />
+                    {r.name}
+                    {r.kind === "application" && <ExpiryWarning branch={r.source} />}
                   </td>
-                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{b.location.split(",")[0]}</td>
-                  <td className="px-4 py-3 font-mono text-slate-500">{b.phone}</td>
-                  <td className="px-4 py-3 font-mono text-blue-700 font-semibold">{b.branchCode ?? "—"}</td>
-                  <td className="px-4 py-3"><Badge status={b.status} /></td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{r.location}</td>
+                  <td className="px-4 py-3 font-mono text-slate-500">{r.phone}</td>
+                  <td className="px-4 py-3 font-mono text-blue-700 font-semibold">{r.branchCode ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{r.org ?? "—"}</td>
+                  <td className="px-4 py-3"><Badge status={r.status} /></td>
                   <td className="px-4 py-3 font-mono">
-                    <span className={b.failedLogins >= 5 ? "text-red-500 font-bold" : b.failedLogins >= 3 ? "text-amber-500 font-bold" : "text-slate-400"}>
-                      {b.failedLogins}
+                    <span className={r.failedLogins >= 5 ? "text-red-500 font-bold" : r.failedLogins >= 3 ? "text-amber-500 font-bold" : "text-slate-400"}>
+                      {r.failedLogins}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -613,6 +821,175 @@ function OrgStatusBadge({ status }: { status: "active" | "suspended" }) {
   );
 }
 
+// Corrects an organization's legal name / trade name / TIN -- mirrors
+// EditBranchModal's existing pattern one section down. Suspend/reactivate
+// stays its own dedicated action (the table row's toggle button), not
+// folded in here.
+// A full in-dashboard page section, not a modal -- editing an organization
+// used to pop a dialog on top of the page, which read as a "dropdown," not
+// a proper admin action. The caller wraps this in its own Back link/heading
+// (different text depending on where it's reached from), this component is
+// just the form + its own Cancel/Save row.
+function OrganizationEditForm({ organization, onCancel, onSaved }: {
+  organization: AdminOrganizationRecord; onCancel: () => void; onSaved: () => void;
+}) {
+  const { t } = useTranslation();
+  const [legalName, setLegalName] = useState(organization.legalName);
+  const [tradeName, setTradeName] = useState(organization.tradeName ?? "");
+  const [tin, setTin] = useState(organization.tin ?? "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!legalName.trim()) { setError(t("admin.editOrgNameRequired")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminUpdateOrganizationDetails(organization.id, { legalName, tradeName, tin });
+      onSaved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("admin.editOrgSaveError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors";
+  const label = "text-xs font-semibold text-slate-600 block mb-1";
+
+  return (
+    <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 max-w-xl mx-auto space-y-4">
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div><label className={label}>{t("admin.colOrgLegalName")}</label>
+        <input value={legalName} onChange={(e) => setLegalName(e.target.value)} className={field} /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <div><label className={label}>{t("admin.colOrgTradeName")}</label>
+          <input value={tradeName} onChange={(e) => setTradeName(e.target.value)} className={field} /></div>
+        <div><label className={label}>{t("admin.colOrgTin")}</label>
+          <input value={tin} onChange={(e) => setTin(e.target.value)} className={field} /></div>
+      </div>
+      <div className="flex justify-center gap-2 pt-2">
+        <button onClick={onCancel} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+        <button onClick={() => void submit()} disabled={busy}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+          {busy ? t("admin.saving") : t("admin.saveChanges")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Edits a branch reached from an organization's detail view, or from the
+// unified Branches directory -- AllBranchRecord's shape (id/name, not
+// applicationCode/pharmacyName), but the same admin_update_branch_details()
+// RPC underneath as EditBranchModal (old pharmacy-flow directory) uses,
+// since that function updates by branch id regardless of which flow the
+// branch was created through. A full page section, not a modal -- same
+// reasoning as OrganizationEditForm above.
+function OrgBranchEditForm({ branch, onCancel, onSaved }: {
+  branch: AllBranchRecord; onCancel: () => void; onSaved: () => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(branch.name);
+  const [phone, setPhone] = useState(branch.phone ?? "");
+  const [email, setEmail] = useState(branch.email ?? "");
+  const [address, setAddress] = useState(branch.address ?? "");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!name.trim()) { setError(t("admin.editBranchNameRequired")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      await adminUpdateBranchDetails(branch.id, { name, phone, email, address });
+      onSaved();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("admin.editBranchSaveError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const field = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors";
+  const label = "text-xs font-semibold text-slate-600 block mb-1";
+
+  return (
+    <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 max-w-xl mx-auto space-y-4">
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      <div><label className={label}>{t("admin.fieldPharmacyName")}</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} className={field} /></div>
+      <div className="grid grid-cols-2 gap-3">
+        <div><label className={label}>{t("admin.fieldPhone")}</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} className={field} /></div>
+        <div><label className={label}>{t("admin.fieldEmail")}</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={field} /></div>
+      </div>
+      <div><label className={label}>{t("admin.fieldLocation")}</label>
+        <input value={address} onChange={(e) => setAddress(e.target.value)} className={field} /></div>
+      <div className="flex justify-center gap-2 pt-2">
+        <button onClick={onCancel} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+        <button onClick={() => void submit()} disabled={busy}
+          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+          {busy ? t("admin.saving") : t("admin.saveChanges")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Lock/release for a branch reached from an organization's detail view --
+// until now, organization-flow branches (AllBranchRecord) had NO lock/
+// unlock control anywhere in this console; the Security tab only ever
+// covers branches.ts's old pharmacy-application-flow list. Same confirm-
+// then-act shape as Security's own lock/release modals, just addressed at
+// an AllBranchRecord instead of a BranchRecord.
+function LockOrgBranchModal({ branch, onClose, onLocked }: { branch: AllBranchRecord; onClose: () => void; onLocked: () => void }) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  async function confirm() {
+    setBusy(true);
+    try { await setBranchLock(branch.id, true); onLocked(); } finally { setBusy(false); }
+  }
+  return (
+    <Modal title={t("admin.lockModalTitle")} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">{t("admin.lockConfirmBody", { name: branch.name, count: branch.failedLogins })}</p>
+        <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 text-xs text-orange-700">{t("admin.lockConfirmNote")}</div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void confirm()} disabled={busy} className="flex items-center gap-2 px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-60">
+            <Lock className="w-3.5 h-3.5" /> {t("admin.lockBranchBtn")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ReleaseOrgBranchModal({ branch, onClose, onReleased }: { branch: AllBranchRecord; onClose: () => void; onReleased: () => void }) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  async function confirm() {
+    setBusy(true);
+    try { await setBranchLock(branch.id, false); onReleased(); } finally { setBusy(false); }
+  }
+  return (
+    <Modal title={t("admin.releaseModalTitle")} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-slate-600">{t("admin.releaseConfirmBody", { name: branch.name })}</p>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">{t("admin.releaseConfirmNote", { email: branch.email ?? "—" })}</div>
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">{t("admin.cancel")}</button>
+          <button onClick={() => void confirm()} disabled={busy} className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+            <Unlock className="w-3.5 h-3.5" /> {t("admin.releaseBranch")}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // Organizations tab: every organization on the platform as a chain (branch
 // count, TIN, status), with the one admin action that exists for an
 // organization today -- suspend/reactivate (admin_set_organization_status(),
@@ -626,6 +1003,22 @@ function OrganizationsView({ organizations, orgBranches, onChange }: {
   const [detail, setDetail] = useState<AdminOrganizationRecord | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editingOrg, setEditingOrg] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<AllBranchRecord | null>(null);
+  const [lockTarget, setLockTarget] = useState<AllBranchRecord | null>(null);
+  const [releaseTarget, setReleaseTarget] = useState<AllBranchRecord | null>(null);
+
+  // Keeps the open detail view in sync with the freshly-refetched
+  // organizations list after an edit -- `detail` is otherwise a snapshot
+  // captured at the moment its row was clicked, which would keep showing
+  // the pre-edit legal name/TIN even though the save already succeeded.
+  useEffect(() => {
+    if (detail) {
+      const fresh = organizations.find((o) => o.id === detail.id);
+      if (fresh) setDetail(fresh);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizations]);
 
   async function toggleStatus(org: AdminOrganizationRecord) {
     setBusyId(org.id);
@@ -640,6 +1033,30 @@ function OrganizationsView({ organizations, orgBranches, onChange }: {
     }
   }
 
+  if (detail && editingOrg) {
+    return (
+      <div className="space-y-6 animate-fade-up">
+        <button onClick={() => setEditingOrg(false)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700">
+          <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.backTo", { name: detail.legalName })}
+        </button>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.editOrgTitle", { name: detail.legalName })}</h2>
+        <OrganizationEditForm organization={detail} onCancel={() => setEditingOrg(false)} onSaved={() => { setEditingOrg(false); onChange(); }} />
+      </div>
+    );
+  }
+
+  if (detail && editingBranch) {
+    return (
+      <div className="space-y-6 animate-fade-up">
+        <button onClick={() => setEditingBranch(null)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700">
+          <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.backTo", { name: detail.legalName })}
+        </button>
+        <h2 className="text-xl font-bold text-slate-800">{t("admin.editBranchTitle", { pharmacy: editingBranch.name })}</h2>
+        <OrgBranchEditForm branch={editingBranch} onCancel={() => setEditingBranch(null)} onSaved={() => { setEditingBranch(null); onChange(); }} />
+      </div>
+    );
+  }
+
   if (detail) {
     const orgBranchRows = orgBranches.filter((b) => b.organizationId === detail.id);
     return (
@@ -647,12 +1064,22 @@ function OrganizationsView({ organizations, orgBranches, onChange }: {
         <button onClick={() => setDetail(null)} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700">
           <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.orgBackToList")}
         </button>
-        <div>
-          <h2 className="text-xl font-bold text-slate-800">{detail.legalName}</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            {detail.tradeName ?? "—"}{detail.tin ? ` · ${t("admin.colOrgTin")}: ${detail.tin}` : ""}
-          </p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-xl font-bold text-slate-800">{detail.legalName}</h2>
+              <OrgStatusBadge status={detail.status} />
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {detail.tradeName ?? "—"}{detail.tin ? ` · ${t("admin.colOrgTin")}: ${detail.tin}` : ""} · {t("admin.orgCreatedAt", { date: fmt(detail.createdAt) })}
+            </p>
+          </div>
+          <button onClick={() => setEditingOrg(true)}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700 transition-colors">
+            <Pencil className="w-3.5 h-3.5" /> {t("admin.editOrgButton")}
+          </button>
         </div>
+
         <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -661,16 +1088,43 @@ function OrganizationsView({ organizations, orgBranches, onChange }: {
                   {(["admin.colBranchCode", "admin.colPharmacy", "admin.colLocation", "admin.colPhone", "admin.colStatus"] as TranslationKey[]).map((h) => (
                     <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{t(h)}</th>
                   ))}
+                  <th />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {orgBranchRows.map((b) => (
-                  <tr key={b.id}>
+                  <tr key={b.id} className="hover:bg-blue-50/30 transition-colors">
                     <td className="px-4 py-3 font-mono text-blue-700 font-semibold">{b.branchCode ?? b.id.slice(0, 8)}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">{b.name}</td>
+                    <td className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                      {b.name}
+                      {b.failedLogins >= 3 && (
+                        <span className={`ml-2 font-mono text-[10px] ${b.failedLogins >= 5 ? "text-red-500 font-bold" : "text-amber-500 font-bold"}`}>
+                          {t("admin.fieldFailedLogins")}: {b.failedLogins}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-500 whitespace-nowrap">{b.address ?? "—"}</td>
                     <td className="px-4 py-3 font-mono text-slate-500">{b.phone ?? "—"}</td>
                     <td className="px-4 py-3"><Badge status={b.status as BranchStatus} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <button onClick={() => setEditingBranch(b)} title={t("admin.editBranchDetails")}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        {b.status === "locked" ? (
+                          <button onClick={() => setReleaseTarget(b)} title={t("admin.releaseBranch")}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors">
+                            <Unlock className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button onClick={() => setLockTarget(b)} title={t("admin.temporarilyLock")}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 transition-colors">
+                            <Lock className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -678,6 +1132,13 @@ function OrganizationsView({ organizations, orgBranches, onChange }: {
             {orgBranchRows.length === 0 && <p className="text-center py-10 text-xs text-slate-400">{t("admin.orgNoBranches")}</p>}
           </div>
         </div>
+
+        {lockTarget && (
+          <LockOrgBranchModal branch={lockTarget} onClose={() => setLockTarget(null)} onLocked={() => { setLockTarget(null); onChange(); }} />
+        )}
+        {releaseTarget && (
+          <ReleaseOrgBranchModal branch={releaseTarget} onClose={() => setReleaseTarget(null)} onReleased={() => { setReleaseTarget(null); onChange(); }} />
+        )}
       </div>
     );
   }
@@ -1565,13 +2026,14 @@ function ProductsView() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [showAddTax, setShowAddTax] = useState(false);
+  const [showImportCatalog, setShowImportCatalog] = useState(false);
   const [savingTaxFor, setSavingTaxFor] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [productList, rates] = await Promise.all([adminListProducts(), listTaxRates()]);
+      const [productList, rates] = await Promise.all([adminListProducts(), adminListTaxRates()]);
       setProducts(productList);
       setTaxRates(rates);
     } catch (reason) {
@@ -1614,6 +2076,13 @@ function ProductsView() {
           <button onClick={() => setShowAddTax(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
             <Tag className="w-3.5 h-3.5" /> {t("admin.addTaxRate")}
+          </button>
+          {/* Not tied to any one insurer -- see ImportCatalogModal above and
+              2026-09-18_admin_product_catalog_import.sql. The per-insurer
+              upload (with pricing) stays on the Insurance tab, unchanged. */}
+          <button onClick={() => setShowImportCatalog(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors">
+            <Upload className="w-3.5 h-3.5" /> {t("admin.catalogImportButton")}
           </button>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
@@ -1676,6 +2145,9 @@ function ProductsView() {
       )}
       {showAddTax && (
         <AddTaxRateModal onClose={() => setShowAddTax(false)} onCreated={() => { setShowAddTax(false); void refresh(); }} />
+      )}
+      {showImportCatalog && (
+        <ImportCatalogModal taxRates={taxRates} onClose={() => setShowImportCatalog(false)} onImported={() => void refresh()} />
       )}
     </div>
   );
@@ -1748,13 +2220,33 @@ function AddCategoryModal({ branches, onClose, onCreated }: {
   );
 }
 
+// Sentinel for "branches with no organization" in the org filter -- a real
+// (if increasingly rare) case for a branch created before organizations
+// existed, or never assigned one. Not a valid uuid, so it can never collide
+// with a real organization_id.
+const NO_ORG_FILTER = "__none__";
+
+type CategorySortKey = "category" | "organization" | "pharmacy";
+
 function CategoriesView({ branches }: { branches: BranchRecord[] }) {
   const { t } = useTranslation();
   const [categories, setCategories] = useState<AdminCategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  const [orgFilter, setOrgFilter] = useState("");
+  const [branchFilter, setBranchFilter] = useState("");
+  const [sortKey, setSortKey] = useState<CategorySortKey>("pharmacy");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showAdd, setShowAdd] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  function toggleSort(key: CategorySortKey) {
+    if (sortKey === key) { setSortDir((d) => (d === "asc" ? "desc" : "asc")); return; }
+    setSortKey(key);
+    setSortDir("asc");
+  }
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -1770,36 +2262,146 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  // "Push to every branch" (the target picker in Add Category) only ever
+  // reaches branches that exist at that moment -- a branch onboarded later
+  // never retroactively gets categories broadcast before it existed. This
+  // is the catch-up: re-runnable any time, harmless to click again (already-
+  // present rows are never touched), so it doubles as "run this again
+  // whenever a new branch needs to catch up" rather than a one-off fix.
+  async function syncToAllBranches() {
+    setSyncing(true);
+    setSyncResult(null);
+    setError("");
+    try {
+      const added = await adminBackfillCategoriesToAllBranches();
+      const key = added === 0 ? "admin.categoriesSyncedNoneNeeded" : added === 1 ? "admin.categoriesSyncedResultSingular" : "admin.categoriesSyncedResultPlural";
+      setSyncResult(t(key, { count: added }));
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not sync categories to all branches.");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   const needle = query.trim().toLowerCase();
-  const filtered = categories.filter((c) => !needle || c.name.toLowerCase().includes(needle) || c.branch_name.toLowerCase().includes(needle));
-  const { visible: shown, hasMore, showMore, shown: shownCount, total } = usePagedList(filtered, [needle]);
+
+  // Built from the categories rows themselves (not a separate query) --
+  // every organization/branch that actually has at least one category is
+  // already right there. Branch options narrow to whichever organization
+  // is currently selected, so picking an org first can't leave a stale
+  // branch choice from a different one selected underneath it.
+  const organizationOptions = (() => {
+    const map = new Map<string, string>();
+    let hasNoOrg = false;
+    for (const c of categories) {
+      if (c.organization_id) map.set(c.organization_id, c.organization_name ?? c.organization_id);
+      else hasNoOrg = true;
+    }
+    const opts = Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+    if (hasNoOrg) opts.push({ id: NO_ORG_FILTER, name: t("admin.categoriesNoOrganization") });
+    return opts;
+  })();
+  const branchOptions = (() => {
+    const map = new Map<string, string>();
+    for (const c of categories) {
+      if (orgFilter === NO_ORG_FILTER && c.organization_id) continue;
+      if (orgFilter && orgFilter !== NO_ORG_FILTER && c.organization_id !== orgFilter) continue;
+      map.set(c.branch_id, c.branch_name);
+    }
+    return Array.from(map, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const filtered = categories.filter((c) => {
+    if (orgFilter === NO_ORG_FILTER && c.organization_id) return false;
+    if (orgFilter && orgFilter !== NO_ORG_FILTER && c.organization_id !== orgFilter) return false;
+    if (branchFilter && c.branch_id !== branchFilter) return false;
+    if (needle && !c.name.toLowerCase().includes(needle) && !c.branch_name.toLowerCase().includes(needle)) return false;
+    return true;
+  });
+  const sorted = [...filtered].sort((a, b) => {
+    const value = (row: AdminCategoryRow) =>
+      sortKey === "category" ? row.name : sortKey === "organization" ? (row.organization_name ?? "") : row.branch_name;
+    const cmp = value(a).localeCompare(value(b));
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+  const { visible: shown, hasMore, showMore, shown: shownCount, total } = usePagedList(sorted, [needle, orgFilter, branchFilter, sortKey, sortDir]);
   const activeBranches = branches.filter((b) => b.branchId).map((b) => ({ id: b.branchId!, name: b.pharmacyName }));
+  // categories.length is one row PER (branch, category name) PAIR -- the
+  // same name shared by 5 branches is 5 rows here, but exactly 1 option in
+  // any one of those branches' own picker. Showing only that raw row count
+  // reads as "how many distinct categories are there", which it isn't --
+  // confirmed live: a branch showing its correct, complete 22-category
+  // picker was mistaken for "missing categories" next to this page's own
+  // much larger cross-branch row total. Both numbers now shown, labeled.
+  const distinctCategoryCount = new Set(categories.map((c) => c.name.trim().toLowerCase())).size;
+
+  function sortIndicator(key: CategorySortKey) {
+    if (sortKey !== key) return null;
+    return <span className="text-blue-500">{sortDir === "asc" ? "▲" : "▼"}</span>;
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-slate-800">{t("admin.categoriesSystemWide")}</h2>
-          <p className="text-xs text-slate-400 mt-0.5">{t("admin.categoriesCount", { count: categories.length })}</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {t("admin.categoriesDistinctCount", { count: distinctCategoryCount })} · {t("admin.categoriesCount", { count: categories.length })}
+          </p>
         </div>
-        <button onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus className="w-3.5 h-3.5" /> {t("admin.addCategory")}
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => void syncToAllBranches()} disabled={syncing}
+            title={t("admin.categoriesSyncHint")}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-60">
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} /> {t("admin.categoriesSyncButton")}
+          </button>
+          <button onClick={() => setShowAdd(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            <Plus className="w-3.5 h-3.5" /> {t("admin.addCategory")}
+          </button>
+        </div>
       </div>
+
+      {syncResult && <div className="bg-blue-50 border border-blue-200 text-blue-700 text-xs rounded-lg px-3 py-2">{syncResult}</div>}
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{error}</div>}
 
-      <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.searchCategories")}
-        className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
+      <div className="flex items-center gap-2 flex-wrap">
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("admin.searchCategories")}
+          className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors" />
+        <select value={orgFilter} onChange={(e) => { setOrgFilter(e.target.value); setBranchFilter(""); }}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
+          <option value="">{t("admin.categoriesFilterAllOrgs")}</option>
+          {organizationOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
+          <option value="">{t("admin.categoriesFilterAllBranches")}</option>
+          {branchOptions.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      </div>
 
       <div className="bg-white rounded-xl border border-blue-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                {[t("admin.colCategory"), t("admin.colDescription"), t("admin.colPharmacy")].map((h) => (
-                  <th key={h} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                {([
+                  ["category", t("admin.colCategory")],
+                  [null, t("admin.colDescription")],
+                  ["organization", t("admin.colOrganization")],
+                  ["pharmacy", t("admin.colPharmacy")],
+                ] as const).map(([key, label]) => (
+                  <th key={label} className="text-left px-4 py-3 font-semibold text-slate-500 text-[10px] uppercase tracking-wide whitespace-nowrap">
+                    {key ? (
+                      <button type="button" onClick={() => toggleSort(key)}
+                        className="flex items-center gap-1 hover:text-blue-600 transition-colors"
+                        style={{ background: "none", border: "none", padding: 0, font: "inherit", cursor: "pointer", color: "inherit" }}>
+                        {label} {sortIndicator(key)}
+                      </button>
+                    ) : label}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1808,12 +2410,13 @@ function CategoriesView({ branches }: { branches: BranchRecord[] }) {
                 <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="px-4 py-3 font-semibold text-slate-700">{c.name}</td>
                   <td className="px-4 py-3 text-slate-500">{c.description ?? "—"}</td>
+                  <td className="px-4 py-3 text-slate-500">{c.organization_name ?? t("admin.categoriesNoOrganization")}</td>
                   <td className="px-4 py-3 text-slate-500">{c.branch_name}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {!loading && filtered.length === 0 && (
+          {!loading && sorted.length === 0 && (
             <p className="text-center py-10 text-xs text-slate-400">{t("admin.noCategoriesFound")}</p>
           )}
         </div>
@@ -1914,7 +2517,7 @@ function ManageCoverageModal({ provider, onClose }: { provider: InsuranceProvide
     setLoading(true);
     setError("");
     try {
-      const [rows, productList] = await Promise.all([loadCoverageOverridesWithNames(provider.id), adminListProducts()]);
+      const [rows, productList] = await Promise.all([adminLoadCoverageOverridesWithNames(provider.id), adminListProducts()]);
       setOverrides(rows);
       setProducts(productList);
     } catch (reason) {
@@ -2076,7 +2679,9 @@ function ImportPriceListModal({ provider, taxRates, onClose, onImported }: {
     setBusy(true);
     setError("");
     try {
-      const outcome = await adminImportInsurancePriceList(provider.id, taxRateId, preview.rows);
+      // price is always set here -- this modal always calls buildImportPreview
+      // with its requirePrice default (true), unlike ImportCatalogModal below.
+      const outcome = await adminImportInsurancePriceList(provider.id, taxRateId, preview.rows.map((r) => ({ ...r, price: r.price! })));
       setResult(outcome);
       setStep("result");
       onImported();
@@ -2178,7 +2783,7 @@ function ImportPriceListModal({ provider, taxRates, onClose, onImported }: {
                         <td className="px-2 py-1 text-slate-700">{r.productName}</td>
                         <td className="px-2 py-1 text-slate-500">{r.genericName ?? "—"}</td>
                         <td className="px-2 py-1 text-slate-500">{r.unit}</td>
-                        <td className="px-2 py-1 text-right text-slate-700 font-mono">{r.price.toLocaleString()}</td>
+                        <td className="px-2 py-1 text-right text-slate-700 font-mono">{r.price!.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -2221,6 +2826,199 @@ function ImportPriceListModal({ provider, taxRates, onClose, onImported }: {
   );
 }
 
+// General catalog import -- not tied to any insurer (see
+// 2026-09-18_admin_product_catalog_import.sql). Same wizard shape as
+// ImportPriceListModal above, minus the provider picker and the price
+// column/step: buildImportPreview's requirePrice:false drops the price
+// column from both the mapping grid and the row-validity check, and
+// adminImportProductCatalog (src/lib/products.ts) has no
+// insurance_variant_prices step to report on.
+function ImportCatalogModal({ taxRates, onClose, onImported }: {
+  taxRates: TaxRate[]; onClose: () => void; onImported: () => void;
+}) {
+  const { t } = useTranslation();
+  const [step, setStep] = useState<ImportStep>("upload");
+  const [fileName, setFileName] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [error, setError] = useState("");
+  const [rawRows, setRawRows] = useState<string[][]>([]);
+  const [headerRowIndex, setHeaderRowIndex] = useState(0);
+  const [mapping, setMapping] = useState<ColumnMapping>({ code: null, name: null, genericName: null, unit: null, price: null });
+  const [taxRateId, setTaxRateId] = useState(taxRates.find((r) => r.rate_percentage === 0)?.id ?? taxRates[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [showSkipped, setShowSkipped] = useState(false);
+  const [result, setResult] = useState<CatalogImportResult | null>(null);
+  const catalogFields = IMPORT_FIELDS.filter((f): f is Exclude<ImportField, "price"> => f !== "price");
+
+  async function handleFile(file: File) {
+    setError("");
+    setParsing(true);
+    setFileName(file.name);
+    try {
+      const rows = await parseSpreadsheetFile(file);
+      if (rows.length === 0) throw new Error(t("admin.insImportEmptyFile"));
+      const headerIdx = detectHeaderRow(rows);
+      setRawRows(rows);
+      setHeaderRowIndex(headerIdx);
+      setMapping(autoMapColumns(rows[headerIdx] ?? []));
+      setStep("map");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("admin.insImportParseError"));
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const headerRow = rawRows[headerRowIndex] ?? [];
+  const preview = useMemo(() => buildImportPreview(rawRows, headerRowIndex, mapping, false), [rawRows, headerRowIndex, mapping]);
+
+  async function submit() {
+    if (preview.rows.length === 0) { setError(t("admin.catalogImportNoRowsError")); return; }
+    setBusy(true);
+    setError("");
+    try {
+      const outcome = await adminImportProductCatalog(taxRateId, preview.rows);
+      setResult(outcome);
+      setStep("result");
+      onImported();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not import this catalog.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal title={t("admin.catalogImportTitle")} onClose={onClose} wide>
+      <div className="space-y-4">
+        {error && <p className="text-xs text-red-600">{error}</p>}
+
+        {step === "upload" && (
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500">{t("admin.catalogImportIntro")}</p>
+            <div>
+              <label className="text-xs font-semibold text-slate-600 block mb-1">{t("admin.insImportTaxRateLabel")}</label>
+              <select value={taxRateId} onChange={(e) => setTaxRateId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
+                {taxRates.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.rate_percentage}%)</option>)}
+              </select>
+            </div>
+            <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl py-10 cursor-pointer hover:border-blue-300 hover:bg-blue-50/30 transition-colors">
+              <Upload className="w-6 h-6 text-slate-400" />
+              <span className="text-sm font-semibold text-slate-600">{parsing ? t("admin.insImportParsing") : t("admin.insImportChooseFile")}</span>
+              <span className="text-[10px] text-slate-400">{t("admin.insImportFileHint")}</span>
+              <input type="file" accept=".csv,.xlsx,.xls" className="hidden" disabled={parsing}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); e.target.value = ""; }} />
+            </label>
+          </div>
+        )}
+
+        {step === "map" && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <FileSpreadsheet className="w-3.5 h-3.5" /> {fileName}
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-600 mb-2">{t("admin.insImportMappingTitle")}</p>
+              <div className="grid grid-cols-2 gap-3">
+                {catalogFields.map((field) => (
+                  <div key={field}>
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide block mb-1">
+                      {t(`admin.insImportCol_${field}` as TranslationKey)}
+                    </label>
+                    <select value={mapping[field] ?? ""} onChange={(e) => setMapping((m) => ({ ...m, [field]: e.target.value === "" ? null : Number(e.target.value) }))}
+                      className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:border-blue-400 focus:ring-1 focus:ring-blue-200 transition-colors">
+                      <option value="">{t("admin.insImportColumnNone")}</option>
+                      {headerRow.map((h, i) => (
+                        <option key={i} value={i}>{h.trim() || `Column ${i + 1}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between text-xs flex-wrap gap-2">
+              <span className="font-semibold text-slate-700">{t("admin.insImportValidCount", { count: preview.rows.length })}</span>
+              {preview.skipped.length > 0 && (
+                <button onClick={() => setShowSkipped((v) => !v)} className="text-blue-700 font-semibold hover:underline">
+                  {t("admin.insImportSkippedCount", { count: preview.skipped.length })}
+                </button>
+              )}
+            </div>
+
+            {showSkipped && preview.skipped.length > 0 && (
+              <div className="border border-slate-100 rounded-lg max-h-32 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <tbody className="divide-y divide-slate-50">
+                    {preview.skipped.slice(0, 50).map((s) => (
+                      <tr key={s.rowNumber}>
+                        <td className="px-2 py-1 text-slate-400 whitespace-nowrap">{t("admin.insImportRowLabel", { row: s.rowNumber })}</td>
+                        <td className="px-2 py-1 text-slate-500">{s.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {preview.rows.length > 0 && (
+              <div className="border border-slate-100 rounded-lg overflow-x-auto max-h-48 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead className="bg-slate-50 sticky top-0">
+                    <tr>
+                      <th className="text-left px-2 py-1.5 font-semibold text-slate-500">{t("admin.insImportPreviewName")}</th>
+                      <th className="text-left px-2 py-1.5 font-semibold text-slate-500">{t("admin.insImportPreviewGeneric")}</th>
+                      <th className="text-left px-2 py-1.5 font-semibold text-slate-500">{t("admin.insImportPreviewUnit")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {preview.rows.slice(0, 8).map((r, i) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1 text-slate-700">{r.productName}</td>
+                        <td className="px-2 py-1 text-slate-500">{r.genericName ?? "—"}</td>
+                        <td className="px-2 py-1 text-slate-500">{r.unit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="flex justify-between gap-2 pt-2">
+              <button onClick={() => setStep("upload")} className="flex items-center gap-1.5 px-4 py-2 text-sm border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
+                <ArrowLeft className="w-3.5 h-3.5" /> {t("admin.insImportBack")}
+              </button>
+              <button onClick={() => void submit()} disabled={busy || preview.rows.length === 0}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60">
+                {busy ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                {t("admin.insImportConfirmButton", { count: preview.rows.length })}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === "result" && result && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-blue-700">
+              <CheckCircle2 className="w-5 h-5" />
+              <p className="text-sm font-semibold">{t("admin.insImportSuccess")}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultNewProducts")}</span><span className="font-bold text-slate-700">{result.createdProducts}</span></div>
+              <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultUpdatedProducts")}</span><span className="font-bold text-slate-700">{result.updatedProducts}</span></div>
+              <div className="bg-slate-50 rounded-lg px-3 py-2"><span className="block text-slate-400">{t("admin.insImportResultNewVariants")}</span><span className="font-bold text-slate-700">{result.createdVariants}</span></div>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button onClick={onClose} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">{t("admin.insImportDone")}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function InsuranceView() {
   const { t } = useTranslation();
   const [providers, setProviders] = useState<InsuranceProvider[]>([]);
@@ -2236,7 +3034,7 @@ function InsuranceView() {
     setLoading(true);
     setError("");
     try {
-      const [providerList, rates] = await Promise.all([loadInsuranceProviders(), listTaxRates()]);
+      const [providerList, rates] = await Promise.all([adminLoadInsuranceProviders(), adminListTaxRates()]);
       setProviders(providerList);
       setTaxRates(rates);
     } catch (reason) {
@@ -2452,7 +3250,7 @@ function ProductRequestsView() {
     setLoading(true);
     setError("");
     try {
-      const [list, rates] = await Promise.all([adminListProductRequests(), listTaxRates()]);
+      const [list, rates] = await Promise.all([adminListProductRequests(), adminListTaxRates()]);
       setRequests(list);
       setTaxRates(rates);
     } catch (reason) {
@@ -2701,6 +3499,9 @@ export default function AdminPortal() {
   const [tickets, setTickets]     = useState<AdminTicketRow[]>([]);
   const [pendingRequestCount, setPendingRequestCount] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [platformStats, setPlatformStats] = useState<AdminPlatformStats | null>(null);
+  const [patientsSeries, setPatientsSeries] = useState<AdminPatientsTimeSeriesPoint[]>([]);
+  const [patientsInterval, setPatientsInterval] = useState<AdminStatsInterval>("day");
 
   useEffect(() => {
     void isSuperAdminSession().then((ok) => { setAuthed(ok); setAuthChecked(true); });
@@ -2725,13 +3526,15 @@ export default function AdminPortal() {
       // most often a migration that has not been applied to this project
       // yet -- must never blank the whole console, and (see the check
       // below) must never be mistaken for a lost session.
-      const [apps, orgApps, allBranchRows, orgRows, ticketRows, requestRows] = await Promise.all([
+      const [apps, orgApps, allBranchRows, orgRows, ticketRows, requestRows, stats, series] = await Promise.all([
         listPharmacyApplications().catch(() => null),
         listOrganizationApplications().catch(() => null),
         adminListAllBranches().catch(() => null),
         adminListOrganizations().catch(() => null),
         adminListSupportTickets().catch(() => null),
         adminListProductRequests().catch(() => null),
+        adminPlatformStats().catch(() => null),
+        adminPatientsTimeSeries(patientsInterval, PATIENTS_SERIES_PERIODS[patientsInterval]).catch(() => null),
       ]);
       setExpiredCount(expired + orgExpired);
       if (apps) setBranches(apps);
@@ -2740,6 +3543,8 @@ export default function AdminPortal() {
       if (orgRows) setOrganizations(orgRows);
       if (ticketRows) setTickets(ticketRows);
       if (requestRows) setPendingRequestCount(requestRows.filter((r) => r.status === "pending").length);
+      if (stats) setPlatformStats(stats);
+      if (series) setPatientsSeries(series);
 
       // Only an actually-lost session drops back to the gate, and only
       // after re-asking the server. This used to be a regex for /admin/i
@@ -2753,7 +3558,7 @@ export default function AdminPortal() {
       // Unexpected/transport failure -- keep whatever is already on screen
       // rather than throwing the admin out; the 3s poll retries anyway.
     }
-  }, []);
+  }, [patientsInterval]);
 
   useEffect(() => { if (authed) void refresh(); }, [authed, refresh]);
 
@@ -2880,15 +3685,27 @@ export default function AdminPortal() {
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          <div key={nav} className="animate-fade-in">
-            {nav === "dashboard" && <Dashboard branches={branches} tickets={tickets} />}
+          {/* Centered, capped-width content column -- on a wide screen a
+              single-column view (branch/organization edit, detail pages)
+              used to sit flush against the sidebar with the whole rest of
+              the screen empty, which read as broken/unfinished rather than
+              a deliberate layout. Wide grids (stat cards, tables) still
+              have plenty of room inside this width. */}
+          <div key={nav} className="animate-fade-in max-w-6xl mx-auto w-full">
+            {nav === "dashboard" && (
+              <Dashboard
+                branches={branches} tickets={tickets} platformStats={platformStats}
+                patientsSeries={patientsSeries} patientsInterval={patientsInterval}
+                onPatientsIntervalChange={setPatientsInterval}
+              />
+            )}
             {nav === "approvals" && <Approvals applications={orgApplications} orgBranches={orgBranches} onChange={refresh} />}
             {expiredCount > 0 && (
               <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 mb-4">
                 {t("admin.expiredSwept", { count: expiredCount })}
               </div>
             )}
-            {nav === "branches"  && <BranchDirectory branches={branches} adminEmail={adminEmail} onChange={refresh} />}
+            {nav === "branches"  && <BranchDirectory branches={branches} orgBranches={orgBranches} adminEmail={adminEmail} onChange={refresh} />}
             {nav === "organizations" && <OrganizationsView organizations={organizations} orgBranches={orgBranches} onChange={refresh} />}
             {nav === "products"  && <ProductsView />}
             {nav === "categories" && <CategoriesView branches={branches} />}

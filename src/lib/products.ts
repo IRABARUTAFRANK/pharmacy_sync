@@ -23,6 +23,21 @@ export async function listTaxRates(): Promise<TaxRate[]> {
   return (data ?? []) as TaxRate[]
 }
 
+// Same read, but for the admin console specifically -- see supabaseAdmin.ts's
+// own header for why #admin runs on a second, independent client with its
+// own auth session. The super admin is never signed in on the REGULAR
+// client (only branch users are), so listTaxRates() above -- which reads
+// via that regular client -- silently sees an anonymous session there: RLS
+// ("tax rates readable" ... to authenticated) then filters every row out
+// with no error, leaving the admin console's tax-rate dropdowns permanently
+// empty. adminListProducts/adminCreateCategory etc. already avoid this by
+// using supabaseAdmin; this is that same fix applied to tax rates.
+export async function adminListTaxRates(): Promise<TaxRate[]> {
+  const { data, error } = await supabaseAdmin.from("tax_rates").select("id, name, rate_percentage").order("rate_percentage")
+  if (error) raise(error)
+  return (data ?? []) as TaxRate[]
+}
+
 export interface ProductVariantInput {
   dosage?: string
   form?: string
@@ -123,6 +138,46 @@ export async function adminCreateProduct(input: {
   return data as string
 }
 
+// General catalog import (admin_import_product_catalog, see
+// 2026-09-18_admin_product_catalog_import.sql) -- a file that isn't tied to
+// any one insurer, for medicines every branch should have regardless of
+// insurance coverage. Same idempotent upsert as the insurance price-list
+// import (src/lib/sales.ts's adminImportInsurancePriceList), just no
+// provider/price involved. Rows come from the same buildImportPreview()
+// (src/lib/insuranceImport.ts) called with requirePrice: false.
+export interface CatalogImportRow {
+  drugCode: string
+  productType: "medicine" | "supply"
+  productName: string
+  genericName: string | null
+  dosage: string | null
+  form: string
+  unit: string
+}
+
+export interface CatalogImportResult {
+  createdProducts: number
+  updatedProducts: number
+  createdVariants: number
+  reusedVariants: number
+}
+
+export async function adminImportProductCatalog(taxRateId: string, rows: CatalogImportRow[]): Promise<CatalogImportResult> {
+  const { data, error } = await supabaseAdmin.rpc("admin_import_product_catalog", {
+    p_tax_rate_id: taxRateId,
+    p_rows: rows.map(r => ({
+      drugCode: r.drugCode, productType: r.productType, productName: r.productName, genericName: r.genericName,
+      dosage: r.dosage, form: r.form, unit: r.unit,
+    })),
+  })
+  if (error) raise(error)
+  const row = (Array.isArray(data) ? data[0] : data) as any
+  return {
+    createdProducts: Number(row.created_products), updatedProducts: Number(row.updated_products),
+    createdVariants: Number(row.created_variants), reusedVariants: Number(row.reused_variants),
+  }
+}
+
 export async function adminSetProductTax(productId: string, taxRateId: string): Promise<void> {
   const { error } = await supabaseAdmin.rpc("admin_set_product_tax", { p_product_id: productId, p_tax_rate_id: taxRateId })
   if (error) raise(error)
@@ -135,16 +190,22 @@ export async function adminCreateTaxRate(name: string, ratePercentage: number): 
 }
 
 // ── Categories ───────────────────────────────────────────────────────────
-// Categories are still branch-owned (each branch files its own products
-// under its own list, private to that branch) -- these are the super
-// admin's oversight view across every branch, plus the ability to push a
-// new category out (to one branch, or every branch at once, e.g. a new
-// Ministry of Health mandated category).
+// Each row here is still one (branch, category name) pair -- product_
+// categories itself is unchanged -- but since 2026-09-18_organization_
+// shared_categories.sql, creating one for a branch mirrors it to every
+// sibling branch in the same organization, so in practice an org's
+// branches converge on one shared list rather than staying independently
+// private the way this used to work. This is the super admin's oversight
+// view across every branch/organization on the platform, plus the ability
+// to push a new category out (to one branch, or every branch at once, e.g.
+// a new Ministry of Health mandated category).
 
 export interface AdminCategoryRow {
   id: string
   branch_id: string
   branch_name: string
+  organization_id: string | null
+  organization_name: string | null
   name: string
   description: string | null
 }
@@ -163,6 +224,18 @@ export async function adminCreateCategory(name: string, description: string, bra
     p_description: description || null,
     p_branch_id: branchId ?? null,
   })
+  if (error) raise(error)
+  return (data as number) ?? 0
+}
+
+// "Push to every branch" (adminCreateCategory with no branchId) only ever
+// reaches branches that exist at that exact moment -- a branch onboarded
+// afterward never retroactively gets categories that were broadcast before
+// it existed. This tops up every branch with every category name that
+// exists for at least one branch today, safe to call repeatedly (existing
+// rows are never touched). Returns how many new rows were actually added.
+export async function adminBackfillCategoriesToAllBranches(): Promise<number> {
+  const { data, error } = await supabaseAdmin.rpc("admin_backfill_categories_to_all_branches")
   if (error) raise(error)
   return (data as number) ?? 0
 }

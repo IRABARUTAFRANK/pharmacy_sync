@@ -41,14 +41,27 @@ export interface ReceivingReference {
   suppliers: ReceivingSupplier[]
 }
 
-export async function loadReceivingReference(): Promise<ReceivingReference> {
+// branchId is the org_owner/org_manager "viewing another branch" case (see
+// StockReceivingPage's own header note) -- tax rates are global and
+// unaffected either way, but plain RLS on product_categories/suppliers only
+// ever resolves to the CALLER's own branch, no matter which branch is
+// actually being viewed. list_branch_categories/list_branch_suppliers are
+// the same SECURITY DEFINER pattern used everywhere else in this app for
+// that (effective_branch_id(p_branch_id), which itself enforces org
+// membership) -- a raw table select has no way to honor an explicit "act as
+// this branch" override, only RLS's own fixed notion of "your branch".
+//
+// products/product_variants go through fetchAll() instead, a separate
+// concern: the shared catalogue now runs past PostgREST's 1000-row response
+// cap, so a plain .select() here would silently drop everything after the
+// 1000th row -- fetchAll() pages through with .range() until a short page
+// signals the end (see its own comment in ./supabase).
+export async function loadReceivingReference(branchId?: string): Promise<ReceivingReference> {
   const [products, variants, ...rest] = await Promise.all([
     fetchAll<any>("products", "id, name, generic_name, product_type, tax_rate_id", "name"),
     fetchAll<any>("product_variants", "id, product_id, dosage, form, unit", "id"),
-    // product_categories is branch-owned and RLS already restricts it to this branch.
-    supabase.from("product_categories").select("*").order("name"),
-    // RLS returns the global (branch_id null) rows plus this branch's own rows.
-    supabase.from("suppliers").select("id, supplier_name").order("supplier_name"),
+    supabase.rpc("list_branch_categories", branchArg(branchId)),
+    supabase.rpc("list_branch_suppliers", branchArg(branchId)),
     supabase.from("tax_rates").select("id, name, rate_percentage"),
   ])
   const failed = rest.find((result: any) => result.error)
@@ -67,6 +80,21 @@ export async function loadReceivingReference(): Promise<ReceivingReference> {
     categories: categories.map(row => ({ id: row.id, name: row.name })),
     suppliers: suppliers.map(row => ({ id: row.id, supplier_name: row.supplier_name })),
   }
+}
+
+// Get-or-create: if the product already has any variant this just returns
+// the first one untouched. Only a product that genuinely has zero variants
+// (e.g. a legacy catalogue entry, or one whose only variant was removed)
+// gets a single blank one created here -- see ensure_default_product_
+// variant() in 2026-09-17_ensure_default_product_variant.sql for why this
+// is safe to call more than once for the same product (it never creates a
+// second one), unlike the old inline "type a product name, get a product +
+// variant created for you" flow this Receiving page used to have, which
+// created duplicates and was removed for that reason.
+export async function ensureDefaultProductVariant(productId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("ensure_default_product_variant", { p_product_id: productId })
+  if (error) throw error
+  return data as string
 }
 
 export interface ProductDefaults {

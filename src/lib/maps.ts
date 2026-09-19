@@ -166,3 +166,56 @@ export const PHARMACY_ICON = L.divIcon({
 // different free/self-hosted provider later without touching either page.
 export const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
 export const OSM_ATTRIBUTION = "© <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noreferrer\">OpenStreetMap</a> contributors"
+
+// Free satellite imagery -- no API key, no account, same "fine for this
+// app's traffic" tradeoff as the OSM street tiles above (Esri publishes
+// this specific layer for exactly this kind of light, non-commercial-scale
+// use; a business doing heavy tile volume would eventually want a real
+// ArcGIS subscription, which is not this app's situation).
+export const ESRI_SATELLITE_TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+export const ESRI_SATELLITE_ATTRIBUTION = "Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS community"
+
+// The "Map / Satellite" layer switcher every mainstream map product has
+// (Google, Bing, Apple Maps) -- Leaflet ships this control natively
+// (L.control.layers), it just needs a second tile layer to switch to.
+// Labels are passed in by the caller so the control's own text goes through
+// this app's i18n like everything else, instead of hardcoded English baked
+// into a shared lib file.
+export function addBaseLayerToggle(map: L.Map, streetLayer: L.TileLayer, mapLabel: string, satelliteLabel: string): void {
+  const satelliteLayer = L.tileLayer(ESRI_SATELLITE_TILE_URL, { attribution: ESRI_SATELLITE_ATTRIBUTION, maxZoom: 19 })
+  L.control.layers({ [mapLabel]: streetLayer, [satelliteLabel]: satelliteLayer }).addTo(map)
+}
+
+// Native browser Fullscreen API, not a library -- works identically for
+// either engine's outer wrapper element (this app puts BOTH map views and
+// their own toggle buttons inside one wrapper per component, so the whole
+// thing -- controls included -- goes fullscreen together, not just the
+// tile canvas). Leaflet caches its container's pixel size and MapLibre's
+// canvas needs telling too, so both maps must be explicitly told to
+// recompute once the fullscreen transition actually finishes -- see each
+// caller's own `fullscreenchange` listener for why that's on a short delay
+// rather than done synchronously here.
+//
+// If this page is itself embedded in an iframe (a preview panel, for
+// instance) without that iframe's own `allow="fullscreen"` permission,
+// requestFullscreen() rejects instead of doing anything -- onDenied
+// surfaces that as a real, visible message instead of the button just
+// silently doing nothing, the exact failure mode the 3D loading/error
+// states were already built to stop happening elsewhere on this same map.
+export function toggleFullscreen(el: HTMLElement, onDenied?: (message: string) => void): void {
+  if (document.fullscreenElement === el) {
+    void document.exitFullscreen()
+    return
+  }
+  el.requestFullscreen().catch((reason: unknown) => {
+    console.error("Fullscreen request failed:", reason)
+    onDenied?.("Fullscreen isn't allowed in this preview. Opening the app in its own browser tab (not an embedded preview) usually allows it.")
+  })
+}
+
+// A subtle pulsing ring drawn around a device-GPS reading's accuracy radius
+// -- see BranchLocationMap's own use of this for why (a plain circle alone
+// doesn't read as "live signal" the way a soft pulse does, and reusing
+// L.circle's own `className` option keeps this a one-line addition on the
+// caller's side rather than a new map primitive).
+export const ACCURACY_CIRCLE_CLASS = "accuracy-circle-pulse"

@@ -36,11 +36,19 @@ export interface SidebarProps {
   className?: string
   /** Marks the <aside> for the guided tour's spotlight (lib/tour.tsx). */
   dataTour?: string
+  /** Expands by floating over whatever is to its right instead of growing
+   *  the layout's own width -- for a rail that sits beside another sidebar
+   *  and must never push it around on hover (the org rail in App.tsx,
+   *  beside the branch's own sidebar). The caller must reserve
+   *  `collapsedWidth` of real layout space itself (e.g. a fixed-width
+   *  wrapper `div`), since this component no longer does that for itself
+   *  in this mode -- it becomes `position: absolute` within that wrapper. */
+  overlay?: boolean
 }
 
 export function Sidebar({
   items, activeId, onSelect, getLabel, onItemHover, pinned = false,
-  collapsedWidth = 60, expandedWidth = 240, header, topContent, footer, className, dataTour,
+  collapsedWidth = 60, expandedWidth = 240, header, topContent, footer, className, dataTour, overlay = false,
 }: SidebarProps) {
   const [hovering, setHovering] = useState(false)
   const [focused, setFocused] = useState(false)
@@ -58,7 +66,11 @@ export function Sidebar({
       style={{
         width, minWidth: width, background: "var(--surface)", borderRight: "1px solid var(--border)",
         display: "flex", flexDirection: "column", transition: "width 0.22s, min-width 0.22s",
-        overflow: "hidden", flexShrink: 0, zIndex: 10,
+        overflow: "hidden", flexShrink: 0, zIndex: overlay ? 20 : 10,
+        ...(overlay ? {
+          position: "absolute", top: 0, left: 0, height: "100%",
+          boxShadow: width > collapsedWidth ? "4px 0 24px rgba(0,0,0,0.18)" : "none",
+        } : {}),
       }}
     >
       {header?.(expanded)}

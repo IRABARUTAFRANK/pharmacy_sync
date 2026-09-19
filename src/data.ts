@@ -260,6 +260,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: 'compliance',  label: 'RRA Compliance',        icon: '🏛️', roles: ['owner', 'manager'] },
   // ── Shared with seller ──────────────────────────────────────
   { id: 'sales',       label: 'Sales / POS',          icon: '🧾', roles: ['owner', 'manager', 'seller'] },
+  { id: 'locate',      label: 'Locate Product',       icon: '📍', roles: ['owner', 'manager', 'seller'] },
   { id: 'alerts',      label: 'Alerts',               icon: '🔔', roles: ['owner', 'manager', 'seller'] },
   { id: 'patients',    label: 'Patients',              icon: '🩺', roles: ['owner', 'manager', 'seller'] },
   { id: 'help',        label: 'Help & Support',       icon: '💬', roles: ['owner', 'manager', 'seller'] },

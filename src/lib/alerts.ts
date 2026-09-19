@@ -20,9 +20,21 @@ export interface LiveAlert {
   id: string
   branchId: string
   sourceType: string
+  // The row this notification is about -- a product id for reorder_point_
+  // missing, the branch's own id for branch_location_missing, etc. (see
+  // each check_*() function's own `insert into notifications` call for what
+  // it puts here). Used by alertActionTarget() below to deep-link a click
+  // straight to the specific thing that needs fixing, not just its page.
+  sourceId: string
   type: AlertSeverity
   titleKey: TranslationKey
   msg: string
+  // Structured values (a product name, a barcode code, a date, a quantity)
+  // behind the message this row's source_type generates -- null for any row
+  // written before this column existed (its `msg` is a frozen English
+  // sentence with nothing left to re-translate). See resolveAlertMessage()
+  // below for how these get turned into a properly-localized sentence.
+  params: Record<string, string> | null
   createdAt: string
   isRead: boolean
 }
@@ -74,6 +86,7 @@ interface NotificationRow {
   source_type: string
   source_id: string
   message: string
+  params: Record<string, string> | null
   is_read: boolean
   created_at: string
 }
@@ -92,12 +105,82 @@ export async function loadLiveAlerts(scope?: AlertScope): Promise<LiveAlert[]> {
     id: row.id,
     branchId: row.branch_id,
     sourceType: row.source_type,
+    sourceId: row.source_id,
     type: SEVERITY[row.source_type] ?? "info",
     titleKey: ALERT_SOURCE_TITLE_KEYS[row.source_type] ?? "alerts.source.notification",
     msg: row.message,
+    params: row.params ?? null,
     createdAt: row.created_at,
     isRead: row.is_read,
   }))
+}
+
+// "This isn't configured yet" notifications -- the only kind clicking
+// through to a specific fixed destination actually makes sense for (a
+// stock adjustment or a batch recall already happened; there's no one
+// screen that "resolves" it). Exactly the three checks that create these:
+// check_missing_reorder_points(), check_missing_branch_location(), and
+// check_license_expiry(). `page` is a nav id from data.ts's NAV_ITEMS.
+export interface AlertActionTarget {
+  page: string
+  productId?: string
+}
+
+export function alertActionTarget(alert: LiveAlert): AlertActionTarget | null {
+  switch (alert.sourceType) {
+    case "reorder_point_missing": return { page: "reports", productId: alert.sourceId }
+    case "branch_location_missing": return { page: "branch" }
+    case "license_expiring": return { page: "branch" }
+    default: return null
+  }
+}
+
+const ADJUSTMENT_TYPE_KEY: Record<string, TranslationKey> = {
+  damage: "alerts.adjustmentType.damage",
+  loss: "alerts.adjustmentType.loss",
+  correction: "alerts.adjustmentType.correction",
+  return: "alerts.adjustmentType.return",
+  expired_writeoff: "alerts.adjustmentType.expiredWriteoff",
+  recalled: "alerts.adjustmentType.recalled",
+}
+
+// Turns a notification row into a properly-localized sentence. Picks a
+// translation key from source_type (+ params.variant, for source types with
+// more than one phrasing) and interpolates params into it via the caller's
+// own t() -- the same idea as titleKey already uses, just for the message
+// body too. A row with no params (anything written before this feature
+// existed) falls back to its own frozen `msg` -- old notifications aren't
+// retroactively translated, only new ones going forward.
+export function resolveAlertMessage(alert: LiveAlert, t: (key: TranslationKey, vars?: Record<string, string>) => string): string {
+  if (alert.sourceType === "branch_location_missing") return t("alerts.message.branchLocationMissing")
+  const p = alert.params
+  if (!p) return alert.msg
+  const vars: Record<string, string> = { ...p }
+  switch (alert.sourceType) {
+    case "out_of_stock":
+      return t(p.variant === "still" ? "alerts.message.outOfStockStill" : "alerts.message.outOfStock", vars)
+    case "stock_adjustment":
+      if (p.variant === "manual") {
+        vars.type = t(ADJUSTMENT_TYPE_KEY[p.adjustmentType] ?? "alerts.adjustmentType.correction")
+        vars.action = t(p.delta === "removed" ? "alerts.adjustmentAction.removed" : "alerts.adjustmentAction.added")
+        return t("alerts.message.manualAdjustment", vars)
+      }
+      return t("alerts.message.expiredWriteoff", vars)
+    case "license_expiring":
+      return t(p.variant === "expired" ? "alerts.message.licenseExpired" : "alerts.message.licenseExpiring", vars)
+    case "reorder_point_missing":
+      return t("alerts.message.reorderPointMissing", vars)
+    case "restock_recommendation":
+      return t("alerts.message.restockRecommendation", vars)
+    case "forecast_completed":
+      return t(p.variant === "all" ? "alerts.message.forecastCompletedAll" : "alerts.message.forecastCompletedScoped", vars)
+    case "product_request_approved":
+      return t("alerts.message.productRequestApproved", vars)
+    case "product_request_rejected":
+      return vars.reason ? t("alerts.message.productRequestRejectedWithReason", vars) : t("alerts.message.productRequestRejected")
+    default:
+      return alert.msg
+  }
 }
 
 export async function markAlertRead(id: string): Promise<void> {

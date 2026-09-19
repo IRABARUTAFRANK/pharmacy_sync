@@ -16,6 +16,7 @@ const BARCODE_STATUS_META: Record<string, { color: string; bg: string }> = {
   expired: { color: "#9333ea", bg: "#f5f3ff" },
   recalled: { color: "#dc2626", bg: "#fef2f2" },
   damaged: { color: "#d97706", bg: "#fef3c7" },
+  in_transit: { color: "#2563eb", bg: "#dbeafe" },
 }
 
 interface ProductGroup {
@@ -304,7 +305,13 @@ function ReorderPointModal({ group, onClose, onSaved }: { group: ProductGroup; o
   </Modal>
 }
 
-export default function ReportsPage() {
+// focusProductId/onFocusHandled: set by App.tsx when arriving here from a
+// "reorder point missing" notification click (see alertActionTarget() in
+// lib/alerts.ts) -- opens that exact product's reorder modal on arrival
+// instead of leaving the pharmacist to find it in the list themselves.
+// onFocusHandled clears the request in the parent once consumed, so it
+// doesn't reopen the modal again on a later visit to this page.
+export default function ReportsPage({ focusProductId, onFocusHandled }: { focusProductId?: string | null; onFocusHandled?: () => void } = {}) {
   const { t } = useTranslation()
   const [dataset, setDataset] = useState<InventoryDataset>({ rows: [], barcodes: [], supplierUnits: [] })
   const [history, setHistory] = useState<StockAdjustmentRecord[]>([])
@@ -332,6 +339,21 @@ export default function ReportsPage() {
   }, [t])
 
   useEffect(() => { void refresh() }, [refresh])
+
+  useEffect(() => {
+    if (!focusProductId || loading) return
+    const rows = dataset.rows.filter(row => row.product_id === focusProductId)
+    if (rows.length > 0) {
+      const [group] = [...groupByCategoryThenProduct(rows).values()].flat()
+      if (group) setReorderTarget(group)
+    }
+    onFocusHandled?.()
+    // onFocusHandled intentionally excluded -- it's a one-shot "I've been
+    // consumed" signal from the parent, not a value this effect should
+    // re-run for; only a genuinely new focusProductId (or the dataset
+    // finishing its first load) should trigger this again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusProductId, dataset.rows, loading])
 
   const grouped = useMemo(() => {
     const needle = query.trim().toLowerCase()

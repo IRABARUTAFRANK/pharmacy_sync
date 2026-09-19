@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { useTranslation } from "./i18n"
 import type { TranslationKey } from "./i18n/en"
+import systemVideoSrc from "../assets/video-system-explained.mp4"
 
 // First-run guided tour: a spotlight walkthrough of the dashboard shell.
 //
@@ -25,10 +26,16 @@ export interface TourStep {
   bodyKey: TranslationKey
   /** Preferred side of the target; falls back automatically if it won't fit. */
   prefer?: "right" | "left" | "top" | "bottom"
+  /** A short video played inside a widened version of this step's card,
+   *  above the title/body -- only the very first ("welcome") step uses this
+   *  today. Everything else about the step (Next/Skip/progress dots) works
+   *  exactly the same either way; only the card's width and its extra video
+   *  element change. */
+  videoSrc?: string
 }
 
 export const TOUR_STEPS: TourStep[] = [
-  { id: "welcome", titleKey: "tour.welcomeTitle", bodyKey: "tour.welcomeBody" },
+  { id: "welcome", titleKey: "tour.welcomeTitle", bodyKey: "tour.welcomeBody", videoSrc: systemVideoSrc },
   { id: "sidebar", target: '[data-tour="sidebar"]', titleKey: "tour.sidebarTitle", bodyKey: "tour.sidebarBody", prefer: "right" },
   { id: "snapshot", target: '[data-tour="today-snapshot"]', titleKey: "tour.snapshotTitle", bodyKey: "tour.snapshotBody", prefer: "right" },
   { id: "language", target: '[data-tour="language"]', titleKey: "tour.languageTitle", bodyKey: "tour.languageBody", prefer: "right" },
@@ -118,17 +125,17 @@ function useSpotlight(selector: string | undefined, stepIndex: number): Box | nu
 }
 
 /** Places the card beside the spotlight, falling back through the other sides. */
-function placeCard(box: Box | null, prefer: TourStep["prefer"], cardH: number): { top: number; left: number } {
+function placeCard(box: Box | null, prefer: TourStep["prefer"], cardH: number, cardW: number = CARD_W): { top: number; left: number } {
   const vw = window.innerWidth
   const vh = window.innerHeight
   const clampTop = (v: number) => Math.max(12, Math.min(v, vh - cardH - 12))
-  const clampLeft = (v: number) => Math.max(12, Math.min(v, vw - CARD_W - 12))
-  const centre = { top: clampTop(vh / 2 - cardH / 2), left: clampLeft(vw / 2 - CARD_W / 2) }
+  const clampLeft = (v: number) => Math.max(12, Math.min(v, vw - cardW - 12))
+  const centre = { top: clampTop(vh / 2 - cardH / 2), left: clampLeft(vw / 2 - cardW / 2) }
   if (!box) return centre
 
   const fits = {
-    right: box.left + box.width + GAP + CARD_W <= vw - 12,
-    left: box.left - GAP - CARD_W >= 12,
+    right: box.left + box.width + GAP + cardW <= vw - 12,
+    left: box.left - GAP - cardW >= 12,
     bottom: box.top + box.height + GAP + cardH <= vh - 12,
     top: box.top - GAP - cardH >= 12,
   }
@@ -143,7 +150,7 @@ function placeCard(box: Box | null, prefer: TourStep["prefer"], cardH: number): 
   if (!side) return centre
 
   if (side === "right") return { top: clampTop(box.top), left: box.left + box.width + GAP }
-  if (side === "left") return { top: clampTop(box.top), left: box.left - GAP - CARD_W }
+  if (side === "left") return { top: clampTop(box.top), left: box.left - GAP - cardW }
   if (side === "top") return { top: box.top - GAP - cardH, left: clampLeft(box.left) }
   return { top: box.top + box.height + GAP, left: clampLeft(box.left) }
 }
@@ -206,7 +213,8 @@ export function GuidedTour({ steps = TOUR_STEPS, onFinish }: { steps?: TourStep[
 
   if (!visible || !step) return null
 
-  const pos = placeCard(box, step.prefer, cardH)
+  const cardW = step.videoSrc ? 600 : CARD_W
+  const pos = placeCard(box, step.prefer, cardH, cardW)
   const shade = "rgba(15,23,42,0.62)"
   const block: React.CSSProperties = { position: "fixed", background: shade, zIndex: 4000 }
 
@@ -234,12 +242,30 @@ export function GuidedTour({ steps = TOUR_STEPS, onFinish }: { steps?: TourStep[
       <div
         ref={cardRef}
         style={{
-          position: "fixed", top: pos.top, left: pos.left, width: CARD_W, zIndex: 4002,
+          position: "fixed", top: pos.top, left: pos.left, width: cardW, zIndex: 4002,
           background: "#fff", borderRadius: 14, padding: "18px 18px 14px",
           boxShadow: "0 18px 44px rgba(15,23,42,0.28)", fontFamily: "var(--font-body)",
           maxHeight: "calc(100vh - 24px)", overflowY: "auto", boxSizing: "border-box",
         }}
       >
+        {step.videoSrc && (
+          // Native controls, not the home page's silent-loop treatment --
+          // this is a deliberate "watch this" moment (the user just clicked
+          // Walkthrough), not ambient background motion, so it gets a real
+          // player and an attempted unmuted autoplay (the click that opened
+          // the tour counts as the user gesture browsers require for that;
+          // if a browser still blocks it, the native controls make starting
+          // it manually a one-tap fallback, never a dead end).
+          <video
+            src={step.videoSrc}
+            controls
+            autoPlay
+            playsInline
+            preload="none"
+            className="w-full"
+            style={{ borderRadius: 10, marginBottom: 14, background: "#000", aspectRatio: "16 / 9" }}
+          />
+        )}
         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--primary)", marginBottom: 6 }}>
           {t("tour.stepCounter", { current: index + 1, total: visible.length })}
         </div>

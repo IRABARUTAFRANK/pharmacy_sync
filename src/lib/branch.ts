@@ -38,6 +38,12 @@ export interface BranchDetails {
   defaultReorderMin: number
   latitude: number | null
   longitude: number | null
+  // Null for a standalone pharmacy branch. Non-null means this branch was
+  // set up under an organization -- BranchSettingsPage uses this (alongside
+  // the caller's own role) to decide whether a plain branch manager sees
+  // most Profile fields as read-only (see update_branch_details()'s own
+  // v_org_restricted, the real server-side boundary this mirrors).
+  organizationId: string | null
 }
 
 export async function getMyBranchDetails(branchId?: string): Promise<BranchDetails> {
@@ -64,6 +70,7 @@ export async function getMyBranchDetails(branchId?: string): Promise<BranchDetai
     defaultReorderMin: row?.default_reorder_min ?? 0,
     latitude: row?.latitude ?? null,
     longitude: row?.longitude ?? null,
+    organizationId: row?.organization_id ?? null,
   }
 }
 

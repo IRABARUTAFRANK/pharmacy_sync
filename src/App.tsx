@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense, type ComponentType } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense, Component, type ComponentType, type ReactNode, type ErrorInfo } from 'react'
+import { createPortal } from 'react-dom'
 import { NAV_ITEMS, fmtRWFExact, type Role } from './data'
 import { useTranslation, LanguageSwitcher, hasExplicitLangPreference } from './lib/i18n'
 import { useGlobalSearch } from './lib/search'
@@ -17,7 +18,7 @@ import { restoreBranchAccess, signOutFromBranch, type BranchAccess } from './lib
 import { branchLogoUrl, getMyBranchDetails } from './lib/branch'
 import { getMyBranchOrganizationId, getMyOrganization, listOrganizationBranches, type OrganizationSummary, type OrganizationBranch } from './lib/organization'
 import { loadBranchSnapshot, type BranchSnapshot } from './lib/analytics'
-import { checkExpiredStock, checkExpiringSoonStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkLowStockAlerts, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, type LiveAlert } from './lib/alerts'
+import { alertActionTarget, checkExpiredStock, checkExpiringSoonStock, checkForecastAccuracyNotifications, checkLicenseExpiry, checkLowStockAlerts, checkMissingBranchLocation, checkMissingReorderPoints, checkOutOfStockAlerts, checkRestockRecommendations, loadLiveAlerts, markAlertRead, markAllAlertsRead, resolveAlertMessage, type LiveAlert } from './lib/alerts'
 import { useBarcodeScannerListener, useScanner } from './lib/scanner'
 import { getSavedThemeId, setTheme, THEME_PRESETS } from './lib/theme'
 import { GuidedTour, hasCompletedTour, markTourComplete } from './lib/tour'
@@ -44,6 +45,7 @@ const PAGE_LOADERS = {
   receiving: () => import('./pages/StockReceivingPage'),
   barcode: () => import('./pages/BarcodeManagerPage'),
   sales: () => import('./pages/SalesPage'),
+  locate: () => import('./pages/LocateProductPage'),
   transactions: () => import('./pages/TransactionsPage'),
   insurance: () => import('./pages/InsurancePage'),
   alerts: () => import('./pages/AlertsPage'),
@@ -62,6 +64,7 @@ const LiveInventoryPage   = lazy(PAGE_LOADERS.inventory)
 const StockReceivingPage  = lazy(PAGE_LOADERS.receiving)
 const BarcodeManagerPage  = lazy(PAGE_LOADERS.barcode)
 const SalesPage           = lazy(PAGE_LOADERS.sales)
+const LocateProductPage   = lazy(PAGE_LOADERS.locate)
 const TransactionsPage    = lazy(PAGE_LOADERS.transactions)
 const InsurancePage       = lazy(PAGE_LOADERS.insurance)
 const AlertsPage          = lazy(PAGE_LOADERS.alerts)
@@ -187,7 +190,7 @@ function prefetchPage(id: string) {
 // both used to live in a separately deployed app; they're now plain in-app
 // views reached by URL fragment, with no page reload and no second server.
 
-type HashRoute = 'home' | 'admin' | 'branch' | 'reset' | 'receipt'
+type HashRoute = 'home' | 'admin' | 'branch' | 'reset' | 'receipt' | 'payment-return'
 
 function hashToRoute(hash: string): HashRoute {
   // A "forgot password" email link lands back here with Supabase's own
@@ -206,6 +209,13 @@ function hashToRoute(hash: string): HashRoute {
   // Scanned from the "share this receipt" QR printed on a receipt --
   // #receipt?id=<sale uuid> -- see PublicReceiptPage.tsx for the parser.
   if (hash === '#receipt' || hash.startsWith('#receipt?')) return 'receipt'
+  // Where a CUSTOMER's own browser lands after finishing a mobile money/
+  // card payment on the gateway's hosted page (see initiatePayment() in
+  // lib/payments.ts) -- purely a friendly "you can close this" message.
+  // The till itself never depends on this page; it polls check-status
+  // independently, so this redirect landing (or not) changes nothing about
+  // whether the sale actually completes.
+  if (hash === '#payment-return' || hash.startsWith('#payment-return?')) return 'payment-return'
   return 'home'
 }
 
@@ -249,6 +259,46 @@ function roleLabelKey(id: Role): TranslationKey {
   return id === 'owner' ? 'shell.roleOwner' : id === 'manager' ? 'shell.roleManager' : 'shell.roleSeller'
 }
 
+// ─── Page Error Boundary ──────────────────────────────────────────────────────
+// Nothing in this app ever caught a render-time exception before -- an error
+// thrown while rendering any page (a bad data shape from a real database
+// row the code didn't expect, a library choking on unusual input, etc.)
+// unmounted the ENTIRE app with no message at all, leaving a plain white
+// screen with no way back short of a manual refresh. This scopes that
+// failure to just the page content area: the sidebar/topbar stay usable,
+// there's a visible error instead of blank white, and a "Back to Overview"
+// escape hatch. Keyed by `page` in the render call below, so switching to a
+// different nav item remounts this fresh and clears a stuck error state
+// automatically, without needing a full page reload.
+class PageErrorBoundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('Page failed to render:', error, info.componentStack) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: '48px 24px', textAlign: 'center', maxWidth: 480, margin: '0 auto' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+          <p style={{ fontWeight: 700, fontSize: 15, color: 'var(--ink)', margin: '0 0 6px' }}>This page ran into a problem.</p>
+          <p style={{ fontSize: 12, color: 'var(--ink-muted)', margin: '0 0 18px', fontFamily: 'var(--font-mono, monospace)' }}>
+            {this.state.error.message || String(this.state.error)}
+          </p>
+          <button
+            onClick={this.props.onReset}
+            style={{
+              padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)',
+              color: 'var(--ink)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            ← Back to Overview
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 // ─── Notifications Dropdown ───────────────────────────────────────────────────
 
 // Shared by the dropdown and the toast stack below, so the same alert
@@ -264,38 +314,67 @@ function alertTimeAgo(iso: string): string {
   return `${Math.floor(minutes / 1440)}d ago`
 }
 
-function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () => void }) {
+function NotifDropdown({ alerts, onSelectAlert, onViewAll, onClose, anchorRect }: {
+  alerts: LiveAlert[]
+  onSelectAlert: (alert: LiveAlert) => void
+  onViewAll: () => void
+  onClose: () => void
+  anchorRect: DOMRect | null
+}) {
   const { t } = useTranslation()
   const active = alerts.filter(a => !a.isRead)
-  return (
-    <div style={{
-      position: 'absolute', right: 0, top: '110%', width: 340, zIndex: 100,
-      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
-      boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
-    }}>
+  // Portaled to <body>, positioned from the bell's own screen rect -- its
+  // old position:absolute (relative to the bell) rendered inside
+  // .topbar-trailing-scroll, which clips anything outside its own ~40px-tall
+  // box (overflow-x:auto forces overflow-y non-visible too). See the ref
+  // comment at notifButtonRef's declaration.
+  const top = (anchorRect?.bottom ?? 0) + 8
+  const right = anchorRect ? window.innerWidth - anchorRect.right : 20
+  return createPortal(
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={onClose} />
+      <div style={{
+        position: 'fixed', top, right, width: 340, zIndex: 100,
+        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.10)', overflow: 'hidden',
+      }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--ink)' }}>{t('shell.notifications')}</span>
         <span style={{ fontSize: 11, fontWeight: 600, background: '#fee2e2', color: '#dc2626', borderRadius: 10, padding: '1px 7px' }}>{t('shell.activeAlerts', { count: active.length })}</span>
       </div>
       <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-        {active.map(a => (
-          <div key={a.id} style={{ padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10, background: SEVERITY_BG[a.type] + '60' }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: SEVERITY_DOT[a.type], marginTop: 4, flexShrink: 0 }} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: SEVERITY_DOT[a.type] }}>{t(a.titleKey)}</div>
-              <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.msg}</div>
-              <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
+        {active.map(a => {
+          const actionable = !!alertActionTarget(a)
+          return (
+            <div
+              key={a.id}
+              onClick={() => onSelectAlert(a)}
+              title={actionable ? t('shell.notifGoToFix') : undefined}
+              style={{
+                padding: '10px 14px', borderBottom: '1px solid var(--bg-alt)', display: 'flex', gap: 10,
+                background: SEVERITY_BG[a.type] + '60', cursor: actionable ? 'pointer' : 'default',
+              }}
+            >
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: SEVERITY_DOT[a.type], marginTop: 4, flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: SEVERITY_DOT[a.type] }}>{t(a.titleKey)}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink-mid)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{resolveAlertMessage(a, t)}</div>
+                <div style={{ fontSize: 10, color: 'var(--ink-faint)', marginTop: 2 }}>{alertTimeAgo(a.createdAt)}</div>
+              </div>
+              {actionable && <span style={{ alignSelf: 'center', color: 'var(--primary)', fontSize: 14, flexShrink: 0 }}>›</span>}
             </div>
-          </div>
-        ))}
+          )
+        })}
         {active.length === 0 && (
           <div style={{ padding: '20px 14px', textAlign: 'center', fontSize: 12, color: 'var(--ink-faint)' }}>{t('shell.noNewAlerts')}</div>
         )}
       </div>
       <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', textAlign: 'center' }}>
-        <button onClick={onClose} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
+        <button onClick={onViewAll} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit' }}>{t('shell.viewAllAlerts')}</button>
       </div>
-    </div>
+      </div>
+    </>,
+    document.body,
   )
 }
 
@@ -304,13 +383,13 @@ function NotifDropdown({ alerts, onClose }: { alerts: LiveAlert[]; onClose: () =
 // (see refreshAlerts' new-vs-seen diff) gets a brief, animated card here so
 // it's noticed without having to think to open the bell. Purely a visual
 // nudge -- dismissing or letting one time out never changes is_read itself;
-// only actually opening the dropdown (clicking a card, or the bell) does
-// that, via the same openNotifDropdown() the bell button uses.
+// only clicking an actionable card (goToAlertTarget) does that, same as a
+// dropdown row.
 
-const TOAST_AUTO_DISMISS_MS = 6000
+const TOAST_AUTO_DISMISS_MS = 10000
 const TOAST_EXIT_ANIMATION_MS = 220
 
-function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: () => void; onOpen: () => void }) {
+function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: () => void; onOpen: (alert: LiveAlert) => void }) {
   const { t } = useTranslation()
   const [closing, setClosing] = useState(false)
 
@@ -335,7 +414,7 @@ function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: 
         background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: '0 10px 30px rgba(0,0,0,0.16)',
         cursor: 'pointer',
       }}
-      onClick={() => { setClosing(true); onOpen() }}
+      onClick={() => { setClosing(true); onOpen(alert) }}
     >
       <div style={{ width: 8, height: 8, borderRadius: '50%', background: SEVERITY_DOT[alert.type], marginTop: 4, flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -343,7 +422,7 @@ function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: 
         <div style={{
           fontSize: 11, color: 'var(--ink-mid)', marginTop: 2, overflow: 'hidden',
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-        }}>{alert.msg}</div>
+        }}>{resolveAlertMessage(alert, t)}</div>
       </div>
       <button
         onClick={e => { e.stopPropagation(); setClosing(true) }}
@@ -354,7 +433,7 @@ function ToastCard({ alert, onDismiss, onOpen }: { alert: LiveAlert; onDismiss: 
   )
 }
 
-function ToastStack({ toasts, onDismiss, onOpen }: { toasts: LiveAlert[]; onDismiss: (id: string) => void; onOpen: () => void }) {
+function ToastStack({ toasts, onDismiss, onOpen }: { toasts: LiveAlert[]; onDismiss: (id: string) => void; onOpen: (alert: LiveAlert) => void }) {
   if (toasts.length === 0) return null
   return (
     <div style={{
@@ -670,6 +749,24 @@ export default function App() {
   const [dateRange, setDateRange]   = useState<DateRangeOption>('thisMonth')
   // Sidebar defaults to collapsed (hover-to-expand); this only "pins" it open.
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // The org-tab rail's own display mode (see the two-<Sidebar> block below,
+  // showingBranchDrillIn) -- deliberately has no "always expanded/pinned"
+  // option: the branch rail beside it is the one that's forced fixed while
+  // drilled into a branch (so it never fights the org rail for space), so
+  // this rail only ever offers "collapsed" or "expand on hover". Persisted
+  // per-viewer since it's a display preference, not app state.
+  const [orgRailMode, setOrgRailMode] = useState<'collapsed' | 'hover'>(() => {
+    try { return (localStorage.getItem('orgRailMode') as 'collapsed' | 'hover' | null) ?? 'hover' }
+    catch { return 'hover' }
+  })
+  const [orgRailModeMenuOpen, setOrgRailModeMenuOpen] = useState(false)
+  const orgRailModeButtonRef = useRef<HTMLButtonElement>(null)
+  const [orgRailModeMenuPos, setOrgRailModeMenuPos] = useState({ left: 0, bottom: 0 })
+  function selectOrgRailMode(mode: 'collapsed' | 'hover') {
+    setOrgRailMode(mode)
+    setOrgRailModeMenuOpen(false)
+    try { localStorage.setItem('orgRailMode', mode) } catch { /* per-viewer convenience only */ }
+  }
 
   // First-run walkthrough. Opens for anyone who has not finished it yet --
   // not just brand-new accounts, so existing users who never saw it still get
@@ -716,6 +813,13 @@ export default function App() {
 
   const [showNotif, setShowNotif]   = useState(false)
   const [showUser, setShowUser]     = useState(false)
+  // The bell now lives inside .topbar-trailing-scroll (overflow-x:auto, see
+  // the Walkthrough+Notifications strip below), which clips ANY descendant
+  // that tries to render outside its own small box -- including this
+  // dropdown's old plain position:absolute. Portaled to <body> instead
+  // (createPortal, same fix as the org rail's ⚙ menu above), positioned from
+  // this ref's real screen rect rather than CSS relative-to-parent.
+  const notifButtonRef = useRef<HTMLButtonElement>(null)
 
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [pendingSync, setPendingSync] = useState(0)
@@ -724,6 +828,11 @@ export default function App() {
   // dismissed or auto-expired -- populated by refreshAlerts' new-vs-seen
   // diff below, not a straight mirror of `alerts` itself.
   const [toasts, setToasts] = useState<LiveAlert[]>([])
+  // Set right before navigating to 'reports' from a "reorder point missing"
+  // notification (see goToAlertTarget below) so ReportsPage can open that
+  // exact product's reorder modal on arrival instead of just landing on the
+  // page. Cleared via ReportsPage's onFocusHandled once consumed.
+  const [reportsFocusProductId, setReportsFocusProductId] = useState<string | null>(null)
 
   useEffect(() => {
     const up   = () => { setIsOnline(true);  setPendingSync(0) }
@@ -934,6 +1043,17 @@ export default function App() {
   if (hashRoute === 'branch') return <Suspense fallback={loadingFallback}><BranchPortal /></Suspense>
   if (hashRoute === 'reset') return <Suspense fallback={loadingFallback}><ResetPassword /></Suspense>
   if (hashRoute === 'receipt') return <Suspense fallback={loadingFallback}><PublicReceiptPage /></Suspense>
+  if (hashRoute === 'payment-return') {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg)', padding: 24, textAlign: 'center' }}>
+        <div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>👍</div>
+          <p style={{ fontWeight: 700, fontSize: 16, color: 'var(--ink)', margin: '0 0 6px' }}>{t('shell.paymentReturnTitle')}</p>
+          <p style={{ fontSize: 13, color: 'var(--ink-muted)', margin: 0 }}>{t('shell.paymentReturnBody')}</p>
+        </div>
+      </main>
+    )
+  }
 
   if (introPhase !== 'done') return <IntroSplash exiting={introPhase === 'exiting'} />
 
@@ -1043,11 +1163,29 @@ export default function App() {
   }
 
   // A toast is a copy of an alert row taken at the moment it arrived --
-  // dismissing it (by timeout or by hand) never needs to touch is_read
-  // itself, since opening the dropdown (openNotifDropdown, above) already
-  // marks the real row read the same way clicking the bell does.
+  // dismissing it (by timeout or by hand) never touches is_read itself;
+  // only an explicit action does (clicking an actionable toast/dropdown row,
+  // see goToAlertTarget below, or the full Alerts page), same reasoning as
+  // toggleNotif() above.
   function dismissToast(id: string) {
     setToasts(current => current.filter(t => t.id !== id))
+  }
+
+  // Shared by a dropdown row click and a toast click: an actionable "this
+  // isn't configured yet" alert (see alertActionTarget()) navigates
+  // straight to where it gets fixed instead of just opening the dropdown,
+  // and marks that one alert read on the way. Returns whether it actually
+  // navigated, so a toast click that isn't actionable can fall back to
+  // opening the dropdown instead (its previous behavior).
+  function goToAlertTarget(alert: LiveAlert): boolean {
+    const target = alertActionTarget(alert)
+    if (!target) return false
+    void markAlertRead(alert.id).catch(() => { /* best-effort; next poll reconciles */ })
+    setAlerts(current => current.map(a => a.id === alert.id ? { ...a, isRead: true } : a))
+    if (target.page === 'reports') setReportsFocusProductId(target.productId ?? null)
+    setPage(target.page)
+    setShowNotif(false)
+    return true
   }
 
   const closeMenus = () => { setShowNotif(false); setShowUser(false); setShowSearchNav(false) }
@@ -1084,12 +1222,78 @@ export default function App() {
   // used to put the mark in the second column instead of the true top-left
   // corner (and looked like two logos colliding); the branch rail skips its
   // own header entirely in that state instead (see the two-<Sidebar> block
-  // below). Icon-only, matching the rail's permanent 60px width.
+  // below). Icon-only, matching the rail's collapsed-by-default width.
   const orgRailHeader = () => (
     <div style={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
       {pharmacyLogoUrl
         ? <img src={pharmacyLogoUrl} alt="" width={28} height={28} style={{ objectFit: 'contain', borderRadius: 6 }} />
         : <Logo size={28} showWordmark={false} />}
+    </div>
+  )
+
+  // Small "sidebar control" popover for the org rail, same idea as
+  // Supabase's own project-sidebar control -- a couple of display-mode
+  // options tucked behind a small button rather than permanently fixed.
+  // No "always expanded" option here on purpose: the branch rail beside it
+  // is the one that stays fixed while drilled into a branch (see
+  // showingBranchDrillIn below), so letting this rail also lock open would
+  // just mean two full-width sidebars fighting for the same space.
+  const orgRailFooter = () => (
+    <div style={{ borderTop: '1px solid var(--border)', padding: 8, flexShrink: 0 }}>
+      <button
+        ref={orgRailModeButtonRef}
+        onClick={() => {
+          // The sidebar itself clips overflow (Sidebar.tsx), so this can't be
+          // a plain absolutely-positioned child -- it would render but stay
+          // invisible, cut off at the rail's own edge. Portaled to <body> and
+          // positioned from the button's own screen rect instead.
+          const rect = orgRailModeButtonRef.current?.getBoundingClientRect()
+          if (rect) setOrgRailModeMenuPos({ left: rect.right + 8, bottom: window.innerHeight - rect.bottom })
+          setOrgRailModeMenuOpen(o => !o)
+        }}
+        title={t('shell.orgRailModeButton')}
+        style={{
+          width: '100%', height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: 7, border: `1px solid ${orgRailModeMenuOpen ? 'var(--border-strong)' : 'var(--border)'}`,
+          background: orgRailModeMenuOpen ? 'var(--primary-light)' : 'none',
+          color: orgRailModeMenuOpen ? 'var(--primary)' : 'var(--ink-muted)',
+          cursor: 'pointer', fontSize: 14,
+        }}
+      >⚙</button>
+      {orgRailModeMenuOpen && createPortal(
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 149 }} onClick={() => setOrgRailModeMenuOpen(false)} />
+          <div style={{
+            position: 'fixed', left: orgRailModeMenuPos.left, bottom: orgRailModeMenuPos.bottom, zIndex: 150, width: 190,
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
+            boxShadow: '0 8px 28px rgba(0,0,0,0.10)', padding: '8px 0', overflow: 'hidden',
+          }}>
+            <div style={{ padding: '4px 12px 8px', fontSize: 10, fontWeight: 700, color: 'var(--ink-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--bg-alt)' }}>
+              {t('shell.orgRailModeTitle')}
+            </div>
+            {([
+              ['collapsed', t('shell.orgRailModeCollapsed')],
+              ['hover', t('shell.orgRailModeHover')],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                onClick={() => selectOrgRailMode(mode)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+                  border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit',
+                  color: orgRailMode === mode ? 'var(--primary)' : 'var(--ink)', textAlign: 'left',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+              >
+                <span style={{ width: 14, flexShrink: 0 }}>{orgRailMode === mode ? '●' : ''}</span>
+                {label}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body,
+      )}
     </div>
   )
 
@@ -1169,6 +1373,65 @@ export default function App() {
     </>
   )
 
+  const walkthroughButton = () => (
+    <button
+      data-tour="walkthrough"
+      onClick={() => setTourOpen(true)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 8,
+        border: '1px solid var(--border)', background: 'none', cursor: 'pointer',
+        fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--ink-mid)',
+        flexShrink: 0, whiteSpace: 'nowrap', transition: 'background 0.14s',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+    >
+      <span aria-hidden="true">🧭</span>
+      <span className="hide-sm">{t('shell.walkthrough')}</span>
+    </button>
+  )
+
+  const notificationsButton = () => (
+    <div data-tour="notifications" style={{ position: 'relative', flexShrink: 0 }}>
+      <button
+        ref={notifButtonRef}
+        onClick={toggleNotif}
+        style={{
+          width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
+          background: showNotif ? 'var(--bg)' : 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 16, position: 'relative', transition: 'background 0.14s',
+        }}
+        onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
+        onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = showNotif ? 'var(--bg)' : 'none' }}
+      >
+        🔔
+        {/* The count itself, not just a dot -- clicking it only opens
+            the dropdown (see toggleNotif() above), it doesn't mark
+            anything read; this just makes that number visible instead
+            of a plain unread indicator. */}
+        {alertCount > 0 && (
+          <span style={{
+            position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, padding: '0 3px',
+            background: '#dc2626', color: '#fff', borderRadius: 999, border: '2px solid var(--surface)',
+            fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+          }}>
+            {alertCount > 99 ? '99+' : alertCount}
+          </span>
+        )}
+      </button>
+      {showNotif && (
+        <NotifDropdown
+          alerts={alerts}
+          onSelectAlert={alert => goToAlertTarget(alert)}
+          onViewAll={() => { setPage('alerts'); setShowNotif(false) }}
+          onClose={() => setShowNotif(false)}
+          anchorRect={notifButtonRef.current?.getBoundingClientRect() ?? null}
+        />
+      )}
+    </div>
+  )
+
   const sidebarFooter = (expanded: boolean) => (
     <div style={{ padding: '10px 8px', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
       <button
@@ -1217,8 +1480,9 @@ export default function App() {
       case 'receiving':     return <StockReceivingPage branchId={viewingBranchId} />
       case 'barcode':       return <BarcodeManagerPage branchId={viewingBranchId} />
       case 'sales':         return <SalesPage onViewAllTransactions={() => setPage('transactions')} branchId={viewingBranchId} role={role} />
-      case 'reports':       return <ReportsPage />
-      case 'alerts':        return <AlertsPage branchId={viewingBranchId} />
+      case 'locate':        return <LocateProductPage role={role} />
+      case 'reports':       return <ReportsPage focusProductId={reportsFocusProductId} onFocusHandled={() => setReportsFocusProductId(null)} />
+      case 'alerts':        return <AlertsPage branchId={viewingBranchId} onSelectAlert={goToAlertTarget} />
       case 'transactions':  return <TransactionsPage period={dateRange} branchId={viewingBranchId} />
       case 'insurance':     return <InsurancePage branchId={viewingBranchId} />
       case 'analyst':       return <AnalystPage />
@@ -1275,24 +1539,38 @@ export default function App() {
           above. Clicking any org-rail item exits the branch view back into
           that org tab. */}
       {showingBranchDrillIn && (
-        <Sidebar
-          className="app-chrome app-org-rail"
-          collapsedWidth={60}
-          expandedWidth={60}
-          items={visibleOrgTabs.map(tab => ({ id: tab.id, icon: tab.icon }))}
-          activeId="branches"
-          onSelect={id => { setViewingBranch(null); setOrgTab(id as OrgTab); setPage('organization') }}
-          getLabel={id => t(ORG_TABS.find(tab => tab.id === id)!.labelKey)}
-          header={orgRailHeader}
-        />
+        // Fixed-width reservation in the actual flex layout -- the org rail
+        // itself is `overlay`, so on hover it floats wider than this and
+        // lies OVER the branch sidebar beside it (like Supabase's own
+        // project-sidebar hover), rather than pushing that sidebar (and the
+        // whole page) sideways to make room for it.
+        <div style={{ position: 'relative', width: 60, flexShrink: 0 }}>
+          <Sidebar
+            className="app-chrome app-org-rail"
+            overlay
+            collapsedWidth={60}
+            expandedWidth={orgRailMode === 'hover' ? 200 : 60}
+            items={visibleOrgTabs.map(tab => ({ id: tab.id, icon: tab.icon }))}
+            activeId="branches"
+            onSelect={id => { setViewingBranch(null); setOrgTab(id as OrgTab); setPage('organization') }}
+            getLabel={id => t(ORG_TABS.find(tab => tab.id === id)!.labelKey)}
+            header={orgRailHeader}
+            footer={orgRailFooter}
+          />
+        </div>
       )}
 
       <Sidebar
         className={`app-chrome app-sidebar${sidebarOpen ? ' sidebar-open' : ''}`}
         dataTour="sidebar"
         /* The tour explains the nav items, so the sidebar has to stay open
-           for the whole walkthrough rather than collapsing on mouse-out. */
-        pinned={sidebarOpen || tourOpen}
+           for the whole walkthrough rather than collapsing on mouse-out.
+           Drilled into another branch (showingBranchDrillIn), this rail is
+           always forced open too -- it's the operational one now, so it
+           should never collapse out from under an org_owner/org_manager
+           mid-task the way it might on their own home branch. The org rail
+           beside it (above) is the one with a display-mode choice instead. */
+        pinned={showingBranchDrillIn || sidebarOpen || tourOpen}
         items={showingBranchDrillIn
           ? visibleNav.map(item => ({ id: item.id, icon: item.icon, badge: navBadge(item.id) }))
           : page === 'organization'
@@ -1320,7 +1598,7 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {/* Top Bar */}
-        <header className="app-chrome app-topbar" style={{
+        <header className={`app-chrome app-topbar${showingBranchDrillIn ? ' app-topbar-drilled' : ''}`} style={{
           height: 60, background: 'var(--surface)', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', padding: '0 20px', gap: 10, flexShrink: 0,
         }}>
@@ -1417,16 +1695,38 @@ export default function App() {
               half (renderPage()'s exclusive switch) is what actually
               prevents both from mounting together. */}
           {viewingBranch ? (
+            // Unlike every other topbar item, this pill is allowed to shrink
+            // (flexShrink:1, minWidth:0) -- at 1 entire branch name + code +
+            // an "org view" badge + a full "Back to Organization" button, it
+            // was the single widest thing in the topbar (measured 467px of a
+            // 1140px-wide bar), and being rigid meant it alone forced every
+            // OTHER item -- search, then the Walkthrough/Notifications strip
+            // below -- to absorb 100% of the resulting deficit, crushing
+            // whichever one had the least protection down to a sliver. Only
+            // the branch NAME (least essential once you're this deep in
+            // context) actually truncates under pressure; the badge and the
+            // back button -- the two functionally important parts -- keep
+            // flexShrink:0 so they're never the thing that gives.
             <div data-tour="branch" title={t('shell.viewingBranchNotice')} style={{
               display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px 5px 10px', borderRadius: 8,
               border: '1px solid var(--border-strong)', background: 'var(--primary-light)',
-              fontSize: 12, fontFamily: 'inherit', flexShrink: 0,
+              fontSize: 12, fontFamily: 'inherit', flexShrink: 1, minWidth: 0,
             }}>
-              <span style={{ fontWeight: 600, color: 'var(--ink)' }}>
-                {viewingBranch.branchName}
-                {viewingBranch.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{viewingBranch.branchCode}</span>}
+              {/* overflow:hidden lives on the NAME span only, not this
+                  wrapper -- putting it here clipped the branchCode too
+                  (flexShrink:0 stops flexbox from shrinking it, but an
+                  ancestor's overflow:hidden clips it regardless once the
+                  wrapper itself is squeezed narrower than name+code
+                  combined). This wrapper just needs minWidth:0 so the flex
+                  algorithm is allowed to size it below its content's natural
+                  width in the first place. */}
+              <span style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                <span style={{ fontWeight: 600, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
+                  {viewingBranch.branchName}
+                </span>
+                {viewingBranch.branchCode && <span style={{ marginLeft: 6, fontWeight: 500, color: 'var(--ink-muted)', fontFamily: 'var(--font-mono)', fontSize: 11, flexShrink: 0 }}>{viewingBranch.branchCode}</span>}
               </span>
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--surface)', borderRadius: 999, padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--primary)', background: 'var(--surface)', borderRadius: 999, padding: '2px 7px', textTransform: 'uppercase', letterSpacing: '0.03em', flexShrink: 0 }}>
                 {t('shell.viewingBranchBadge')}
               </span>
               <button
@@ -1434,6 +1734,7 @@ export default function App() {
                 style={{
                   fontSize: 11, fontWeight: 600, color: 'var(--primary)', background: 'var(--surface)',
                   border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', fontFamily: 'inherit',
+                  flexShrink: 0, whiteSpace: 'nowrap',
                 }}
               >
                 ← {t('shell.backToOrganization')}
@@ -1450,56 +1751,30 @@ export default function App() {
             </div>
           )}
 
-          {/* Walkthrough. This slot used to hold the online pill; the
-              connection state moved into the sidebar (topContent above) so
-              an offline cashier can still see it -- losing that entirely
-              would matter on a POS that keeps working without a network. */}
-          <button
-            data-tour="walkthrough"
-            onClick={() => setTourOpen(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 11px', borderRadius: 8,
-              border: '1px solid var(--border)', background: 'none', cursor: 'pointer',
-              fontFamily: 'inherit', fontSize: 12, fontWeight: 600, color: 'var(--ink-mid)',
-              flexShrink: 0, whiteSpace: 'nowrap', transition: 'background 0.14s',
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none' }}
+          {/* Walkthrough + Notifications: nothing here ever hides behind a
+              menu -- this strip just slides left/right (mouse wheel, trackpad,
+              touch, or click-drag -- see .topbar-trailing-scroll in
+              index.css) when there isn't room to show both, the same way the
+              search box already shrinks instead of vanishing. minWidth:44
+              (not 0) is deliberate: a flex item with no floor at all doesn't
+              shrink gracefully under real pressure, it gets whatever's left
+              AFTER every rigid sibling (the search box's own 160px floor
+              included) takes its share -- measured dropping to 33px in
+              practice, just enough to show a button sliced off mid-icon,
+              which is the actual "deforming" this was reported as. 44px is
+              enough to always show one full icon (the bell) cleanly; the
+              search box (160px floor) and the branch pill (now shrinkable
+              too, see viewingBranch above) share the rest of the squeeze
+              instead of dumping all of it here. */}
+          <div
+            className="topbar-trailing-scroll"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 44, overflowX: 'auto', overflowY: 'hidden' }}
           >
-            <span aria-hidden="true">🧭</span>
-            <span className="hide-sm">{t('shell.walkthrough')}</span>
-          </button>
-
-          {/* Notifications */}
-          <div data-tour="notifications" style={{ position: 'relative', flexShrink: 0 }}>
-            <button onClick={toggleNotif} style={{
-              width: 36, height: 36, borderRadius: 8, border: '1px solid var(--border)',
-              background: showNotif ? 'var(--bg)' : 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, position: 'relative', transition: 'background 0.14s',
-            }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = showNotif ? 'var(--bg)' : 'none' }}
-            >
-              🔔
-              {/* The count itself, not just a dot -- clicking it only opens
-                  the dropdown (see toggleNotif() above), it doesn't mark
-                  anything read; this just makes that number visible instead
-                  of a plain unread indicator. */}
-              {alertCount > 0 && (
-                <span style={{
-                  position: 'absolute', top: -3, right: -3, minWidth: 16, height: 16, padding: '0 3px',
-                  background: '#dc2626', color: '#fff', borderRadius: 999, border: '2px solid var(--surface)',
-                  fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
-                }}>
-                  {alertCount > 99 ? '99+' : alertCount}
-                </span>
-              )}
-            </button>
-            {showNotif && <NotifDropdown alerts={alerts} onClose={() => setShowNotif(false)} />}
+            {walkthroughButton()}
+            {notificationsButton()}
           </div>
 
-          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={() => setShowNotif(true)} />
+          <ToastStack toasts={toasts} onDismiss={dismissToast} onOpen={alert => { if (!goToAlertTarget(alert)) setShowNotif(true) }} />
 
           {/* User avatar -- the pharmacy's own uploaded logo once one exists,
               same as the sidebar footer's copy of this same button. */}
@@ -1524,7 +1799,9 @@ export default function App() {
           onClick={closeMenus}
         >
           <Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-muted)', fontSize: 13 }}>{t('shell.loadingWorkspace')}</div>}>
-            {renderPage()}
+            <PageErrorBoundary key={page} onReset={() => setPage('overview')}>
+              {renderPage()}
+            </PageErrorBoundary>
           </Suspense>
         </main>
       </div>

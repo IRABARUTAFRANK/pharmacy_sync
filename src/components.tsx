@@ -290,7 +290,12 @@ export function Modal({ title, onClose, children, width = 620 }: {
 }) {
   return (
     <div className="modal-backdrop" style={{
-      position: 'fixed', inset: 0, zIndex: 200,
+      // Leaflet's own controls/panes (zoom buttons, attribution, marker and
+      // tooltip panes) default to z-index up to 1000 and aren't confined to
+      // the map's own box, so any Leaflet map elsewhere on the page (e.g. the
+      // Organization "Branches" mini-map) painted straight through a modal
+      // left at 200 -- this needs to clear that ceiling with room to spare.
+      position: 'fixed', inset: 0, zIndex: 2000,
       background: 'rgba(13,31,18,0.45)', display: 'flex',
       alignItems: 'center', justifyContent: 'center', padding: 20,
     }} onClick={onClose}>
@@ -449,7 +454,17 @@ export function SearchSelect({
   const display = open ? query : (selected?.label ?? (allowFreeText ? value : ''))
   const needle = query.trim().toLowerCase()
   const matched = needle ? options.filter(o => `${o.label} ${o.hint ?? ''}`.toLowerCase().includes(needle)) : options
-  const filtered = matched.slice(0, maxVisible)
+  // maxVisible only caps an actual NARROWED search -- an empty query means
+  // "let me browse everything" (opening the box, not typing yet), which a
+  // cap applied unconditionally here used to cut off silently well short of
+  // the real list (89 branch categories, or the 1000-product shared
+  // catalogue, both truncated at the old default of 60 with no visible
+  // sign anything was missing beyond the small "+N more" line easy to miss
+  // in a short scrollable box). Scrolling the dropdown already handles any
+  // list length fine; this only ever existed to avoid rendering an
+  // unreasonably large DOM tree for a search that hasn't been narrowed at
+  // all, which doesn't apply once there's no search text to narrow.
+  const filtered = needle ? matched.slice(0, maxVisible) : options
   const showCreate = allowFreeText && needle.length > 0 && !options.some(o => o.label.trim().toLowerCase() === needle)
 
   const commit = (next: string) => { onSelect(next); setQuery(''); setOpen(false) }
@@ -503,6 +518,18 @@ export function SearchSelect({
             boxShadow: '0 10px 30px rgba(0,0,0,0.10)', maxHeight: 240, overflowY: 'auto', padding: 4,
           }}
         >
+          {/* How many this dropdown actually has, and how many of those match
+              the current search -- without this, a short list matched a
+              cap-cut-short list, so "did I just see everything?" had no
+              answer besides scrolling to the end and guessing. */}
+          {options.length > 0 && (
+            <div style={{
+              padding: '4px 9px 6px', fontSize: 10, fontWeight: 700, color: 'var(--ink-faint)',
+              textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--bg-alt)', marginBottom: 3,
+            }}>
+              {needle ? `${matched.length} of ${options.length} match` : `${options.length} total`}
+            </div>
+          )}
           {showCreate && (
             <button
               type="button"
@@ -542,6 +569,27 @@ export function SearchSelect({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Settings-page building blocks ─────────────────────────────────────────
+// Shared by BranchSettingsPage and StorageLocationsManager (the latter is
+// embedded both as a Branch Settings tab and on the sidebar Locate Product
+// page) so both stay visually identical without one importing the other.
+
+export const inputStyle = { width: "100%", padding: "9px 10px", border: "1px solid var(--border)", borderRadius: 7, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" as const }
+
+export const CATEGORY_DOT_COLORS = ["#16a34a", "#2563eb", "#7c3aed", "#d97706", "#dc2626", "#0d9488"]
+
+export function CardHeader({ icon, title, subtitle }: { icon: string; title: string; subtitle?: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+      <div style={{ width: 40, height: 40, borderRadius: 10, background: "var(--primary-light)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{icon}</div>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--ink)" }}>{title}</h2>
+        {subtitle && <p style={{ margin: "2px 0 0", color: "var(--ink-muted)", fontSize: 12 }}>{subtitle}</p>}
+      </div>
     </div>
   )
 }
