@@ -339,6 +339,16 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
   // input -- fixed at FORECAST_TRAINING_DAYS below, same default the old
   // "history" field used to start at.
   const [forecastHorizon, setForecastHorizon] = useSessionDraft("analytics_forecastHorizon", 30)
+  // Free-typing draft for the input below -- forecastHorizon itself drives
+  // the chart/query and must never go stale or NaN, but coercing THIS box
+  // back to a fallback number on every keystroke (the old behavior) fought
+  // anyone mid-edit: clearing "30" to type "90" landed on an empty string or
+  // NaN in between, which snapped straight back to 30 before the new digits
+  // ever registered. This box holds whatever's literally typed; forecastHorizon
+  // only updates once that text parses to a real positive integer, and the
+  // box re-syncs to the last valid value on blur so an empty/invalid box
+  // doesn't linger.
+  const [forecastHorizonInput, setForecastHorizonInput] = useState(String(forecastHorizon))
   const [forecast, setForecast] = useState<SalesForecast | null>(null)
   const [forecastSeries, setForecastSeries] = useState<SalesForecastPoint[]>([])
   const [forecastAccuracy, setForecastAccuracy] = useState<SalesForecastAccuracyPoint[]>([])
@@ -1097,7 +1107,18 @@ export default function AnalyticsPage({ period, branchId }: { period?: OverviewP
           </div>
           <div>
             <label style={FIELD_LABEL_STYLE}>{t("analyticsPage.forecastHorizonLabel")}</label>
-            <input type="number" min={1} max={365} value={forecastHorizon} onChange={e => setForecastHorizon(Number(e.target.value) || 30)} style={{ ...DATE_INPUT_STYLE, width: 90 }} />
+            <input
+              type="number" min={1}
+              value={forecastHorizonInput}
+              onChange={e => {
+                const raw = e.target.value
+                setForecastHorizonInput(raw)
+                const n = Number.parseInt(raw, 10)
+                if (Number.isFinite(n) && n >= 1) setForecastHorizon(n)
+              }}
+              onBlur={() => setForecastHorizonInput(String(forecastHorizon))}
+              style={{ ...DATE_INPUT_STYLE, width: 90 }}
+            />
           </div>
           <button
             onClick={() => void runForecast()}

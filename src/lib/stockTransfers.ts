@@ -1,4 +1,4 @@
-import { supabase } from "./supabase"
+import { supabase, branchArg } from "./supabase"
 
 // Wraps the inter-branch stock transfer workflow -- fully designed and
 // already live in the database (PROPOSAL_multi_branch_organizations.sql's
@@ -74,9 +74,14 @@ function mapTransfer(row: any): StockTransfer {
 // stockBatchIds must already belong to their own branch, and toBranchId
 // must be a different branch in the same organization (the RPC itself
 // enforces both).
-export async function requestStockTransfer(toBranchId: string, stockBatchIds: string[], notes?: string): Promise<string> {
+// fromBranchId lets an org_owner/org_manager request a transfer OUT of a
+// branch they're currently viewing rather than their own -- request_stock_
+// transfer()'s own p_from_branch_id already supports this (defaults to the
+// caller's own branch when omitted), this just exposes it here too.
+export async function requestStockTransfer(toBranchId: string, stockBatchIds: string[], notes?: string, fromBranchId?: string): Promise<string> {
   const { data, error } = await supabase.rpc("request_stock_transfer", {
     p_to_branch_id: toBranchId, p_stock_batch_ids: stockBatchIds, p_notes: notes ?? null,
+    ...(fromBranchId ? { p_from_branch_id: fromBranchId } : {}),
   })
   if (error) throw error
   return data as string
@@ -167,10 +172,10 @@ export interface ScannedBranchBatch {
   batchNumber: string
 }
 
-export async function scanBranchBatch(code: string): Promise<ScannedBranchBatch> {
+export async function scanBranchBatch(code: string, branchId?: string): Promise<ScannedBranchBatch> {
   const trimmed = code.trim()
   if (!trimmed) throw new Error("Scan or type a barcode.")
-  const { data, error } = await supabase.rpc("lookup_barcode", { p_code: trimmed })
+  const { data, error } = await supabase.rpc("lookup_barcode", { p_code: trimmed, ...branchArg(branchId) })
   if (error) throw error
   const row = Array.isArray(data) ? data[0] : data
   // lookup_barcode() itself is branch-scoped (WHERE sb.branch_id =

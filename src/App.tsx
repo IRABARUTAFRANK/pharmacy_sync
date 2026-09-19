@@ -795,13 +795,23 @@ export default function App() {
     const timer = window.setTimeout(() => {
       loadOnboardingProgress()
         .then(progress => {
-          const candidate = FEATURE_DISCOVERY.find(f => !f.done(progress) && shouldShowFeatureNudge(access.userId, f.key))
+          const candidate = FEATURE_DISCOVERY.find(f =>
+            !f.done(progress) && shouldShowFeatureNudge(access.userId, f.key)
+            // reorder_points redirects to the branch's own Inventory Dashboard
+            // -- showing it while looking at the Organization dashboard (an
+            // org_owner/org_manager's default view) makes no sense for
+            // someone who isn't actually running a branch day to day. Only
+            // fires once someone has actually opened a branch's own
+            // dashboard (page leaves 'organization' the moment "View Branch"
+            // is used, same as every other branch-scoped page).
+            && (f.key !== 'reorder_points' || page === 'overview')
+          )
           if (candidate) setDiscovery(candidate)
         })
         .catch(() => { /* best-effort -- just skipped this session */ })
     }, 4000)
     return () => window.clearTimeout(timer)
-  }, [access, tourOpen])
+  }, [access, tourOpen, page])
 
   function closeDiscovery() {
     if (access && discovery) {
