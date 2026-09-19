@@ -121,6 +121,30 @@ function extractDosage(genericDesc: string): string | null {
   return m ? m[0].replace(/\s+/g, " ").trim() : null
 }
 
+// Splits a raw designation like "ELMEX SENSITIVE TUBE 50ml 2 AT 6YRS" into a
+// base product name ("ELMEX SENSITIVE TUBE") and a variant descriptor
+// ("50ml 2 AT 6YRS") -- without this, a source list that gives every pack
+// size/strength of the same medicine its own row and drug code (a formulary
+// list always does -- see admin_import_product_catalog()'s own comment)
+// turned every row into its own separate product instead of one product
+// with several variants. The split point is the first number immediately
+// followed by a recognized strength/size unit, which in practice is almost
+// always exactly where a brand/form name ends and its specific pack size or
+// strength begins -- confirmed by hand against ~1450 real designations from
+// the RHIA formulary list this was built for. A designation with no such
+// token (a device, a plain item with no stated strength) is left whole,
+// becoming its own single-variant product -- there's no reliable split
+// point to find in that case anyway.
+const NAME_VARIANT_SPLIT_RE = /\d[\d.,]*\s*(?:mg|g|mcg|µg|ml|IU|UI|MIU|mIU|%|GR)\b/i
+
+function splitNameAndVariant(designation: string): { baseName: string; variantLabel: string | null } {
+  const m = designation.match(NAME_VARIANT_SPLIT_RE)
+  if (!m || m.index === undefined || m.index === 0) return { baseName: designation, variantLabel: null }
+  const baseName = designation.slice(0, m.index).trim()
+  const variantLabel = designation.slice(m.index).trim()
+  return baseName ? { baseName, variantLabel: variantLabel || null } : { baseName: designation, variantLabel: null }
+}
+
 function titleCaseUnit(unit: string): string {
   const u = unit.trim()
   if (!u) return "Unit"
@@ -185,12 +209,18 @@ export function buildImportPreview(
     const unitRaw = cell(row, mapping.unit)
     const form = titleCaseUnit(unitRaw)
 
+    // A source list gives every pack size/strength of the same medicine its
+    // own row and drug code -- split off the base product name so those rows
+    // group into one product with several variants instead of one product
+    // each (see splitNameAndVariant()'s own comment).
+    const { baseName, variantLabel } = splitNameAndVariant(name)
+
     out.push({
       drugCode,
       productType: classifyProductType(genericName, name),
-      productName: name.slice(0, 150),
+      productName: baseName.slice(0, 150),
       genericName: genericName ? genericName.slice(0, 150) : null,
-      dosage: extractDosage(genericName || name),
+      dosage: variantLabel || extractDosage(genericName || name),
       form,
       unit: form,
       price,
