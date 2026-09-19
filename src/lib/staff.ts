@@ -15,6 +15,7 @@ export interface StaffMember {
   email: string | null
   role: BranchUserRole
   isActive: boolean
+  isRemoved: boolean
   createdAt: string
 }
 
@@ -66,7 +67,7 @@ export async function listBranchStaff(branchId?: string): Promise<StaffMember[]>
   if (error) throw error
   return ((data ?? []) as any[]).map(row => ({
     id: row.id, fullName: row.full_name, email: row.email, role: row.role as BranchUserRole,
-    isActive: row.is_active, createdAt: row.created_at,
+    isActive: row.is_active, isRemoved: row.is_removed, createdAt: row.created_at,
   }))
 }
 
@@ -90,6 +91,41 @@ export async function updateStaffRole(userId: string, role: StaffRole, branchId?
 // the target's own id is enough for the server to resolve which case applies.
 export async function resetStaffPassword(userId: string, newPassword: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke("reset-staff-password", { body: { userId, newPassword } })
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const body = await error.context.json().catch(() => null)
+      throw new Error(body?.error ?? error.message)
+    }
+    throw error
+  }
+  if (data?.error) throw new Error(data.error)
+}
+
+// Same idea as resetStaffPassword, extended to also change the login EMAIL
+// -- one Edge Function, one button, either field optional but at least one
+// required (enforced server-side in update-staff-credentials). Also keeps
+// public.users.email in sync so list_branch_staff()/list_organization_
+// people() immediately show the new address.
+export async function updateStaffCredentials(userId: string, newEmail?: string, newPassword?: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("update-staff-credentials", { body: { userId, newEmail, newPassword } })
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      const body = await error.context.json().catch(() => null)
+      throw new Error(body?.error ?? error.message)
+    }
+    throw error
+  }
+  if (data?.error) throw new Error(data.error)
+}
+
+// Permanently revokes login (Supabase Auth ban, no expiry in practice) --
+// distinct from setStaffActive(false), which is a reversible deactivation.
+// No row is ever deleted, so every past sale/receipt/stock entry this person
+// touched stays intact. Authorization and the is_removed flag both come
+// from mark_staff_removed() (2026-09-18_staff_removal_and_credentials.sql);
+// this just also has the Edge Function apply the actual Auth-level ban.
+export async function removeStaffAccount(userId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("remove-staff-account", { body: { userId } })
   if (error) {
     if (error instanceof FunctionsHttpError) {
       const body = await error.context.json().catch(() => null)

@@ -16,7 +16,7 @@ import {
   type OrganizationSummary, type RoleChangeLogEntry,
 } from "../lib/organization"
 import { loadInventoryDataset, type InventoryRow } from "../lib/inventory"
-import { resetStaffPassword } from "../lib/staff"
+import { removeStaffAccount, updateStaffCredentials } from "../lib/staff"
 import {
   loadCategoryBreakdown, loadForecastOutcomes, loadSalesForecast, loadSalesForecastAccuracy, loadSalesForecastSeries, loadSupplierPerformance, loadTopProducts, saveSalesForecastSnapshot,
   type CategoryBreakdownRow, type ForecastOutcome, type SalesForecast, type SupplierPerformanceRow, type TopProductRow,
@@ -501,26 +501,30 @@ function ChangeRoleModal({ member, hasOrgManager, onClose, onConfirm }: {
   )
 }
 
-// Same substitute as BranchSettingsPage's own ResetPasswordModal -- a real
+// Same substitute as BranchSettingsPage's own EditCredentialsModal -- a real
 // password can never be shown (Supabase Auth only ever stores a one-way
 // hash), so "see the credentials of who's below you" becomes "set them a
-// new password" instead, gated the same way list_organization_people()
-// already masks email visibility. Re-checked server-side regardless
-// (assert_can_reset_staff_password) -- this button is only ever offered
-// where m.email is already visible, i.e. exactly where the caller already
-// outranks the target.
-function ResetPasswordModal({ member, onClose, onDone }: { member: OrganizationPerson; onClose: () => void; onDone: () => void }) {
+// new email and/or password" instead, gated the same way list_organization_
+// people() already masks email visibility. Re-checked server-side
+// regardless (assert_can_manage_staff_account) -- this button is only ever
+// offered where m.email is already visible, i.e. exactly where the caller
+// already outranks the target.
+function EditCredentialsModal({ member, onClose, onDone }: { member: OrganizationPerson; onClose: () => void; onDone: () => void }) {
   const { t } = useTranslation()
+  const [newEmail, setNewEmail] = useState(member.email ?? "")
   const [newPassword, setNewPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function submit() {
-    if (newPassword.length < 6) { setError(t("organization.usersPasswordTooShort")); return }
+    const emailChanged = newEmail.trim().toLowerCase() !== (member.email ?? "").trim().toLowerCase()
+    if (!emailChanged && newPassword.length === 0) { setError(t("organization.credentialsNothingToChange")); return }
+    if (emailChanged && !newEmail.includes("@")) { setError(t("organization.credentialsInvalidEmail")); return }
+    if (newPassword.length > 0 && newPassword.length < 6) { setError(t("organization.usersPasswordTooShort")); return }
     setBusy(true)
     setError(null)
     try {
-      await resetStaffPassword(member.userId, newPassword)
+      await updateStaffCredentials(member.userId, emailChanged ? newEmail.trim() : undefined, newPassword || undefined)
       onDone()
     } catch (reason) {
       setError(errorMessage(reason, t("organization.resetPasswordError")))
@@ -535,12 +539,53 @@ function ResetPasswordModal({ member, onClose, onDone }: { member: OrganizationP
         <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("organization.resetPasswordIntro")}</p>
         {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
         <div>
+          <label style={labelStyle}>{t("organization.credentialsEmailLabel")}</label>
+          <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} style={inputStyle} />
+        </div>
+        <div>
           <label style={labelStyle}>{t("organization.resetPasswordNewLabel")}</label>
           <PasswordInput value={newPassword} onChange={e => setNewPassword(e.target.value)} style={inputStyle} />
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
           <Btn variant="primary" onClick={() => void submit()}>{busy ? t("organization.resetPasswordSaving") : t("organization.resetPasswordSubmit")}</Btn>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Permanently revokes login (Auth-level ban) without deleting any row --
+// distinct from the Deactivate/Reactivate toggle above, which is reversible.
+// mark_staff_removed() re-checks the same rank rule this button's own
+// gating already relies on, so there's no separate "type the name to
+// confirm" step here beyond a plain Cancel/Remove choice.
+function RemoveAccountModal({ member, onClose, onDone }: { member: OrganizationPerson; onClose: () => void; onDone: () => void }) {
+  const { t } = useTranslation()
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit() {
+    setBusy(true)
+    setError(null)
+    try {
+      await removeStaffAccount(member.userId)
+      onDone()
+    } catch (reason) {
+      setError(errorMessage(reason, t("organization.removeAccountError")))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title={t("organization.removeAccountTitle", { name: member.fullName })} onClose={onClose} width={400}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 11, color: "var(--ink-muted)" }}>{t("organization.removeAccountIntro")}</p>
+        {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
+          <Btn variant="danger" onClick={() => void submit()}>{busy ? t("organization.removeAccountSaving") : t("organization.removeAccountConfirm")}</Btn>
         </div>
       </div>
     </Modal>
@@ -1380,6 +1425,7 @@ export default function OrganizationPage({
   // something to do on a single stray click.
   const [changeRoleTarget, setChangeRoleTarget] = useState<OrganizationPerson | null>(null)
   const [resetPasswordTarget, setResetPasswordTarget] = useState<OrganizationPerson | null>(null)
+  const [removeAccountTarget, setRemoveAccountTarget] = useState<OrganizationPerson | null>(null)
 
   const [log, setLog] = useState<RoleChangeLogEntry[]>([])
   const [logLoading, setLogLoading] = useState(true)
@@ -2717,7 +2763,8 @@ export default function OrganizationPage({
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)" }}>
                                 {m.fullName}{isSelf ? ` (${t("organization.you")})` : ""}
-                                {!m.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("organization.inactiveLabel")}</span>}
+                                {m.isRemoved && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("organization.removedLabel")}</span>}
+                                {!m.isRemoved && !m.isActive && <span style={{ marginLeft: 8, fontSize: 11, color: "#dc2626", fontWeight: 600 }}>{t("organization.inactiveLabel")}</span>}
                               </div>
                               <div style={{ fontSize: 12, color: "var(--ink-muted)" }}>{m.email ?? "—"}</div>
                             </div>
@@ -2727,20 +2774,27 @@ export default function OrganizationPage({
                                 <Btn variant="secondary" small onClick={() => setChangeRoleTarget(m)}>{t("organization.changeRole")}</Btn>
                               )}
                               {/* A real password can never be shown -- see this
-                                  page's own ResetPasswordModal comment. Offered
+                                  page's own EditCredentialsModal comment. Offered
                                   exactly where the caller already outranks this
                                   person (m.email non-null means
                                   list_organization_people() didn't mask it),
                                   never on your own row. */}
                               {!isSelf && m.email != null && (
-                                <Btn variant="secondary" small onClick={() => setResetPasswordTarget(m)}>{t("organization.resetPassword")}</Btn>
+                                <Btn variant="secondary" small onClick={() => setResetPasswordTarget(m)}>{t("organization.editCredentials")}</Btn>
                               )}
-                              {canDeactivate && (
+                              {canDeactivate && !m.isRemoved && (
                                 <Btn variant={m.isActive ? "danger" : "secondary"} small onClick={() => void handleToggleActive(m)}>
                                   {m.isActive ? t("organization.deactivate") : t("organization.reactivate")}
                                 </Btn>
                               )}
                               {canManageOrgLevel && <Btn variant="danger" small onClick={() => void handleRemoveMember(m)}>{t("organization.remove")}</Btn>}
+                              {/* Permanent login ban (mark_staff_removed()), distinct
+                                  from the reversible Deactivate above -- same rank
+                                  rule as canDeactivate, so offered wherever that is,
+                                  minus once already removed. */}
+                              {canDeactivate && !m.isRemoved && (
+                                <Btn variant="danger" small onClick={() => setRemoveAccountTarget(m)}>{t("organization.removeAccount")}</Btn>
+                              )}
                             </div>
                           </div>
                         )
@@ -2867,10 +2921,18 @@ export default function OrganizationPage({
       )}
 
       {resetPasswordTarget && (
-        <ResetPasswordModal
+        <EditCredentialsModal
           member={resetPasswordTarget}
           onClose={() => setResetPasswordTarget(null)}
-          onDone={() => setResetPasswordTarget(null)}
+          onDone={() => { setResetPasswordTarget(null); void refreshMembers() }}
+        />
+      )}
+
+      {removeAccountTarget && (
+        <RemoveAccountModal
+          member={removeAccountTarget}
+          onClose={() => setRemoveAccountTarget(null)}
+          onDone={() => { setRemoveAccountTarget(null); void refreshMembers() }}
         />
       )}
 
