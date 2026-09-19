@@ -1,20 +1,24 @@
 import { branchArg, supabase } from "./supabase"
 
 // The pull side of stock movement, complementing lib/stockTransfers.ts's
-// sender-initiated push flow -- but as a real branch-to-branch negotiation,
-// not an org_manager unilaterally picking a source:
+// sender-initiated push flow -- a real branch-to-branch negotiation, not an
+// org_manager picking a source:
 //
 //   1. requestStockFromBranch() -- the requesting branch picks ONE specific
-//      branch to ask.
+//      branch to ask. The organization is told (FYI only) that this
+//      happened.
 //   2. respondToStockOffer() -- that branch's own owner/manager accepts
 //      (choosing which of their own batches to send) or denies (with a
-//      required reason).
+//      required reason). Accepting sends the stock immediately -- there is
+//      no separate organization approval step any more (see
+//      2026-09-19_transfer_instant_complete_and_verify.sql): it creates and
+//      completes the underlying transfer in the same action.
 //   3. If denied, retryStockNeed() lets the requester pick a DIFFERENT
 //      branch and try again -- only one outstanding ask at a time.
-//   4. Once accepted, approveStockNeed()/rejectStockNeed() is the
-//      org_owner/org_manager's one final say before anything moves.
-//   5. From there lib/stockTransfers.ts's existing, unmodified
-//      dispatch/receive actions govern the real physical movement.
+//
+// 'org_review'/'fulfilling' remain valid StockNeedStatus values only for
+// historical rows from before this changed -- a need now goes straight from
+// 'open' to 'fulfilled' the moment an offer is accepted.
 export type StockNeedStatus = "open" | "org_review" | "fulfilling" | "fulfilled"
 export type StockOfferStatus = "pending" | "accepted" | "denied"
 
@@ -29,15 +33,16 @@ export interface StockNeed {
   status: StockNeedStatus
   notes: string | null
   transferId: string | null
-  // The linked StockTransfer's own status (pending/approved/in_transit/
-  // received/rejected/cancelled) -- null until org-approved. Advance it via
-  // lib/stockTransfers.ts's own actions once status is "fulfilling".
+  // The linked StockTransfer's own status -- set the moment an offer is
+  // accepted, since that now creates AND completes the transfer in the same
+  // action (see respondToStockOffer's own comment). Practically always
+  // "received" by the time the client sees it.
   transferStatus: string | null
-  // The most recent ask -- tells the UI which of the three "waiting on
+  // The most recent ask -- tells the UI which of the two "waiting on
   // someone" states this is in: latestOfferStatus "pending" (waiting on
-  // latestOfferBranchName to answer), "denied" (needs a retry with a
-  // different branch, see latestOfferDenialReason), or "accepted" (this is
-  // what status "org_review"/"fulfilling" is waiting on org approval for).
+  // latestOfferBranchName to answer) or "denied" (needs a retry with a
+  // different branch, see latestOfferDenialReason). "accepted" means it's
+  // already fulfilled -- see status/transferStatus instead.
   latestOfferId: string | null
   latestOfferBranchId: string | null
   latestOfferBranchName: string | null
@@ -121,18 +126,6 @@ export async function retryStockNeed(needId: string, targetBranchId: string): Pr
   const { data, error } = await supabase.rpc("retry_stock_need", { p_need_id: needId, p_target_branch_id: targetBranchId })
   if (error) throw error
   return data as string
-}
-
-// org_owner/org_manager only.
-export async function approveStockNeed(needId: string): Promise<string> {
-  const { data, error } = await supabase.rpc("approve_stock_need", { p_need_id: needId })
-  if (error) throw error
-  return data as string
-}
-
-export async function rejectStockNeed(needId: string, reason?: string): Promise<void> {
-  const { error } = await supabase.rpc("reject_stock_need", { p_need_id: needId, p_reason: reason?.trim() || null })
-  if (error) throw error
 }
 
 // Omit organizationId for "my own branch's requests" (any owner/manager);

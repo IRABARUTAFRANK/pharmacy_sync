@@ -22,13 +22,13 @@ import {
   type CategoryBreakdownRow, type ForecastOutcome, type SalesForecast, type SupplierPerformanceRow, type TopProductRow,
 } from "../lib/analytics"
 import {
-  approveStockTransfer, cancelStockTransfer, dispatchStockTransfer, listBranchStockTransfers,
-  listOrganizationStockTransfers, listStockTransferManifest, receiveStockTransfer, rejectStockTransfer,
-  type StockTransfer, type StockTransferManifestItem, type StockTransferStatus,
+  approveStockTransfer, cancelStockTransfer, listBranchStockTransfers,
+  listOrganizationStockTransfers, rejectStockTransfer, verifyStockTransfer,
+  type StockTransfer, type StockTransferStatus, type TransferVerifyStatus,
 } from "../lib/stockTransfers"
 import {
-  approveStockNeed, listBranchBatchesForVariant, listIncomingStockOffers, listStockNeedOffers, listStockNeeds,
-  rejectStockNeed, respondToStockOffer, retryStockNeed,
+  listBranchBatchesForVariant, listIncomingStockOffers, listStockNeedOffers, listStockNeeds,
+  respondToStockOffer, retryStockNeed,
   type IncomingStockOffer, type StockNeed, type StockNeedBatch, type StockNeedStatus,
 } from "../lib/stockNeeds"
 import { loadOrgOverview, resolveRange, type OverviewPeriod } from "../lib/overview"
@@ -402,6 +402,19 @@ function TransferStatusBadge({ status }: { status: StockTransferStatus }) {
   return <StatusBadge label={t(`organization.transferStatus_${status}` as TranslationKey)} color={colors.c} bg={colors.bg} />
 }
 
+const VERIFY_STATUS_COLORS: Record<TransferVerifyStatus, { c: string; bg: string }> = {
+  pending: { c: "#d97706", bg: "#fef3c7" },
+  confirmed: { c: "#16a34a", bg: "#d1fae5" },
+  not_received: { c: "#dc2626", bg: "#fef2f2" },
+  damaged: { c: "#dc2626", bg: "#fef2f2" },
+}
+
+function VerifyStatusBadge({ status }: { status: TransferVerifyStatus }) {
+  const { t } = useTranslation()
+  const colors = VERIFY_STATUS_COLORS[status]
+  return <StatusBadge label={t(`organization.verifyStatus_${status}` as TranslationKey)} color={colors.c} bg={colors.bg} />
+}
+
 const NEED_STATUS_COLORS: Record<StockNeedStatus, { c: string; bg: string }> = {
   open: { c: "#d97706", bg: "#fef3c7" },
   org_review: { c: "#7c3aed", bg: "#ede9fe" },
@@ -545,23 +558,36 @@ function AddBranchModal({ organizationId, onClose, onCreated }: {
 
 // Shown immediately after AddBranchModal succeeds, or from the Branches tab
 // for any existing branch -- staffing isn't limited to brand-new branches
-// any more. `alreadyStaffed` hides the "owner" choice (the server would
-// reject it anyway -- a branch may only ever have one) and defaults the
-// picker straight to "manager".
-function StaffBranchModal({ branchId, branchName, alreadyStaffed, onClose, onStaffed }: {
-  branchId: string; branchName: string; alreadyStaffed: boolean; onClose: () => void; onStaffed: () => void
+// any more.
+//
+// "owner" is never offered here -- every branch this modal ever staffs
+// already belongs to an organization (there's exactly one ORG owner, and
+// this modal only exists inside the Organization page), so a branch's own
+// top local role is "manager", not a second, confusing "owner". "org
+// manager" and "manager" each only appear while their one seat is actually
+// free (hasOrgManager/hasManager, computed by the caller from the
+// already-loaded org state and member roster); "seller" is always offered
+// and never capped.
+function StaffBranchModal({ branchId, branchName, hasManager, hasOrgManager, canAssignOrgManager, onClose, onStaffed }: {
+  branchId: string; branchName: string; hasManager: boolean; hasOrgManager: boolean; canAssignOrgManager: boolean
+  onClose: () => void; onStaffed: () => void
 }) {
   const { t } = useTranslation()
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [role, setRole] = useState<"owner" | "manager" | "seller">(alreadyStaffed ? "manager" : "owner")
+
+  const roleChoices: Array<"org_manager" | "manager" | "seller"> = [
+    ...(canAssignOrgManager && !hasOrgManager ? (["org_manager"] as const) : []),
+    ...(hasManager ? [] : (["manager"] as const)),
+    "seller",
+  ]
+  const [role, setRole] = useState<"org_manager" | "manager" | "seller">(roleChoices[0])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const roleChoices = (alreadyStaffed ? ["manager", "seller"] : ["owner", "manager", "seller"]) as Array<"owner" | "manager" | "seller">
-  const ROLE_LABEL_KEYS: Record<"owner" | "manager" | "seller", TranslationKey> = {
-    owner: "organization.roleBranchOwner", manager: "organization.roleBranchManager", seller: "organization.roleBranchSeller",
+  const ROLE_LABEL_KEYS: Record<"org_manager" | "manager" | "seller", TranslationKey> = {
+    org_manager: "organization.roleOrgManager", manager: "organization.roleBranchManager", seller: "organization.roleBranchSeller",
   }
 
   async function submit() {
@@ -571,6 +597,9 @@ function StaffBranchModal({ branchId, branchName, alreadyStaffed, onClose, onSta
     setBusy(true)
     setError(null)
     try {
+      // org_manager is never tied to a branch (see staffOrganizationBranch's
+      // own header comment) -- branchId is passed regardless, the server
+      // ignores it for that one role and picks its own technical anchor.
       await staffOrganizationBranch(branchId, fullName.trim(), email.trim(), password, role)
       onStaffed()
     } catch (reason) {
@@ -640,15 +669,19 @@ const ASSIGNABLE_ROLE_LABEL_KEYS: Record<AssignableRole, TranslationKey> = {
 // Shows exactly what the change will mean before it happens, since
 // promoting to org_manager hands someone authority over every branch, and
 // moving them back down takes it away again.
-function ChangeRoleModal({ member, hasOrgManager, onClose, onConfirm }: {
+function ChangeRoleModal({ member, hasOrgManager, canAssignOrgManager, onClose, onConfirm }: {
   member: OrganizationPerson; hasOrgManager: boolean
+  // Only an org_owner may hand out (or take away) the org_manager seat --
+  // an org_manager can still open this same modal to move someone between
+  // branch manager and seller, but never sees "org manager" as a choice.
+  canAssignOrgManager: boolean
   onClose: () => void; onConfirm: (role: OrgAssignableRole) => void
 }) {
   const { t } = useTranslation()
   const isCurrentlyOrgManager = member.scope === "organization" && member.role === "org_manager"
   const choices: OrgAssignableRole[] = isCurrentlyOrgManager
     ? ["manager", "seller"]
-    : hasOrgManager ? ["manager", "seller"] : ["org_manager", "manager", "seller"]
+    : canAssignOrgManager && !hasOrgManager ? ["org_manager", "manager", "seller"] : ["manager", "seller"]
   const [role, setRole] = useState<OrgAssignableRole>(choices[0])
   const [busy, setBusy] = useState(false)
 
@@ -657,18 +690,19 @@ function ChangeRoleModal({ member, hasOrgManager, onClose, onConfirm }: {
     manager: "organization.roleBranchManager",
     seller: "organization.roleBranchSeller",
   }
+  // member.role widened from "org_manager or branch manager" to "any branch
+  // role" once canChangeRole started allowing seller -> manager promotions
+  // too -- reflect whatever it actually currently is, not just the two it
+  // used to be limited to.
+  const currentRoleLabelKey: TranslationKey = isCurrentlyOrgManager
+    ? "organization.roleOrgManager"
+    : member.role === "seller" ? "organization.roleBranchSeller" : "organization.roleBranchManager"
 
   return (
     <Modal title={t("organization.changeRoleTitle")} onClose={onClose} width={440}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ margin: 0, fontSize: 12, color: "var(--ink-mid)" }}>
-          {t("organization.changeRoleIntro", {
-            name: member.fullName,
-            // member.role is only ever org_manager or a branch manager here
-            // (canChangeRole gates the button on exactly those), but fall
-            // back rather than hand t() an undefined key if that ever widens.
-            role: t(labelKey[isCurrentlyOrgManager ? "org_manager" : "manager"]),
-          })}
+          {t("organization.changeRoleIntro", { name: member.fullName, role: t(currentRoleLabelKey) })}
         </p>
         <div>
           <label style={labelStyle}>{t("organization.changeRoleNewRole")}</label>
@@ -1072,24 +1106,24 @@ function RespondToOfferModal({ offer, currentBranchId, onClose, onDone }: {
   )
 }
 
-function TransferRow({ transfer, currentBranchId, onAction }: {
+function TransferRow({ transfer, currentBranchId, onAction, onVerify }: {
   transfer: StockTransfer
   currentBranchId: string
-  onAction: (action: "approve" | "reject" | "dispatch" | "receive" | "cancel", transfer: StockTransfer) => void
+  onAction: (action: "approve" | "reject" | "cancel", transfer: StockTransfer) => void
+  onVerify: (transfer: StockTransfer) => void
 }) {
   const { t } = useTranslation()
   const isSender = transfer.fromBranchId === currentBranchId
   const isReceiver = transfer.toBranchId === currentBranchId
-  const actions: Array<{ key: "approve" | "reject" | "dispatch" | "receive" | "cancel"; label: TranslationKey; variant: "primary" | "secondary" | "danger" }> = []
+  const actions: Array<{ key: "approve" | "reject" | "cancel"; label: TranslationKey; variant: "primary" | "secondary" | "danger" }> = []
   if (transfer.status === "pending") {
     if (isReceiver) { actions.push({ key: "approve", label: "organization.transferApprove", variant: "primary" }, { key: "reject", label: "organization.transferReject", variant: "danger" }) }
     if (isSender) actions.push({ key: "cancel", label: "organization.transferCancel", variant: "danger" })
-  } else if (transfer.status === "approved") {
-    if (isSender) actions.push({ key: "dispatch", label: "organization.transferDispatch", variant: "primary" })
-    if (isReceiver) actions.push({ key: "reject", label: "organization.transferReject", variant: "danger" })
-  } else if (transfer.status === "in_transit" && isReceiver) {
-    actions.push({ key: "receive", label: "organization.transferReceive", variant: "primary" })
   }
+  // Approving already completed the movement (see approve_stock_transfer()'s
+  // own comment) -- the only thing left, ever, is the receiving branch's own
+  // after-the-fact confirmation, once, while it's still unanswered.
+  const canVerify = transfer.status === "received" && transfer.verifyStatus === "pending" && isReceiver
 
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
@@ -1103,131 +1137,66 @@ function TransferRow({ transfer, currentBranchId, onAction }: {
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <TransferStatusBadge status={transfer.status} />
+        {transfer.status === "received" && <VerifyStatusBadge status={transfer.verifyStatus} />}
         {actions.map(a => (
           <Btn key={a.key} variant={a.variant} small onClick={() => onAction(a.key, transfer)}>{t(a.label)}</Btn>
         ))}
+        {canVerify && <Btn variant="primary" small onClick={() => onVerify(transfer)}>{t("organization.transferVerify")}</Btn>}
       </div>
     </div>
   )
 }
 
-// Scan-to-confirm for both physical legs of a transfer -- requested
-// directly: the sending branch scans every item going into the shipment
-// before it can actually be sent, and the receiving branch scans every item
-// as it arrives before it's added to their own inventory. The real
-// dispatch_stock_transfer()/receive_stock_transfer() RPCs are unchanged --
-// they already flip every barcode under the transfer's batches 'active' <->
-// 'in_transit' without ever regenerating one, so whatever the sender
-// scanned out arrives with the SAME codes, scannable and sellable at the
-// receiving branch immediately, no reprinting. This modal only gates WHEN
-// that call fires: not until every item list_stock_transfer_manifest()
-// returns for this phase has actually been scanned.
-function ScanTransferModal({ transfer, mode, onClose, onDone }: {
+// The receiving branch's own after-the-fact confirmation -- the stock
+// already moved the moment this transfer was approved (see approve_stock_
+// transfer()'s own comment), so this is purely a record of what physically
+// happened, never a gate: picking "not received" or "damaged" still leaves
+// the batches at this branch, it just flags the transfer for the sending
+// branch/org to follow up on outside the system.
+function VerifyTransferModal({ transfer, onClose, onDone }: {
   transfer: StockTransfer
-  mode: "dispatch" | "receive"
   onClose: () => void
   onDone: () => void
 }) {
   const { t } = useTranslation()
-  const [manifest, setManifest] = useState<StockTransferManifestItem[] | null>(null)
-  const [scannedIds, setScannedIds] = useState<Set<string>>(new Set())
-  const [code, setCode] = useState("")
-  const [scanError, setScanError] = useState<string | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [notes, setNotes] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState<TransferVerifyStatus | null>(null)
 
-  useEffect(() => {
-    listStockTransferManifest(transfer.id, mode === "dispatch" ? "active" : "in_transit")
-      .then(setManifest)
-      .catch(reason => setLoadError(errorMessage(reason, t("organization.scanTransferLoadError"))))
-  }, [transfer.id, mode, t])
-
-  useEffect(() => { inputRef.current?.focus() }, [manifest])
-
-  function submitScan() {
-    const trimmed = code.trim()
-    setCode("")
-    if (!trimmed || !manifest) return
-    const match = manifest.find(m => m.code === trimmed)
-    if (!match) { setScanError(t("organization.scanTransferNotFound", { code: trimmed })); return }
-    if (scannedIds.has(match.barcodeId)) { setScanError(t("organization.scanTransferAlreadyScanned")); return }
-    setScanError(null)
-    setScannedIds(prev => new Set(prev).add(match.barcodeId))
-  }
-
-  async function confirm() {
-    setBusy(true)
-    setLoadError(null)
+  async function submit(result: TransferVerifyStatus) {
+    setBusy(result)
+    setError(null)
     try {
-      if (mode === "dispatch") await dispatchStockTransfer(transfer.id)
-      else await receiveStockTransfer(transfer.id)
+      await verifyStockTransfer(transfer.id, result, notes.trim() || undefined)
       onDone()
     } catch (reason) {
-      setLoadError(errorMessage(reason, t("organization.transferActionError")))
-    } finally {
-      setBusy(false)
+      setError(errorMessage(reason, t("organization.transferActionError")))
+      setBusy(null)
     }
   }
 
-  const total = manifest?.length ?? 0
-  const scannedCount = scannedIds.size
-  const allScanned = total === 0 || scannedCount === total
-
   return (
-    <Modal
-      title={t(mode === "dispatch" ? "organization.scanTransferDispatchTitle" : "organization.scanTransferReceiveTitle", {
-        branch: mode === "dispatch" ? transfer.toBranchName : transfer.fromBranchName,
-      })}
-      onClose={onClose}
-      width={480}
-    >
+    <Modal title={t("organization.verifyTransferTitle", { branch: transfer.fromBranchName })} onClose={onClose} width={440}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ margin: 0, fontSize: 12, color: "var(--ink-muted)" }}>
-          {t(mode === "dispatch" ? "organization.scanTransferDispatchIntro" : "organization.scanTransferReceiveIntro")}
+          {t("organization.verifyTransferIntro", { count: transfer.batchCount })}
         </p>
-        {loadError && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{loadError}</p>}
-        {manifest === null ? (
-          <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p>
-        ) : total === 0 ? (
-          <p style={{ fontSize: 12, color: "var(--ink-muted)", textAlign: "center", padding: 16 }}>{t("organization.scanTransferNothingToScan")}</p>
-        ) : (
-          <>
-            <div>
-              <input
-                ref={inputRef}
-                value={code}
-                onChange={e => setCode(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitScan() } }}
-                placeholder={t("organization.scanTransferScanPlaceholder")}
-                style={{ width: "100%", padding: "10px 12px", border: "1.5px solid var(--primary)", borderRadius: 8, fontFamily: "inherit", fontSize: 13, boxSizing: "border-box" }}
-              />
-              {scanError && <p style={{ margin: "6px 0 0", fontSize: 11, color: "#dc2626" }}>{scanError}</p>}
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: allScanned ? "#16a34a" : "var(--ink)" }}>
-              {t("organization.scanTransferProgress", { scanned: scannedCount, total })}
-            </div>
-            <div style={{ maxHeight: 260, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 10 }}>
-              {manifest.map((m, i) => {
-                const done = scannedIds.has(m.barcodeId)
-                return (
-                  <div key={m.barcodeId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: i === manifest.length - 1 ? "none" : "1px solid var(--bg-alt)", opacity: done ? 1 : 0.7 }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ink)" }}>{m.productName}{m.dosage ? ` · ${m.dosage}` : ""}</div>
-                      <div style={{ fontSize: 10, color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>{m.batchNumber} · {m.code}</div>
-                    </div>
-                    <span style={{ fontSize: 16, color: done ? "#16a34a" : "var(--ink-faint)" }}>{done ? "✓" : "○"}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
-          <Btn variant="primary" disabled={busy || manifest === null || !allScanned} onClick={() => void confirm()}>
-            {busy ? t("organization.scanTransferSaving") : t(mode === "dispatch" ? "organization.transferDispatch" : "organization.transferReceive")}
+        {error && <p style={{ margin: 0, fontSize: 11, color: "#dc2626" }}>{error}</p>}
+        <div>
+          <label style={labelStyle}>{t("organization.verifyTransferNotesLabel")}</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)} style={inputStyle} placeholder={t("organization.verifyTransferNotesPlaceholder")} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Btn variant="primary" onClick={() => void submit("confirmed")}>
+            {busy === "confirmed" ? t("organization.creating") : t("organization.verifyTransferConfirmed")}
           </Btn>
+          <Btn variant="danger" onClick={() => void submit("not_received")}>
+            {busy === "not_received" ? t("organization.creating") : t("organization.verifyTransferNotReceived")}
+          </Btn>
+          <Btn variant="danger" onClick={() => void submit("damaged")}>
+            {busy === "damaged" ? t("organization.creating") : t("organization.verifyTransferDamaged")}
+          </Btn>
+          <Btn variant="ghost" onClick={onClose}>{t("organization.cancel")}</Btn>
         </div>
       </div>
     </Modal>
@@ -1235,27 +1204,18 @@ function ScanTransferModal({ transfer, mode, onClose, onDone }: {
 }
 
 // One row per request, from either the requester's or the org's point of
-// view. What action shows, if any, depends on who's looking and where the
-// negotiation currently stands:
-//   * The requester, once the current ask was DENIED (status stays "open"):
-//     "Try Another Branch".
-//   * An org_owner/org_manager, once a branch ACCEPTED (status
-//     "org_review"): "Approve" / "Reject".
-//   * Once approved ("fulfilling") the linked transfer's own status is
-//     shown for visibility, but advancing it (dispatch/receive) happens
-//     from the regular transfer list above, not here.
-function NeedRow({ need, currentBranchId, isOrgApprover, onRetry, onApprove, onReject }: {
+// view. There is nothing left for the organization to decide here -- an
+// accepted offer sends the stock right away (see respondToStockOffer's own
+// comment) -- so the only action ever shown is the requester's own "Try
+// Another Branch", once the current ask was DENIED (status stays "open").
+function NeedRow({ need, currentBranchId, onRetry }: {
   need: StockNeed
   currentBranchId: string
-  isOrgApprover: boolean
   onRetry: (need: StockNeed) => void
-  onApprove: (need: StockNeed) => void
-  onReject: (need: StockNeed) => void
 }) {
   const { t } = useTranslation()
   const isRequester = need.requestingBranchId === currentBranchId
   const canRetry = isRequester && need.status === "open" && need.latestOfferStatus === "denied"
-  const canDecide = isOrgApprover && need.status === "org_review"
 
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
@@ -1281,12 +1241,6 @@ function NeedRow({ need, currentBranchId, isOrgApprover, onRetry, onApprove, onR
           <TransferStatusBadge status={need.transferStatus as StockTransferStatus} />
         )}
         {canRetry && <Btn variant="primary" small onClick={() => onRetry(need)}>{t("organization.stockNeedRetry")}</Btn>}
-        {canDecide && (
-          <>
-            <Btn variant="danger" small onClick={() => onReject(need)}>{t("organization.stockNeedReject")}</Btn>
-            <Btn variant="primary" small onClick={() => onApprove(need)}>{t("organization.stockNeedApprove")}</Btn>
-          </>
-        )}
       </div>
     </div>
   )
@@ -1358,7 +1312,7 @@ export default function OrganizationPage({
   const [branchesLoading, setBranchesLoading] = useState(true)
   const [branchesError, setBranchesError] = useState<string | null>(null)
   const [showAddBranch, setShowAddBranch] = useState(false)
-  const [staffingBranch, setStaffingBranch] = useState<{ id: string; name: string; alreadyStaffed: boolean } | null>(null)
+  const [staffingBranch, setStaffingBranch] = useState<{ id: string; name: string; hasManager: boolean } | null>(null)
 
   const [members, setMembers] = useState<OrganizationPerson[]>([])
   const [membersLoading, setMembersLoading] = useState(true)
@@ -1451,11 +1405,9 @@ export default function OrganizationPage({
   const [transfersLoading, setTransfersLoading] = useState(true)
   const [transfersError, setTransfersError] = useState<string | null>(null)
   const [showRequestTransfer, setShowRequestTransfer] = useState(false)
-  // Dispatch/receive no longer fire straight from the row -- both now open
-  // ScanTransferModal, which requires every expected item actually scanned
-  // before it calls the real dispatch/receive RPC (see handleTransferAction
-  // below and the modal's own header comment).
-  const [scanTransferTarget, setScanTransferTarget] = useState<{ transfer: StockTransfer; mode: "dispatch" | "receive" } | null>(null)
+  // The receiving branch's own after-the-fact confirmation -- opens
+  // VerifyTransferModal, see its own header comment.
+  const [verifyTransferTarget, setVerifyTransferTarget] = useState<StockTransfer | null>(null)
 
   const [myNeeds, setMyNeeds] = useState<StockNeed[]>([])
   const [orgNeeds, setOrgNeeds] = useState<StockNeed[]>([])
@@ -1486,12 +1438,6 @@ export default function OrganizationPage({
   const transferOrganizationId = organizationId ?? myBranchOrganizationId
   const isOrgOwner = organization?.myRole === "org_owner"
   const isOrgManagerCaller = organization?.myRole === "org_manager"
-  // Stock transfer approval is the org_manager's call specifically once one
-  // exists -- the owner's role there is oversight (still sees everything
-  // via notifications and this same list), not action. The owner may still
-  // act while no org_manager has been appointed yet, matching
-  // assert_can_approve_stock_transfer() on the backend exactly.
-  const canApproveStockNeeds = isOrgManagerCaller || (isOrgOwner && !organization?.hasOrgManager)
   // Same precedence rule, applied to "View Branch" -- drilling into another
   // branch's own operational dashboard is the org_manager's job once one is
   // appointed (assert_can_manage_org_branch's own precedence), the owner's
@@ -1904,38 +1850,16 @@ export default function OrganizationPage({
     }
   }
 
-  async function handleTransferAction(action: "approve" | "reject" | "dispatch" | "receive" | "cancel", transfer: StockTransfer) {
-    // Physically moving stock (dispatch/receive) goes through a scan-to-
-    // confirm modal instead of firing immediately -- see ScanTransferModal.
-    if (action === "dispatch" || action === "receive") { setScanTransferTarget({ transfer, mode: action }); return }
+  async function handleTransferAction(action: "approve" | "reject" | "cancel", transfer: StockTransfer) {
     try {
+      // Approving completes the transfer outright -- see approve_stock_
+      // transfer()'s own comment.
       if (action === "approve") await approveStockTransfer(transfer.id)
       else if (action === "reject") await rejectStockTransfer(transfer.id)
       else await cancelStockTransfer(transfer.id)
       void refreshTransfers()
     } catch (reason) {
       setTransfersError(errorMessage(reason, t("organization.transferActionError")))
-    }
-  }
-
-  async function handleApproveNeed(need: StockNeed) {
-    try {
-      await approveStockNeed(need.id)
-      announce(t("organization.stockNeedApproved"))
-      void refreshNeeds()
-      void refreshTransfers()
-    } catch (reason) {
-      setNeedsError(errorMessage(reason, t("organization.stockNeedApproveError")))
-    }
-  }
-
-  async function handleRejectNeed(need: StockNeed) {
-    try {
-      await rejectStockNeed(need.id)
-      announce(t("organization.stockNeedRejected"))
-      void refreshNeeds()
-    } catch (reason) {
-      setNeedsError(errorMessage(reason, t("organization.stockNeedRejectError")))
     }
   }
 
@@ -2035,7 +1959,7 @@ export default function OrganizationPage({
           </div>
           {needsError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{needsError}</p>}
           {needsLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : myNeeds.map(n => (
-            <NeedRow key={n.id} need={n} currentBranchId={currentBranchId} isOrgApprover={false} onRetry={setRetryNeedTarget} onApprove={() => undefined} onReject={() => undefined} />
+            <NeedRow key={n.id} need={n} currentBranchId={currentBranchId} onRetry={setRetryNeedTarget} />
           ))}
           {!needsLoading && myNeeds.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.stockNeedsEmpty")}</p>}
         </Card>
@@ -2043,7 +1967,7 @@ export default function OrganizationPage({
           <CardHeader icon="🔁" title={t("organization.transfersMineTitle")} subtitle={t("organization.transfersSubtitle")} />
           {transfersError && <p style={{ fontSize: 12, color: "#b91c1c", marginBottom: 12 }}>{transfersError}</p>}
           {transfersLoading ? <p style={{ fontSize: 12, color: "var(--ink-muted)" }}>{t("organization.loading")}</p> : myTransfers.map(tr => (
-            <TransferRow key={tr.id} transfer={tr} currentBranchId={currentBranchId} onAction={handleTransferAction} />
+            <TransferRow key={tr.id} transfer={tr} currentBranchId={currentBranchId} onAction={handleTransferAction} onVerify={setVerifyTransferTarget} />
           ))}
           {!transfersLoading && myTransfers.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.transfersEmpty")}</p>}
         </Card>
@@ -2079,12 +2003,11 @@ export default function OrganizationPage({
             onRequested={() => { setShowRequestTransfer(false); announce(t("organization.transferRequested")); void refreshTransfers() }}
           />
         )}
-        {scanTransferTarget && (
-          <ScanTransferModal
-            transfer={scanTransferTarget.transfer}
-            mode={scanTransferTarget.mode}
-            onClose={() => setScanTransferTarget(null)}
-            onDone={() => { setScanTransferTarget(null); void refreshTransfers() }}
+        {verifyTransferTarget && (
+          <VerifyTransferModal
+            transfer={verifyTransferTarget}
+            onClose={() => setVerifyTransferTarget(null)}
+            onDone={() => { setVerifyTransferTarget(null); void refreshTransfers() }}
           />
         )}
       </div>
@@ -2330,26 +2253,28 @@ export default function OrganizationPage({
                   now lives on that branch's own dashboard (OverviewPage,
                   once its scope picker is narrowed to one branch, or via
                   "View Branch") -- not here. This tab is oversight only:
-                  every transfer/need across the whole organization, for an
+                  every transfer across the whole organization, for an
                   org_owner (while no org_manager exists yet, same
-                  precedence as canApproveStockNeeds/canViewOtherBranches
-                  above) or a real org_manager to review and approve. */}
+                  precedence as canViewOtherBranches above) or a real
+                  org_manager to approve -- approving completes it outright,
+                  see approve_stock_transfer()'s own comment. */}
               <Card>
                 <CardHeader icon="🏢" title={t("organization.transfersOrgTitle")} subtitle={t("organization.transfersOrgSubtitle")} />
                 {!transfersLoading && orgTransfers.map(tr => (
-                  <TransferRow key={tr.id} transfer={tr} currentBranchId={currentBranchId} onAction={handleTransferAction} />
+                  <TransferRow key={tr.id} transfer={tr} currentBranchId={currentBranchId} onAction={handleTransferAction} onVerify={setVerifyTransferTarget} />
                 ))}
                 {!transfersLoading && orgTransfers.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.transfersEmpty")}</p>}
               </Card>
 
               {(isOrgOwner || isOrgManagerCaller) && (
                 <Card>
+                  {/* Read-only: there is nothing left for the organization to
+                      decide on a stock request (see NeedRow's own header
+                      comment) -- an FYI list of every branch-to-branch ask
+                      across the organization, not a queue to act on. */}
                   <CardHeader icon="🧭" title={t("organization.stockNeedsOrgTitle")} subtitle={t("organization.stockNeedsOrgSubtitle")} />
                   {!needsLoading && orgNeeds.map(n => (
-                    <NeedRow
-                      key={n.id} need={n} currentBranchId={currentBranchId} isOrgApprover={canApproveStockNeeds}
-                      onRetry={setRetryNeedTarget} onApprove={handleApproveNeed} onReject={handleRejectNeed}
-                    />
+                    <NeedRow key={n.id} need={n} currentBranchId={currentBranchId} onRetry={setRetryNeedTarget} />
                   ))}
                   {!needsLoading && orgNeeds.length === 0 && <p style={{ padding: 28, textAlign: "center", color: "var(--ink-muted)", fontSize: 12 }}>{t("organization.stockNeedsEmpty")}</p>}
                 </Card>
@@ -2375,6 +2300,11 @@ export default function OrganizationPage({
                     const row = summary.find(s => s.branchId === b.branchId)
                     const alertCount = row ? row.outOfStockCount + row.lowStockCount : null
                     const manager = members.find(m => m.scope === "branch" && m.branchId === b.branchId && (m.role === "owner" || m.role === "manager"))
+                    // Matches trg_one_manager_per_branch's own definition of
+                    // "this branch already has a manager" exactly (active
+                    // only -- a removed/deactivated one leaves the seat
+                    // free) -- see StaffBranchModal's own header comment.
+                    const hasActiveManager = members.some(m => m.scope === "branch" && m.branchId === b.branchId && m.role === "manager" && m.isActive)
                     return (
                       <Card key={b.branchId}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
@@ -2409,7 +2339,7 @@ export default function OrganizationPage({
                           </div>
                           <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                             {canViewOtherBranches && <Btn variant="primary" small onClick={() => onViewBranch({ branchId: b.branchId, branchName: b.name, branchCode: b.branchCode })}>{t("organization.viewBranch")}</Btn>}
-                            {isOrgOwner && <Btn variant="secondary" small onClick={() => setStaffingBranch({ id: b.branchId, name: b.name, alreadyStaffed: b.staffCount > 0 })}>{t("organization.staffBranch")}</Btn>}
+                            {(isOrgOwner || isOrgManagerCaller) && <Btn variant="secondary" small onClick={() => setStaffingBranch({ id: b.branchId, name: b.name, hasManager: hasActiveManager })}>{t("organization.staffBranch")}</Btn>}
                           </div>
                         </div>
                       </Card>
@@ -2656,20 +2586,18 @@ export default function OrganizationPage({
                         // org_owner can never be targeted.
                         const canDeactivate = !isSelf && !isTargetOwner && (isOrgOwner || !isTargetOrgManager)
                         const canManageOrgLevel = isOrgOwner && m.scope === "organization" && !isSelf && !isTargetOwner
-                        // Only a currently active branch manager, only while
-                        // the organization doesn't already have one (matches
-                        // invite_organization_member()'s own one-org_manager
-                        // cap), and only the org_owner can appoint one -- same
-                        // authority invite_organization_member() itself
-                        // requires. One control, both directions: promote a
-                        // branch manager up to org_manager, or move the
-                        // current org_manager back down to a branch role.
-                        // Owner-only either way (org_change_member_role()
-                        // asserts the same), never on yourself or the owner's
-                        // own row, and promoting is only offered while the
-                        // one-org_manager seat is actually free.
-                        const canChangeRole = isOrgOwner && !isSelf && !isTargetOwner && m.isActive
-                          && (isTargetOrgManager || (m.scope === "branch" && m.role === "manager" && !organization.hasOrgManager))
+                        // Touching the org_manager seat itself (either
+                        // direction) is owner-only, same authority
+                        // org_change_member_role() itself requires. Moving a
+                        // branch person between manager and seller is open to
+                        // either org_owner or org_manager -- promoting to
+                        // manager is only ever offered while that branch's
+                        // own seat is actually free (trg_one_manager_per_
+                        // branch enforces this server-side regardless, this
+                        // is just not showing a button that would only error).
+                        // Never on yourself or the owner's own row.
+                        const canChangeRole = !isSelf && !isTargetOwner && m.isActive && (organization.myRole === "org_owner" || organization.myRole === "org_manager")
+                          && (isTargetOrgManager ? isOrgOwner : m.scope === "branch" && (m.role === "manager" || m.role === "seller"))
                         return (
                           <div key={m.userId} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i === group.members.length - 1 ? "none" : "1px solid var(--bg-alt)", gap: 12, flexWrap: "wrap" }}>
                             <div>
@@ -2808,7 +2736,7 @@ export default function OrganizationPage({
             setShowAddBranch(false)
             void refreshBranches()
             onOrganizationChanged()
-            setStaffingBranch({ id: branchId, name: pharmacyName, alreadyStaffed: false })
+            setStaffingBranch({ id: branchId, name: pharmacyName, hasManager: false })
           }}
         />
       )}
@@ -2817,9 +2745,22 @@ export default function OrganizationPage({
         <StaffBranchModal
           branchId={staffingBranch.id}
           branchName={staffingBranch.name}
-          alreadyStaffed={staffingBranch.alreadyStaffed}
+          hasManager={staffingBranch.hasManager}
+          hasOrgManager={Boolean(organization.hasOrgManager)}
+          canAssignOrgManager={isOrgOwner}
           onClose={() => setStaffingBranch(null)}
-          onStaffed={() => { setStaffingBranch(null); announce(t("organization.staffBranchSuccess")); void refreshBranches(); void refreshLog() }}
+          onStaffed={() => {
+            setStaffingBranch(null)
+            announce(t("organization.staffBranchSuccess"))
+            void refreshBranches()
+            void refreshLog()
+            // hasActiveManager (this modal's own hasManager gate, computed
+            // from `members`) and organization.hasOrgManager both have to be
+            // current, or re-opening this same modal right after staffing
+            // someone would still offer a seat that was just filled.
+            void refreshMembers()
+            onOrganizationChanged()
+          }}
         />
       )}
 
@@ -2827,6 +2768,7 @@ export default function OrganizationPage({
         <ChangeRoleModal
           member={changeRoleTarget}
           hasOrgManager={Boolean(organization.hasOrgManager)}
+          canAssignOrgManager={isOrgOwner}
           onClose={() => setChangeRoleTarget(null)}
           onConfirm={role => void handleChangeMemberRole(changeRoleTarget, role)}
         />
@@ -2873,12 +2815,11 @@ export default function OrganizationPage({
         />
       )}
 
-      {scanTransferTarget && (
-        <ScanTransferModal
-          transfer={scanTransferTarget.transfer}
-          mode={scanTransferTarget.mode}
-          onClose={() => setScanTransferTarget(null)}
-          onDone={() => { setScanTransferTarget(null); void refreshTransfers() }}
+      {verifyTransferTarget && (
+        <VerifyTransferModal
+          transfer={verifyTransferTarget}
+          onClose={() => setVerifyTransferTarget(null)}
+          onDone={() => { setVerifyTransferTarget(null); void refreshTransfers() }}
         />
       )}
 

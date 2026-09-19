@@ -1,26 +1,27 @@
 import { supabase, branchArg } from "./supabase"
 
-// Wraps the inter-branch stock transfer workflow -- fully designed and
-// already live in the database (PROPOSAL_multi_branch_organizations.sql's
-// request/approve/dispatch/receive/reject/cancel RPCs plus
-// 2026-09-09_organization_dashboard.sql's org-wide list/item-detail RPCs),
-// but this file itself never existed, leaving OrganizationPage.tsx's whole
-// Stock Transfers tab (RequestTransferModal, TransferRow, refreshTransfers)
-// wired to nothing. This is the missing piece, not a new design -- every
-// function name, param, and return shape below matches the live RPCs
-// exactly, and every field matches what OrganizationPage.tsx already reads
-// off a StockTransfer.
+// Wraps the inter-branch stock transfer workflow. Approving a transfer
+// completes it outright (see 2026-09-19_transfer_instant_complete_and_
+// verify.sql) -- there is no separate dispatch/receive scan step any more,
+// only a lightweight post-hoc verify.
 //
 // Workflow: pending (requested by the SENDING branch, picking specific
-// whole stock_batches it already owns) -> approved (by the receiving branch
-// or any org member) -> in_transit (sending branch confirms physical
-// hand-off -- see the sending branch's own POS: any surviving 'active' pack
-// under a dispatched batch is not sellable, it flips to 'in_transit') ->
-// received (receiving branch confirms arrival; stock_batches.branch_id
-// actually moves). Rejected/cancelled only before dispatch -- once stock has
-// physically left a building, reversing that is a real logistics problem,
-// not a status flip.
+// whole stock_batches it already owns) -> received (approving now completes
+// the transfer outright in the same action -- every batch's branch_id moves
+// immediately, no separate dispatch/receive scan step any more). Rejected/
+// cancelled only while still pending -- once approved, the stock has
+// already moved, so there is nothing left to call off.
+//
+// 'approved' and 'in_transit' remain valid values only for historical rows
+// from before this changed (2026-09-19_transfer_instant_complete_and_verify.
+// sql) -- no transfer is ever created in, or advances through, those states
+// any more.
 export type StockTransferStatus = "pending" | "approved" | "in_transit" | "received" | "rejected" | "cancelled"
+
+// The receiving branch's own after-the-fact confirmation -- purely a record
+// of what physically happened, never a gate on the stock movement itself
+// (that already happened the moment the transfer was approved).
+export type TransferVerifyStatus = "pending" | "confirmed" | "not_received" | "damaged"
 
 export interface StockTransfer {
   id: string
@@ -35,6 +36,8 @@ export interface StockTransfer {
   rejectionReason: string | null
   requestedAt: string
   receivedAt: string | null
+  verifyStatus: TransferVerifyStatus
+  verifyNotes: string | null
 }
 
 export interface StockTransferItem {
@@ -44,29 +47,13 @@ export interface StockTransferItem {
   quantityAvailable: number
 }
 
-// One row per physical item a scan-to-confirm screen expects to see --
-// a box, or a loose pack not sealed inside one -- for the transfer's own
-// batches. `status` selects which phase's manifest: 'active' while the
-// sending branch is scanning the outgoing package (dispatch), 'in_transit'
-// while the receiving branch is scanning it back in (receive) -- matching
-// exactly what dispatch_stock_transfer()/receive_stock_transfer() themselves
-// flip, so a scanned item always reflects the transfer's real current state.
-export interface StockTransferManifestItem {
-  barcodeId: string
-  code: string
-  barcodeType: "box" | "pack"
-  stockBatchId: string
-  productName: string
-  dosage: string | null
-  batchNumber: string
-}
-
 function mapTransfer(row: any): StockTransfer {
   return {
     id: row.id, fromBranchId: row.from_branch_id, fromBranchName: row.from_branch_name,
     toBranchId: row.to_branch_id, toBranchName: row.to_branch_name, status: row.status as StockTransferStatus,
     batchCount: row.batch_count, requestedByName: row.requested_by_name, notes: row.notes,
     rejectionReason: row.rejection_reason, requestedAt: row.requested_at, receivedAt: row.received_at,
+    verifyStatus: row.verify_status as TransferVerifyStatus, verifyNotes: row.verify_notes,
   }
 }
 
@@ -88,35 +75,34 @@ export async function requestStockTransfer(toBranchId: string, stockBatchIds: st
 }
 
 // Either the receiving branch's own owner/manager, or any member of the
-// owning organization.
+// owning organization. Completes the transfer outright -- every batch moves
+// to the receiving branch's stock in this same call.
 export async function approveStockTransfer(transferId: string): Promise<void> {
   const { error } = await supabase.rpc("approve_stock_transfer", { p_transfer_id: transferId })
   if (error) throw error
 }
 
-// The SENDING branch only -- confirms physical hand-off.
-export async function dispatchStockTransfer(transferId: string): Promise<void> {
-  const { error } = await supabase.rpc("dispatch_stock_transfer", { p_transfer_id: transferId })
-  if (error) throw error
-}
-
-// The RECEIVING branch only -- confirms physical arrival; this is what
-// actually moves the stock.
-export async function receiveStockTransfer(transferId: string): Promise<void> {
-  const { error } = await supabase.rpc("receive_stock_transfer", { p_transfer_id: transferId })
-  if (error) throw error
-}
-
-// The receiving branch or any org member -- only while still pending or
-// approved (not once dispatched).
+// The receiving branch or any org member -- only while still pending.
 export async function rejectStockTransfer(transferId: string, reason?: string): Promise<void> {
   const { error } = await supabase.rpc("reject_stock_transfer", { p_transfer_id: transferId, p_reason: reason ?? null })
   if (error) throw error
 }
 
-// The sending branch only -- only while still pending or approved.
+// The sending branch only -- only while still pending (nothing left to call
+// off once approved, since the stock has already moved).
 export async function cancelStockTransfer(transferId: string): Promise<void> {
   const { error } = await supabase.rpc("cancel_stock_transfer", { p_transfer_id: transferId })
+  if (error) throw error
+}
+
+// The RECEIVING branch only, once a transfer has completed (status
+// 'received', verifyStatus still 'pending') -- a lightweight after-the-fact
+// confirmation, not a gate: it never undoes the stock movement that already
+// happened when the transfer was approved, even on 'not_received' or
+// 'damaged'. Those two just flag it for the sending branch/org to follow up
+// on outside the system.
+export async function verifyStockTransfer(transferId: string, result: TransferVerifyStatus, notes?: string): Promise<void> {
+  const { error } = await supabase.rpc("verify_stock_transfer", { p_transfer_id: transferId, p_result: result, p_notes: notes ?? null })
   if (error) throw error
 }
 
@@ -144,15 +130,6 @@ export async function listStockTransferItems(transferId: string): Promise<StockT
   return ((data ?? []) as any[]).map(row => ({
     stockBatchId: row.stock_batch_id, productName: row.product_name, batchNumber: row.batch_number,
     quantityAvailable: row.quantity_available,
-  }))
-}
-
-export async function listStockTransferManifest(transferId: string, status: "active" | "in_transit"): Promise<StockTransferManifestItem[]> {
-  const { data, error } = await supabase.rpc("list_stock_transfer_manifest", { p_transfer_id: transferId, p_status: status })
-  if (error) throw error
-  return ((data ?? []) as any[]).map(row => ({
-    barcodeId: row.barcode_id, code: row.code, barcodeType: row.barcode_type as "box" | "pack",
-    stockBatchId: row.stock_batch_id, productName: row.product_name, dosage: row.dosage, batchNumber: row.batch_number,
   }))
 }
 
