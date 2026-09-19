@@ -49,14 +49,22 @@ export interface CreatePendingPaymentResult {
 }
 
 async function unwrapFunctionError(error: unknown, fallback: string): Promise<never> {
+  let specific: string | undefined
   if (error instanceof FunctionsHttpError) {
     try {
       const body = await error.context.json()
-      if (body?.error) throw new Error(body.error)
+      specific = body?.error
     } catch {
       // body wasn't JSON, or already consumed -- fall through to the generic message
     }
   }
+  // Thrown OUTSIDE the try above on purpose: throwing it from inside was a
+  // bug -- the catch there exists only to handle a body that fails to parse
+  // as JSON, but it was also catching this deliberate throw and silently
+  // replacing the Edge Function's real, specific error (e.g. pawaPay's own
+  // rejection reason) with the generic "Edge Function returned a non-2xx
+  // status code" every single time.
+  if (specific) throw new Error(specific)
   throw error instanceof Error ? error : new Error(fallback)
 }
 

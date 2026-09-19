@@ -85,7 +85,22 @@ begin
 
     v_new_desc := '[CATALOG] ' || v_base_name;
 
-    select id into v_survivor_product_id from public.products where description = v_new_desc limit 1;
+    -- catalog_code is a stronger identity signal than the heuristic name
+    -- split: the SAME drug_code sometimes reached the catalogue through two
+    -- differently-formatted legacy imports whose product names don't
+    -- textually match (one used the designation, the other the generic
+    -- description), which would otherwise try to claim the same
+    -- catalog_code for two different "survivor" products and violate
+    -- idx_product_variants_catalog_code. Check for an existing variant with
+    -- this drug_code FIRST, before falling back to the name-based lookup.
+    if v_drug_code is not null then
+      select product_id into v_survivor_product_id
+        from public.product_variants where catalog_code = v_drug_code limit 1;
+    end if;
+
+    if v_survivor_product_id is null then
+      select id into v_survivor_product_id from public.products where description = v_new_desc limit 1;
+    end if;
 
     if v_survivor_product_id is null then
       -- No survivor yet -- this row's own product/variant becomes it.
